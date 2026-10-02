@@ -41,6 +41,8 @@ pub const CODE_ENCODING_UNREPRESENTABLE: &str = "ENCODING_UNREPRESENTABLE";
 pub const CODE_NOT_EDITING: &str = "NOT_EDITING";
 /// 存在未保存修改，操作被阻止
 pub const CODE_EDIT_DIRTY: &str = "EDIT_DIRTY";
+/// 查找/替换命中过多（全部替换保护上限）
+pub const CODE_QUERY_TOO_BROAD: &str = "QUERY_TOO_BROAD";
 /// 内部错误（锁中毒等）
 pub const CODE_INTERNAL: &str = "INTERNAL";
 
@@ -103,6 +105,10 @@ impl From<EditError> for IpcError {
                 format!("字符位置越界：行 {row} 偏移 {utf16}"),
             ),
             EditError::InvalidPosition => Self::new(CODE_INVALID_POSITION, "内部位置无效"),
+            EditError::TooManyMatches { limit } => Self::new(
+                CODE_QUERY_TOO_BROAD,
+                format!("匹配过多（超过 {limit} 处），请使用更具体的查找内容"),
+            ),
         }
     }
 }
@@ -193,6 +199,8 @@ mod tests {
         assert_eq!(position.code, CODE_INVALID_POSITION);
         let dirty: IpcError = AppStateError::DirtyEdit(3).into();
         assert_eq!(dirty.code, CODE_EDIT_DIRTY);
+        let too_many: IpcError = EditError::TooManyMatches { limit: 200_000 }.into();
+        assert_eq!(too_many.code, CODE_QUERY_TOO_BROAD);
     }
 
     /// 保存类错误映射（冲突 / 不可表示字符）。

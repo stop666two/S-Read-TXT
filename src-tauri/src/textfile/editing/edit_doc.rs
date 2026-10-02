@@ -53,6 +53,12 @@ pub enum EditError {
     /// 内部位置解析失败（防御性，正常流程不可达）
     #[error("内部位置无效")]
     InvalidPosition,
+    /// 替换全部时命中数量超过上限（避免构造超大操作批次与撤销帧）
+    #[error("匹配过多：超过 {limit} 处，请使用更具体的查找内容")]
+    TooManyMatches {
+        /// 允许的最大命中数
+        limit: usize,
+    },
 }
 
 /// 编辑操作（位置坐标为「应用前」的文档状态）。
@@ -188,11 +194,11 @@ struct UndoStep {
 /// - `piece == pieces.len()` 表示文档末尾（`off` 必为 0）；
 /// - `off == pieces[piece].len` 的中间值由 [`EditDoc::normalize_pos`] 规范化。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct DocPos {
+pub(crate) struct DocPos {
     /// 片段下标（可等于片段数，表示末尾）
-    piece: usize,
+    pub(crate) piece: usize,
     /// 片段内偏移（字节）
-    off: u64,
+    pub(crate) off: u64,
 }
 
 /// UTF-8 BOM 字节。
@@ -535,7 +541,7 @@ impl EditDoc {
     }
 
     /// 片段对应的字节源与编码。
-    fn piece_bytes(&self, piece: &Piece) -> &[u8] {
+    pub(crate) fn piece_bytes(&self, piece: &Piece) -> &[u8] {
         let from = piece.off as usize;
         let to = piece.end() as usize;
         match piece.source {
@@ -551,7 +557,7 @@ impl EditDoc {
 
     /// 解码片段局部范围（不做 BOM 剥离：BOM 不属于任何片段，
     /// 且中段伪 BOM 序列不应被误剥离）。
-    fn decode_slice(&self, piece: &Piece, from: u64, to: u64) -> String {
+    pub(crate) fn decode_slice(&self, piece: &Piece, from: u64, to: u64) -> String {
         let start = (piece.off + from) as usize;
         let end = (piece.off + to) as usize;
         match piece.source {
@@ -592,7 +598,7 @@ impl EditDoc {
     }
 
     /// 片段计数/扫描使用的编码（新增片段固定 UTF-8）。
-    fn encoding_for(&self, piece: &Piece) -> FileEncoding {
+    pub(crate) fn encoding_for(&self, piece: &Piece) -> FileEncoding {
         match piece.source {
             PieceSource::Original => self.encoding,
             PieceSource::Added => FileEncoding::Utf8,
@@ -1131,8 +1137,36 @@ impl EditDoc {
     }
 
     /// 文档位置 → 全局字节偏移（片段前缀和 + 片段内偏移）。
-    fn global_offset(&self, pos: DocPos) -> u64 {
+    pub(crate) fn global_offset(&self, pos: DocPos) -> u64 {
         self.byte_tree.prefix(pos.piece) + pos.off
+    }
+
+    /// 全局字节偏移的前一字符是否为 `\r`。
+    ///
+    /// 搜索游标跨块推进时使用：`\r` 与后续 `\n` 可能被解码块分割，
+    /// 需要据此保持 CRLF「单一换行单元」的计数语义。
+    pub(crate) fn char_before_is_cr(&self, global: u64) -> bool {
+        if global == 0 || self.pieces.is_empty() {
+            return false;
+        }
+        let last = global - 1;
+        if last >= self.byte_tree.total() {
+            return false;
+        }
+        let index = self.byte_tree.lower_bound(last);
+        let Some(piece) = self.pieces.get(index) else {
+            return false;
+        };
+        let local = (last - self.byte_tree.prefix(index)) as usize;
+        let bytes = self.piece_bytes(piece);
+        if local >= bytes.len() {
+            return false;
+        }
+        match self.encoding_for(piece) {
+            FileEncoding::Utf16Le => local >= 1 && bytes[local] == 0x00 && bytes[local - 1] == 0x0D,
+            FileEncoding::Utf16Be => local >= 1 && bytes[local] == 0x0D && bytes[local - 1] == 0x00,
+            _ => bytes[local] == 0x0D,
+        }
     }
 
     /// 将全局字节偏移规范化为片段边界，返回边界处的片段下标。
@@ -1273,7 +1307,7 @@ impl EditDoc {
     ///
     /// - `utf16` 落在代理对中间时吸附到字符起点（前端正常输入不会出现）；
     /// - 行尾（`utf16 == 行长`）返回行结束位置（换行单元之前）。
-    fn resolve_pos(&self, row: u64, utf16: u64) -> Result<DocPos, EditError> {
+    pub(crate) fn resolve_pos(&self, row: u64, utf16: u64) -> Result<DocPos, EditError> {
         if row >= self.rows_total() {
             return Err(EditError::RowOutOfRange { row });
         }
