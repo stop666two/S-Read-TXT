@@ -80,7 +80,8 @@
 <style>
   .backdrop {
     position: fixed;
-    inset: 0;
+    /* 顶部让位给标题栏：弹窗打开时窗口仍可拖拽、标题栏按钮可用 */
+    inset: var(--h-titlebar) 0 0 0;
     z-index: 40;
     display: flex;
     align-items: center;

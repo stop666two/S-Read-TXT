@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 自定义标题栏冒烟：真实应用 + CDP 驱动。
 // 覆盖：标题（文件名 - 应用名）、拖拽区与三按钮存在、按钮最大化/还原、双击最大化/还原、
-//       浅色/深色主题截图、最小化（最后一步，document.hidden 断言）。
+//       浅色/深色主题截图、遮罩让位（引导弹窗打开时标题栏可命中）、真实点击最小化（最后一步）。
 //
 // 前置：已构建 debug 可执行文件（`npm run tauri build -- --debug --no-bundle`）。
 // 用法：node scripts/smoke-titlebar.mjs [--exe <路径>] [--port 9225]
@@ -171,9 +171,31 @@ async function main() {
     }
     check('T6 主题截图已保存', shots.length === 2, shots.join(' / '));
 
-    // T7：最小化（最后一步；WebView2 最小化不改变 visibilityState，经 is_minimized 断言）
-    currentStep = 'T7 最小化';
-    await evalJs(`(document.querySelector('[aria-label="最小化"]')?.click(), true)`);
+    // T7：引导弹窗打开时标题栏不被遮挡（本次修复的回归：遮罩顶部让位 --h-titlebar）
+    currentStep = 'T7 遮罩不遮标题栏';
+    const hit = await evalJs(
+      `(() => {
+         const overlay = document.querySelector('[role="dialog"][aria-label="使用向导"]') !== null;
+         const el = document.elementFromPoint(Math.floor(window.innerWidth / 2), 6);
+         return JSON.stringify({ overlay, drag: el !== null && el.closest('[data-tauri-drag-region]') !== null });
+       })()`,
+    );
+    const hitInfo = JSON.parse(hit ?? '{}');
+    check(
+      'T7 引导弹窗打开时标题栏可命中（遮罩让位）',
+      hitInfo.overlay === true && hitInfo.drag === true,
+      hit ?? '',
+    );
+
+    // T8：真实鼠标点击标题栏「最小化」（坐标级输入验证按钮未被遮挡；JS .click() 会绕过命中测试）
+    currentStep = 'T8 最小化（真实点击）';
+    const rectJson = await evalJs(
+      `(() => { const b = document.querySelector('[aria-label="最小化"]'); if (!b) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }); })()`,
+    );
+    if (!rectJson) throw new Error('找不到最小化按钮');
+    const { x, y } = JSON.parse(rectJson);
+    await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
     const minimized = await waitForValue(async () => {
       const hidden = await evalJs(`document.visibilityState === 'hidden'`);
       if (hidden === true) return true;
@@ -182,7 +204,7 @@ async function main() {
       );
       return result === true ? true : null;
     }, 6000);
-    check('T7 最小化（is_minimized 为真）', minimized === true);
+    check('T8 真实点击最小化（按钮未被遮挡）', minimized === true);
   } finally {
     client?.close();
     if (child.pid) {

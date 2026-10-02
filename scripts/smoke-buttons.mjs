@@ -192,9 +192,22 @@ async function main() {
     const openDialogClosed = openDialog ? await waitDialog(false) : false;
     check('C2 工具栏「打开文件」→ 原生对话框出现并可关闭', openDialog && openDialogClosed);
 
-    currentStep = 'C3 工具栏历史按钮（灰态断言）';
-    const historyDisabled = await isDisabled('[aria-label="历史记录"]');
-    check('C3 工具栏「历史记录」未实现 → 按要求为灰态', historyDisabled === true);
+    currentStep = 'C3 工具栏历史按钮（面板打开/关闭）';
+    await click('[aria-label="历史记录"]');
+    const historyOpen = await waitForValue(async () => {
+      const open = await evalJs(
+        `document.querySelector('[role="dialog"][aria-label="历史记录"]') !== null`,
+      );
+      return open === true ? true : null;
+    }, 5000);
+    await click('[aria-label="关闭历史面板"]');
+    const historyClosed = await waitForValue(async () => {
+      const open = await evalJs(
+        `document.querySelector('[role="dialog"][aria-label="历史记录"]') !== null`,
+      );
+      return open === false ? true : null;
+    }, 5000);
+    check('C3 工具栏「历史记录」→ 面板打开并可关闭', historyOpen === true && historyClosed === true);
 
     currentStep = 'C4 编辑模式切换';
     await click('[aria-label="切换编辑模式"]');
