@@ -15,6 +15,9 @@
   import TypographyTab from './TypographyTab.svelte';
   import { settings } from './store.svelte';
 
+  // 设置页共享样式（类名 .rows/.row/.label/.unit 与冒烟脚本约定一致）
+  import './settings.css';
+
   /** 页签定义（顺序即展示顺序） */
   const TABS = [
     { id: 'general', label: '常规' },

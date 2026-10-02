@@ -1,222 +1,134 @@
 <!--
-  TypographyTab — 阅读排版设置：主题 / 字体 / 字号 / 行高 / 限宽 / 边距。
-  修改即存并广播主窗口实时应用；主题同时应用到设置窗口自身。
+  TypographyTab — 阅读排版：主题与字体、正文排版参数（全部滑块）。
+  范围与 `src-tauri/src/settings/defaults.rs` 的常量保持一致（后端会再次归一兜底）。
+  滑块拖动实时预览（节流落盘），松开/数字框确认立即落盘。
 -->
 <script lang="ts">
+  import type { TypographySettings } from '../../lib/ipc';
+  import ChoiceRow from './parts/ChoiceRow.svelte';
+  import SliderRow from './parts/SliderRow.svelte';
   import { settings } from './store.svelte';
 
-  /** 主题选项（值 = 后端 ThemeChoice；system=跟随系统） */
+  /** 主题选项（system 由窗口监听系统明暗解析） */
   const THEMES = [
+    { value: 'system', label: '跟随系统' },
     { value: 'light', label: '浅色' },
     { value: 'dark', label: '深色' },
     { value: 'eye', label: '护眼' },
-    { value: 'system', label: '跟随系统' },
-  ] as const;
+  ];
 
-  /** 常见中文字体（可换成自定义：直接编辑配置文件 data/reader.json） */
-  const FONTS = [
+  /** 常见中文字体候选（当前值不在列表时动态补入，避免选择丢失） */
+  const FONT_CANDIDATES = [
     'Microsoft YaHei',
     'SimSun',
     'SimHei',
     'KaiTi',
     'FangSong',
-    'PingFang SC',
-  ] as const;
+    'Noto Sans CJK SC',
+    'Source Han Sans SC',
+  ];
 
-  const reader = $derived(settings.snapshot?.reader ?? null);
-
-  /** 字体下拉候选（当前值不在常见列表中时补一项，避免显示空选） */
-  const fontOptions = $derived.by(() => {
-    const current = reader?.typography.fontFamily;
-    if (current && !(FONTS as readonly string[]).includes(current)) {
-      return [current, ...FONTS];
-    }
-    return FONTS;
-  });
-
-  function readNumber(event: Event, fallback: number): number {
-    const value = Number.parseFloat((event.target as HTMLInputElement).value);
-    return Number.isFinite(value) ? value : fallback;
+  /** 可调数值项（键对应 `TypographySettings` 字段） */
+  type NumberKey = 'fontSize' | 'lineHeight' | 'contentWidth' | 'pagePadding' | 'pagePaddingY';
+  interface SliderDef {
+    key: NumberKey;
+    label: string;
+    desc: string;
+    min: number;
+    max: number;
+    step: number;
+    unit: string;
   }
 
-  /** 切换主题：保存 + 立即应用到设置窗口自身 */
-  function changeTheme(theme: string): void {
-    void settings.saveReader({ theme });
-    const resolved =
-      theme === 'system'
-        ? window.matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light'
-        : theme;
-    document.documentElement.dataset.theme = resolved;
+  /** 滑块定义（范围与后端 defaults.rs 同步） */
+  const SLIDERS: SliderDef[] = [
+    { key: 'fontSize', label: '字号', desc: '正文字号（8–72 px）', min: 8, max: 72, step: 1, unit: 'px' },
+    { key: 'lineHeight', label: '行高', desc: '行高倍数（1.0–3.2 ×）', min: 1, max: 3.2, step: 0.05, unit: '×' },
+    { key: 'contentWidth', label: '限宽', desc: '正文列宽上限（320–2400 px）', min: 320, max: 2400, step: 20, unit: 'px' },
+    { key: 'pagePadding', label: '左右边距', desc: '阅读区左右留白（0–240 px）', min: 0, max: 240, step: 4, unit: 'px' },
+    { key: 'pagePaddingY', label: '上下边距', desc: '阅读区上下留白（0–240 px）', min: 0, max: 240, step: 4, unit: 'px' },
+  ];
+
+  const reader = $derived(settings.snapshot?.reader ?? null);
+  const typo = $derived(reader?.typography ?? null);
+
+  /** 字体候选（含当前值，去重） */
+  const fontOptions = $derived(
+    typo && !FONT_CANDIDATES.includes(typo.fontFamily)
+      ? [
+          { value: typo.fontFamily, label: typo.fontFamily },
+          ...FONT_CANDIDATES.map((name) => ({ value: name, label: name })),
+        ]
+      : FONT_CANDIDATES.map((name) => ({ value: name, label: name })),
+  );
+
+  /** 构造类型安全的排版补丁（键 → 字段） */
+  function typoPatch(key: NumberKey, value: number): Partial<TypographySettings> {
+    switch (key) {
+      case 'fontSize':
+        return { fontSize: value };
+      case 'lineHeight':
+        return { lineHeight: value };
+      case 'contentWidth':
+        return { contentWidth: value };
+      case 'pagePadding':
+        return { pagePadding: value };
+      case 'pagePaddingY':
+        return { pagePaddingY: value };
+    }
+  }
+
+  /** 拖动中：实时预览（节流落盘，主窗口即时生效） */
+  function patchLive(next: Partial<TypographySettings>): void {
+    if (!typo) return;
+    settings.saveReaderLive({ typography: { ...typo, ...next } });
+  }
+
+  /** 确认：立即落盘 */
+  function patchNow(next: Partial<TypographySettings>): void {
+    if (!typo) return;
+    void settings.saveReaderNow({ typography: { ...typo, ...next } });
   }
 </script>
 
-{#if reader}
+{#if reader && typo}
+  <p class="section-title">主题与字体</p>
   <div class="rows">
-    <label class="row">
-      <span class="label">
-        主题
-        <small>阅读区与界面配色；「跟随系统」随系统深浅色切换</small>
-      </span>
-      <select value={reader.theme} onchange={(event) => changeTheme((event.target as HTMLSelectElement).value)}>
-        {#each THEMES as item (item.value)}
-          <option value={item.value}>{item.label}</option>
-        {/each}
-      </select>
-    </label>
-    <label class="row">
-      <span class="label">
-        字体
-        <small>阅读区正文字体</small>
-      </span>
-      <select
-        value={reader.typography.fontFamily}
-        onchange={(event) =>
-          void settings.saveReader({
-            typography: { ...reader.typography, fontFamily: (event.target as HTMLSelectElement).value },
-          })}
-      >
-        {#each fontOptions as font (font)}
-          <option value={font}>{font}</option>
-        {/each}
-      </select>
-    </label>
-    <label class="row">
-      <span class="label">
-        字号
-        <small>12–32 px（当前 {reader.typography.fontSize}px）</small>
-      </span>
-      <input
-        type="range"
-        min="12"
-        max="32"
-        step="1"
-        value={reader.typography.fontSize}
-        onchange={(event) =>
-          void settings.saveReader({
-            typography: {
-              ...reader.typography,
-              fontSize: Math.round(readNumber(event, reader.typography.fontSize)),
-            },
-          })}
+    <ChoiceRow
+      label="主题"
+      desc="阅读界面配色（跟随系统读取窗口明暗）"
+      value={reader.theme}
+      options={THEMES}
+      setting="theme"
+      onCommit={(value) => void settings.saveReader({ theme: value })}
+    />
+    <ChoiceRow
+      label="正文字体"
+      desc="系统已安装的中文字体"
+      value={typo.fontFamily}
+      options={fontOptions}
+      setting="fontFamily"
+      onCommit={(value) => patchNow({ fontFamily: value })}
+    />
+  </div>
+
+  <p class="section-title">正文排版</p>
+  <div class="rows">
+    {#each SLIDERS as item (item.key)}
+      <SliderRow
+        label={item.label}
+        desc={item.desc}
+        value={typo[item.key]}
+        min={item.min}
+        max={item.max}
+        step={item.step}
+        unit={item.unit}
+        setting={item.key}
+        onLive={(value) => patchLive(typoPatch(item.key, value))}
+        onCommit={(value) => patchNow(typoPatch(item.key, value))}
       />
-    </label>
-    <label class="row">
-      <span class="label">
-        行高
-        <small>正文行距倍数（1.2–2.6）</small>
-      </span>
-      <input
-        type="number"
-        min="1.2"
-        max="2.6"
-        step="0.1"
-        value={reader.typography.lineHeight}
-        onchange={(event) =>
-          void settings.saveReader({
-            typography: { ...reader.typography, lineHeight: readNumber(event, reader.typography.lineHeight) },
-          })}
-      />
-    </label>
-    <label class="row">
-      <span class="label">
-        正文限宽
-        <small>阅读列最大宽度（480–1200 px），过宽影响阅读舒适度</small>
-      </span>
-      <input
-        type="number"
-        min="480"
-        max="1200"
-        step="10"
-        value={reader.typography.contentWidth}
-        onchange={(event) =>
-          void settings.saveReader({
-            typography: { ...reader.typography, contentWidth: readNumber(event, reader.typography.contentWidth) },
-          })}
-      />
-    </label>
-    <label class="row">
-      <span class="label">
-        左右边距
-        <small>阅读区两侧留白（24–96 px）</small>
-      </span>
-      <input
-        type="number"
-        min="24"
-        max="96"
-        step="4"
-        value={reader.typography.pagePadding}
-        onchange={(event) =>
-          void settings.saveReader({
-            typography: { ...reader.typography, pagePadding: readNumber(event, reader.typography.pagePadding) },
-          })}
-      />
-    </label>
+    {/each}
   </div>
 {:else}
   <p class="loading">正在载入配置…</p>
 {/if}
-
-<style>
-  .rows {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    overflow: hidden;
-  }
-
-  .row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    background: var(--surface);
-    font-size: 13px;
-  }
-
-  .row + .row {
-    border-top: 1px solid var(--line);
-  }
-
-  .label {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .label small {
-    color: var(--muted);
-    font-size: 11.5px;
-  }
-
-  input[type='number'] {
-    width: 90px;
-    padding: 4px 8px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--base);
-    color: var(--ink);
-  }
-
-  input[type='range'] {
-    width: 160px;
-  }
-
-  select {
-    padding: 4px 8px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--base);
-    color: var(--ink);
-  }
-
-  .loading {
-    margin-top: 40px;
-    text-align: center;
-    color: var(--muted);
-    font-size: 13px;
-  }
-</style>

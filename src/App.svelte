@@ -144,7 +144,7 @@
   function adjustFontSize(step: number): void {
     if (!readerSettings) return;
     const current = readerSettings.typography.fontSize;
-    const next = Math.min(32, Math.max(12, current + step));
+    const next = Math.min(72, Math.max(8, current + step));
     if (next === current) return;
     void persistReader({ typography: { ...readerSettings.typography, fontSize: next } });
   }
@@ -730,6 +730,7 @@
     root.style.setProperty('--reading-line-height', `${typo.lineHeight}`);
     root.style.setProperty('--reading-width', `${typo.contentWidth}px`);
     root.style.setProperty('--reading-pad-x', `${typo.pagePadding}px`);
+    root.style.setProperty('--reading-pad-y', `${typo.pagePaddingY}px`);
   });
 
   // 标签集合/活动标签变化：防抖保存会话 + 刷新历史数据源

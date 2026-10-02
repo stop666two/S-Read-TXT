@@ -39,6 +39,28 @@ class SettingsStore {
     await this.persist({ reader: { ...this.snapshot.reader, ...patch }, kind: 'reader' });
   }
 
+  /** 拖动实时预览：立即更新本地快照，并按 140ms 节流落盘（主窗口经广播实时生效）。 */
+  private liveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  saveReaderLive(patch: Partial<ReaderSettings>): void {
+    if (!this.snapshot) return;
+    this.snapshot = { ...this.snapshot, reader: { ...this.snapshot.reader, ...patch } };
+    if (this.liveTimer !== null) return;
+    this.liveTimer = setTimeout(() => {
+      this.liveTimer = null;
+      if (this.snapshot) void this.persist({ reader: this.snapshot.reader, kind: 'reader' });
+    }, 140);
+  }
+
+  /** 立即落盘（松开滑块/数字框确认时）；取消未决节流避免重复写。 */
+  async saveReaderNow(patch: Partial<ReaderSettings>): Promise<void> {
+    if (this.liveTimer !== null) {
+      clearTimeout(this.liveTimer);
+      this.liveTimer = null;
+    }
+    await this.saveReader(patch);
+  }
+
   /** 内部：合并保存并广播（shortcuts 始终带上当前生效表，避免覆盖）。
    *  并发保护：快速连续修改（如拖动字号滑块）时仅采纳**最后一次**请求的响应，
    *  防止较旧快照回灌覆盖更新值。 */

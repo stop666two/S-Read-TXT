@@ -166,6 +166,11 @@ fn normalize_reader(settings: &mut ReaderSettings) {
         .clamp(min_width, max_width);
     let (min_pad, max_pad) = defaults::PAGE_PADDING_RANGE;
     settings.typography.page_padding = settings.typography.page_padding.clamp(min_pad, max_pad);
+    let (min_pad_y, max_pad_y) = defaults::PAGE_PADDING_Y_RANGE;
+    settings.typography.page_padding_y = settings
+        .typography
+        .page_padding_y
+        .clamp(min_pad_y, max_pad_y);
 }
 
 /// 快捷键归一：版本对齐；丢弃未知动作与空绑定（记日志）。
@@ -251,9 +256,9 @@ mod tests {
         assert_eq!(loaded.schema_version, 1);
         assert_eq!(loaded.log_level, crate::settings::model::LogLevel::Info);
         assert_eq!(loaded.max_file_size_mb, 1);
-        assert_eq!(loaded.max_tabs, 100);
-        assert_eq!(loaded.history.max_entries, 1);
-        assert_eq!(loaded.history.retention_days, 3650);
+        assert_eq!(loaded.max_tabs, 200);
+        assert_eq!(loaded.history.max_entries, 100);
+        assert_eq!(loaded.history.retention_days, 36500);
         assert!(!loaded.save_backup_enabled);
         assert!(!loaded.show_onboarding);
     }
@@ -264,16 +269,34 @@ mod tests {
         let dir = data_dir();
         std::fs::write(
             reader_settings_path(dir.path()),
-            br#"{"theme":"neon","typography":{"fontFamily":"   ","fontSize":100,"lineHeight":0.5,"contentWidth":10,"pagePadding":1000}}"#,
+            br#"{"theme":"neon","typography":{"fontFamily":"   ","fontSize":100,"lineHeight":0.5,"contentWidth":10,"pagePadding":1000,"pagePaddingY":999}}"#,
         )
         .expect("写配置失败");
         let loaded = load_reader_settings(dir.path());
         assert_eq!(loaded.theme, crate::settings::reader::Theme::System);
         assert_eq!(loaded.typography.font_family, defaults::DEFAULT_FONT_FAMILY);
-        assert_eq!(loaded.typography.font_size, 32);
-        assert!((loaded.typography.line_height - 1.2).abs() < f32::EPSILON);
-        assert_eq!(loaded.typography.content_width, 480);
-        assert_eq!(loaded.typography.page_padding, 96);
+        assert_eq!(loaded.typography.font_size, 72);
+        assert!((loaded.typography.line_height - 1.0).abs() < f32::EPSILON);
+        assert_eq!(loaded.typography.content_width, 320);
+        assert_eq!(loaded.typography.page_padding, 240);
+        assert_eq!(loaded.typography.page_padding_y, 240);
+    }
+
+    /// 旧版 reader.json（无 pagePaddingY 字段）加载 → 取默认 48（向后兼容）。
+    #[test]
+    fn reader_settings_missing_padding_y_defaults() {
+        let dir = data_dir();
+        std::fs::write(
+            reader_settings_path(dir.path()),
+            br#"{"theme":"light","typography":{"fontFamily":"Arial","fontSize":16,"lineHeight":1.8,"contentWidth":720,"pagePadding":48}}"#,
+        )
+        .expect("写配置失败");
+        let loaded = load_reader_settings(dir.path());
+        assert_eq!(loaded.typography.font_size, 16);
+        assert_eq!(
+            loaded.typography.page_padding_y,
+            defaults::DEFAULT_PAGE_PADDING_Y
+        );
     }
 
     /// 阅读配置往返一致。

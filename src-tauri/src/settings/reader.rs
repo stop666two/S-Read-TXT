@@ -70,8 +70,10 @@ pub struct Typography {
     pub line_height: f32,
     /// 正文限宽（px，范围见 [`defaults::CONTENT_WIDTH_RANGE`]）
     pub content_width: u32,
-    /// 阅读区页边距（px，范围见 [`defaults::PAGE_PADDING_RANGE`]）
+    /// 阅读区左右页边距（px，范围见 [`defaults::PAGE_PADDING_RANGE`]）
     pub page_padding: u32,
+    /// 阅读区上下留白（px，范围见 [`defaults::PAGE_PADDING_Y_RANGE`]）
+    pub page_padding_y: u32,
 }
 
 impl Default for Typography {
@@ -82,6 +84,7 @@ impl Default for Typography {
             line_height: defaults::DEFAULT_LINE_HEIGHT,
             content_width: defaults::DEFAULT_CONTENT_WIDTH,
             page_padding: defaults::DEFAULT_PAGE_PADDING,
+            page_padding_y: defaults::DEFAULT_PAGE_PADDING_Y,
         }
     }
 }

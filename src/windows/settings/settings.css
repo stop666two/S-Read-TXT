@@ -1,0 +1,106 @@
+/* 设置页共享样式（src/windows/settings/settings.css）
+   约定类名与既有冒烟脚本保持一致：.rows 容器 / .row 行 / .label 标签 / .unit 单位。
+   提供分组卡片外观（每组一个 .rows）与滑块行布局；页面标题用 .section-title。 */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--line);
+}
+
+.label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.label small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 320px;
+  justify-content: flex-end;
+}
+
+.control input[type='range'] {
+  flex: 1;
+  min-width: 180px;
+  accent-color: var(--accent);
+}
+
+.control .num {
+  width: 76px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--base);
+  color: var(--ink);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+.control .unit {
+  color: var(--muted);
+  font-size: 12px;
+  min-width: 22px;
+}
+
+.control select {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--base);
+  color: var(--ink);
+}
+
+.control button.danger {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: #b0413e;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.control button.danger:hover {
+  border-color: #b0413e;
+}
+
+.section-title {
+  margin: 6px 2px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.section-title:not(:first-child) {
+  margin-top: 18px;
+}
+
+.loading {
+  margin-top: 40px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}

@@ -201,6 +201,7 @@ export interface TypographySettings {
   lineHeight: number;
   contentWidth: number;
   pagePadding: number;
+  pagePaddingY: number;
 }
 
 /** 阅读配置（与 Rust `ReaderSettings` 对应）。 */

@@ -19,15 +19,15 @@ pub const MAX_FILE_SIZE_MB_RANGE: (u32, u32) = (1, 2048);
 /// 默认标签数量上限
 pub const DEFAULT_MAX_TABS: u32 = 20;
 /// 标签数量上限允许范围（闭区间）
-pub const MAX_TABS_RANGE: (u32, u32) = (1, 100);
+pub const MAX_TABS_RANGE: (u32, u32) = (1, 200);
 /// 默认历史保留条数
 pub const DEFAULT_HISTORY_MAX_ENTRIES: u32 = 10_000;
 /// 历史保留条数允许范围（闭区间）
-pub const HISTORY_MAX_ENTRIES_RANGE: (u32, u32) = (1, 100_000);
+pub const HISTORY_MAX_ENTRIES_RANGE: (u32, u32) = (100, 1_000_000);
 /// 默认历史保留天数
 pub const DEFAULT_HISTORY_RETENTION_DAYS: u32 = 365;
 /// 历史保留天数允许范围（闭区间）
-pub const HISTORY_RETENTION_DAYS_RANGE: (u32, u32) = (1, 3650);
+pub const HISTORY_RETENTION_DAYS_RANGE: (u32, u32) = (1, 36500);
 /// 默认首次保存是否生成 .bak 备份
 pub const DEFAULT_SAVE_BACKUP_ENABLED: bool = true;
 /// 默认是否显示首启引导
@@ -42,19 +42,23 @@ pub const DEFAULT_FONT_FAMILY: &str = "Microsoft YaHei";
 /// 默认正文字号（px）
 pub const DEFAULT_FONT_SIZE: u32 = 16;
 /// 字号允许范围（px，闭区间）
-pub const FONT_SIZE_RANGE: (u32, u32) = (12, 32);
+pub const FONT_SIZE_RANGE: (u32, u32) = (8, 72);
 /// 默认行高倍数
 pub const DEFAULT_LINE_HEIGHT: f32 = 1.8;
 /// 行高倍数允许范围（闭区间）
-pub const LINE_HEIGHT_RANGE: (f32, f32) = (1.2, 2.6);
+pub const LINE_HEIGHT_RANGE: (f32, f32) = (1.0, 3.2);
 /// 默认正文限宽（px）
 pub const DEFAULT_CONTENT_WIDTH: u32 = 720;
 /// 正文限宽允许范围（px，闭区间）
-pub const CONTENT_WIDTH_RANGE: (u32, u32) = (480, 1200);
-/// 默认阅读区页边距（px）
+pub const CONTENT_WIDTH_RANGE: (u32, u32) = (320, 2400);
+/// 默认阅读区左右页边距（px）
 pub const DEFAULT_PAGE_PADDING: u32 = 48;
-/// 页边距允许范围（px，闭区间）
-pub const PAGE_PADDING_RANGE: (u32, u32) = (24, 96);
+/// 左右页边距允许范围（px，闭区间）
+pub const PAGE_PADDING_RANGE: (u32, u32) = (0, 240);
+/// 默认阅读区上下留白（px）
+pub const DEFAULT_PAGE_PADDING_Y: u32 = 48;
+/// 上下留白允许范围（px，闭区间）
+pub const PAGE_PADDING_Y_RANGE: (u32, u32) = (0, 240);
 
 // ---------- shortcuts.json ----------
 
