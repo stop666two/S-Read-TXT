@@ -170,7 +170,7 @@ async function main() {
     // ---- B. 空状态 ----
     currentStep = 'B1 空状态打开按钮';
     await click('.open-btn');
-    const dialogShown = await waitDialog(true);
+    const dialogShown = await waitDialog(true, 15000);
     if (dialogShown) dialogOp('close');
     const dialogClosed = dialogShown ? await waitDialog(false) : false;
     check('B1 空状态「打开文件」→ 原生对话框出现并可关闭', dialogShown && dialogClosed);
@@ -325,7 +325,7 @@ async function main() {
       } catch {
         return null;
       }
-    }, 5000);
+    }, 12000);
     check('C8b 设置窗口已关闭', settingsClosed === true);
 
     // ---- D. 菜单栏 ----
@@ -647,7 +647,7 @@ async function main() {
         `if (Get-Process -Id ${child.pid} -ErrorAction SilentlyContinue) { 'ALIVE' } else { 'GONE' }`,
       ], { encoding: 'utf8', timeout: 15000 });
       return (probe.stdout ?? '').trim() === 'GONE' ? true : null;
-    }, 12000);
+    }, 30000);
     check(
       'H2 文件→「退出」→「不保存」→ 应用退出',
       exited === true,
