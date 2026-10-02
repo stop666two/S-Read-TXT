@@ -198,7 +198,10 @@ pub(crate) fn scan_row(bytes: &[u8], encoding: FileEncoding, start: u64) -> (u64
 }
 
 /// 查找 `from` 之后最近的换行，返回 `(换行起始, 下一行起点)`。
-fn find_newline(bytes: &[u8], encoding: FileEncoding, from: u64) -> Option<(u64, u64)> {
+///
+/// 可见性：`pub(crate)` —— 编辑引擎（`textfile::editing`）复用同一换行语义，
+/// 保证读/编辑两条路径的换行行为一致。
+pub(crate) fn find_newline(bytes: &[u8], encoding: FileEncoding, from: u64) -> Option<(u64, u64)> {
     match encoding {
         FileEncoding::Utf16Le => find_newline_utf16(bytes, from, true),
         FileEncoding::Utf16Be => find_newline_utf16(bytes, from, false),
@@ -239,7 +242,9 @@ fn find_newline_utf16(bytes: &[u8], from: u64, little_endian: bool) -> Option<(u
 }
 
 /// 读取指定位置的 UTF-16 代码单元（调用方保证 `position + 1 < len`）。
-fn read_utf16_unit(bytes: &[u8], position: usize, little_endian: bool) -> u16 {
+///
+/// 可见性：`pub(crate)`（编辑引擎复用）。
+pub(crate) fn read_utf16_unit(bytes: &[u8], position: usize, little_endian: bool) -> u16 {
     let pair = [bytes[position], bytes[position + 1]];
     if little_endian {
         u16::from_le_bytes(pair)

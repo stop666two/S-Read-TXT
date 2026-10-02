@@ -12,7 +12,9 @@
 //! - `line_index`：稀疏行索引（行号 ↔ 字节偏移）
 //! - `window`：按行取文本窗口
 //! - `session`：单文件会话（打开/取窗/百分比/切换编码）
+//! - `editing`：编辑引擎（片表 + 撤销重做 + 保存链，设计 §5 / D17–D19）
 
+pub mod editing;
 pub mod encoding;
 pub mod line_index;
 pub mod mmap;
