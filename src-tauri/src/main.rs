@@ -10,6 +10,9 @@ mod logging;
 mod session;
 mod settings;
 mod storage;
+// textfile 目前由单元测试驱动；阶段 2 接线阅读命令后移除该 allow（见进度台账 1.7）
+#[allow(dead_code)]
+mod textfile;
 mod time_util;
 
 use serde::Serialize;
