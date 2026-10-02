@@ -18,8 +18,8 @@ use s_read_txt::app_state::{AppState, RowsPayload, TabInfo};
 use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
-    IpcError, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING, CODE_SESSION_SAVE,
-    CODE_TAB_NOT_FOUND,
+    IpcError, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING, CODE_INVALID_POSITION,
+    CODE_SESSION_SAVE, CODE_TAB_NOT_FOUND,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -30,7 +30,9 @@ use s_read_txt::settings::{SettingsSaveRequest, SettingsSnapshot};
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::paths::{self, DataDirOrigin};
 use s_read_txt::textfile::editing::edit_doc::{EditApplied, EditOp};
-use s_read_txt::textfile::editing::search::{FindHit, ReplaceAllOutcome, ReplaceNextOutcome};
+use s_read_txt::textfile::editing::search::{
+    FindHit, ReplaceAllOutcome, ReplaceNextOutcome, ReplacePreview, SearchMode, PREVIEW_LIST_CAP,
+};
 use s_read_txt::textfile::encoding::FileEncoding;
 use s_read_txt::time_util;
 
@@ -76,6 +78,18 @@ fn parse_encoding_opt(encoding: Option<String>) -> Result<Option<FileEncoding>, 
             .map(Some)
             .ok_or_else(|| IpcError::new(CODE_INVALID_ENCODING, format!("未知编码：{label}"))),
         None => Ok(None),
+    }
+}
+
+/// 解析查找模式标签：`literal`（默认）/ `regex`；未知标签报错。
+fn parse_search_mode(mode: Option<String>) -> Result<SearchMode, IpcError> {
+    match mode.as_deref() {
+        None | Some("literal") => Ok(SearchMode::Literal),
+        Some("regex") => Ok(SearchMode::Regex),
+        Some(other) => Err(IpcError::new(
+            CODE_INVALID_POSITION,
+            format!("未知查找模式：{other}"),
+        )),
     }
 }
 
@@ -565,18 +579,20 @@ pub fn reload_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabI
     })
 }
 
-/// 命令：在编辑文档中查找（不环绕；`from` = 逻辑行 UTF-16 坐标，None 从头开始）。
+/// 命令：在编辑文档中查找（标准/正则；不环绕；`from` = 显示行 UTF-16 坐标，None 从头）。
 #[tauri::command]
 pub fn find_in_edit(
     tab_id: u64,
     query: String,
     case_sensitive: bool,
+    mode: Option<String>,
     from: Option<(u64, u64)>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Option<FindHit>, IpcError> {
     with_context(LogContext::request(), || {
+        let mode = parse_search_mode(mode)?;
         lock_state(&state)?
-            .find_in_tab(tab_id, &query, case_sensitive, from)
+            .find_in_tab(tab_id, &query, case_sensitive, mode, from)
             .map_err(IpcError::from)
     })
 }
@@ -587,29 +603,41 @@ pub fn replace_in_edit(
     tab_id: u64,
     query: String,
     case_sensitive: bool,
+    mode: Option<String>,
     from: Option<(u64, u64)>,
     replacement: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Option<ReplaceNextOutcome>, IpcError> {
     with_context(LogContext::request(), || {
+        let mode = parse_search_mode(mode)?;
         lock_state(&state)?
-            .replace_next_in_tab(tab_id, &query, case_sensitive, from, &replacement)
+            .replace_next_in_tab(tab_id, &query, case_sensitive, mode, from, &replacement)
             .map_err(IpcError::from)
     })
 }
 
 /// 命令：全部替换（单个撤销步；命中过多报 QUERY_TOO_BROAD）。
+///
+/// 说明：前端正常流程使用「预览 → 二次确认 → apply_replace_all_in_edit」；
+/// 本命令保留为直接入口（自动化测试与将来可能的“不再询问”偏好）。
 #[tauri::command]
 pub fn replace_all_in_edit(
     tab_id: u64,
     query: String,
     case_sensitive: bool,
+    mode: Option<String>,
     replacement: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<ReplaceAllOutcome, IpcError> {
     with_context(LogContext::request(), || {
-        let outcome =
-            lock_state(&state)?.replace_all_in_tab(tab_id, &query, case_sensitive, &replacement)?;
+        let mode = parse_search_mode(mode)?;
+        let outcome = lock_state(&state)?.replace_all_in_tab(
+            tab_id,
+            &query,
+            case_sensitive,
+            mode,
+            &replacement,
+        )?;
         log::info!(
             target: "sread::ipc",
             "全部替换：标签 {}，命中 {} 处",
@@ -617,6 +645,91 @@ pub fn replace_all_in_edit(
             outcome.replaced
         );
         Ok(outcome)
+    })
+}
+
+/// 命令：生成「全部替换」预览（命中总数 + 前 500 条前后文本；供二次确认弹窗）。
+#[tauri::command]
+pub fn preview_replace_all_in_edit(
+    tab_id: u64,
+    query: String,
+    case_sensitive: bool,
+    mode: Option<String>,
+    replacement: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<ReplacePreview, IpcError> {
+    with_context(LogContext::request(), || {
+        let mode = parse_search_mode(mode)?;
+        lock_state(&state)?
+            .preview_replace_all_in_tab(
+                tab_id,
+                &query,
+                case_sensitive,
+                mode,
+                &replacement,
+                PREVIEW_LIST_CAP,
+            )
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：执行「全部替换」（`selected = null` 全部；数组 = 仅替换所列序号；
+/// `expect_state_id` 校验预览后文档未变化）。
+#[tauri::command]
+pub fn apply_replace_all_in_edit(
+    tab_id: u64,
+    query: String,
+    case_sensitive: bool,
+    mode: Option<String>,
+    replacement: String,
+    selected: Option<Vec<usize>>,
+    expect_state_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<ReplaceAllOutcome, IpcError> {
+    with_context(LogContext::request(), || {
+        let mode = parse_search_mode(mode)?;
+        // 防御：下标排序去重（二分查找前置条件；前端正常已保证有序）
+        let mut list = selected;
+        if let Some(values) = &mut list {
+            values.sort_unstable();
+            values.dedup();
+        }
+        let outcome = lock_state(&state)?.replace_matches_in_tab(
+            tab_id,
+            &query,
+            case_sensitive,
+            mode,
+            &replacement,
+            list.as_deref(),
+            expect_state_id,
+        )?;
+        log::info!(
+            target: "sread::ipc",
+            "全部替换（确认后）：标签 {}，命中 {} 处{}",
+            tab_id,
+            outcome.replaced,
+            if list.is_none() { "（全部）" } else { "（已剔除部分）" }
+        );
+        Ok(outcome)
+    })
+}
+
+/// 命令：显示行窗口内的命中（文档高亮用）。
+#[tauri::command]
+pub fn match_window_in_edit(
+    tab_id: u64,
+    query: String,
+    case_sensitive: bool,
+    mode: Option<String>,
+    start_row: u64,
+    count: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<FindHit>, IpcError> {
+    with_context(LogContext::request(), || {
+        let mode = parse_search_mode(mode)?;
+        lock_state(&state)?
+            .match_window_in_tab(tab_id, &query, case_sensitive, mode, start_row, count)
+            .map_err(IpcError::from)
     })
 }
 

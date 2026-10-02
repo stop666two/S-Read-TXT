@@ -2793,6 +2793,7 @@ dependencies = [
  "log",
  "memchr",
  "memmap2",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

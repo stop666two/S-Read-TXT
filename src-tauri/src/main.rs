@@ -113,7 +113,10 @@ fn main() {
             commands::reload_tab,
             commands::find_in_edit,
             commands::replace_in_edit,
-            commands::replace_all_in_edit
+            commands::replace_all_in_edit,
+            commands::preview_replace_all_in_edit,
+            commands::apply_replace_all_in_edit,
+            commands::match_window_in_edit
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

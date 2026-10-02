@@ -38,6 +38,8 @@ time = { version = "=0.3.55", features = ["formatting", "parsing", "macros"] }
 # features 说明：`alloc` 提供 `set_boxed_logger`（安装全局 logger 必需）；`std` 提供标准库集成
 log = { version = "=0.4.34", features = ["std", "alloc"] }
 tauri-plugin-clipboard-manager = "=2.4.1"
+# 用户正则搜索（替换 v2）：线性时间无回溯（100MB 文件安全）；替换支持 $1 捕获展开
+regex = "=1.13.1"
 
 [build-dependencies]
 # Tauri 构建期：校验配置、生成权限 schema 与资源

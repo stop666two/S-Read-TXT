@@ -22,7 +22,9 @@ use crate::textfile::editing::edit_doc::{EditApplied, EditDoc, EditError, EditOp
 use crate::textfile::editing::save::{
     save_doc, snapshot_of, DiskSnapshot, SaveError, SaveOptions, SaveOutcome,
 };
-use crate::textfile::editing::search::{FindHit, ReplaceAllOutcome, ReplaceNextOutcome};
+use crate::textfile::editing::search::{
+    FindHit, ReplaceAllOutcome, ReplaceNextOutcome, ReplacePreview, SearchMode,
+};
 use crate::textfile::encoding::FileEncoding;
 use crate::textfile::session::{FileSession, TextFileError};
 use crate::textfile::source::DocumentSource;
@@ -290,45 +292,104 @@ impl AppState {
         Ok(doc.redo())
     }
 
-    /// 在编辑文档中查找下一个命中（普通文本，可大小写敏感；不环绕）。
+    /// 在编辑文档中查找下一个命中（标准/正则两种模式；不环绕）。
     ///
-    /// `from` 为逻辑行 UTF-16 坐标（`None` = 从文档开头）。
+    /// `from` 为显示行 UTF-16 坐标（`None` = 从文档开头）。
     pub fn find_in_tab(
         &self,
         tab_id: u64,
         query: &str,
         case_sensitive: bool,
+        mode: SearchMode,
         from: Option<(u64, u64)>,
     ) -> Result<Option<FindHit>, AppStateError> {
         let doc = self.edit_doc(tab_id)?;
-        Ok(doc.find(query, case_sensitive, from)?)
+        Ok(doc.find(query, case_sensitive, mode, from)?)
     }
 
     /// 替换一个命中（从 `from` 起）并返回应用结果与「新落点起的下一个命中」。
     ///
-    /// 未命中时返回 `None`（不产生编辑、不改变脏态）。
+    /// 未命中时返回 `None`（不产生编辑、不改变脏态）；
+    /// 正则模式的 `replacement` 支持 `$1`/`${name}` 捕获展开。
     pub fn replace_next_in_tab(
         &mut self,
         tab_id: u64,
         query: &str,
         case_sensitive: bool,
+        mode: SearchMode,
         from: Option<(u64, u64)>,
         replacement: &str,
     ) -> Result<Option<ReplaceNextOutcome>, AppStateError> {
         let doc = self.edit_doc_mut(tab_id)?;
-        Ok(doc.replace_next(query, case_sensitive, from, replacement)?)
+        Ok(doc.replace_next(query, case_sensitive, mode, from, replacement)?)
     }
 
     /// 全部替换（单次编辑 = 单个撤销步；命中数超过上限时报 `TooManyMatches`）。
+    ///
+    /// 说明：IPC 层的「全部替换」走「预览 → 二次确认 → 执行」流程
+    /// （`preview_replace_all_in_tab` + `replace_matches_in_tab`）；本方法保留为
+    /// 直接入口（单测与将来可能的“不再询问”偏好使用）。
     pub fn replace_all_in_tab(
         &mut self,
         tab_id: u64,
         query: &str,
         case_sensitive: bool,
+        mode: SearchMode,
         replacement: &str,
     ) -> Result<ReplaceAllOutcome, AppStateError> {
         let doc = self.edit_doc_mut(tab_id)?;
-        Ok(doc.replace_all(query, case_sensitive, replacement)?)
+        Ok(doc.replace_all(query, case_sensitive, mode, replacement)?)
+    }
+
+    /// 生成「全部替换」预览（命中总数 + 前 `max_items` 条的前后文本）。
+    pub fn preview_replace_all_in_tab(
+        &self,
+        tab_id: u64,
+        query: &str,
+        case_sensitive: bool,
+        mode: SearchMode,
+        replacement: &str,
+        max_items: usize,
+    ) -> Result<ReplacePreview, AppStateError> {
+        let doc = self.edit_doc(tab_id)?;
+        Ok(doc.preview_replace_all(query, case_sensitive, mode, replacement, max_items)?)
+    }
+
+    /// 执行「全部替换」：`indices = None` 全部；`Some` 仅替换列出的命中序号
+    /// （预览弹窗中剔除个别项后使用）。`expect_state_id` 校验预览后文档未变化。
+    pub fn replace_matches_in_tab(
+        &mut self,
+        tab_id: u64,
+        query: &str,
+        case_sensitive: bool,
+        mode: SearchMode,
+        replacement: &str,
+        indices: Option<&[usize]>,
+        expect_state_id: u64,
+    ) -> Result<ReplaceAllOutcome, AppStateError> {
+        let doc = self.edit_doc_mut(tab_id)?;
+        Ok(doc.replace_matches(
+            query,
+            case_sensitive,
+            mode,
+            replacement,
+            indices,
+            expect_state_id,
+        )?)
+    }
+
+    /// 显示行窗口内的命中（文档高亮用；扫描越过窗口即停止）。
+    pub fn match_window_in_tab(
+        &self,
+        tab_id: u64,
+        query: &str,
+        case_sensitive: bool,
+        mode: SearchMode,
+        start_row: u64,
+        count: u64,
+    ) -> Result<Vec<FindHit>, AppStateError> {
+        let doc = self.edit_doc(tab_id)?;
+        Ok(doc.match_window(query, case_sensitive, mode, start_row, count)?)
     }
 
     /// 保存编辑文档到原路径。

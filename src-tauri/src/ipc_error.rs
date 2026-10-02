@@ -43,6 +43,10 @@ pub const CODE_NOT_EDITING: &str = "NOT_EDITING";
 pub const CODE_EDIT_DIRTY: &str = "EDIT_DIRTY";
 /// 查找/替换命中过多（全部替换保护上限）
 pub const CODE_QUERY_TOO_BROAD: &str = "QUERY_TOO_BROAD";
+/// 正则表达式无效（编译失败；message 为引擎说明）
+pub const CODE_INVALID_REGEX: &str = "INVALID_REGEX";
+/// 预览后文档发生变化（需重新查找/预览）
+pub const CODE_SEARCH_STALE: &str = "SEARCH_STALE";
 /// 内部错误（锁中毒等）
 pub const CODE_INTERNAL: &str = "INTERNAL";
 
@@ -109,6 +113,12 @@ impl From<EditError> for IpcError {
                 CODE_QUERY_TOO_BROAD,
                 format!("匹配过多（超过 {limit} 处），请使用更具体的查找内容"),
             ),
+            EditError::InvalidRegex { message } => {
+                Self::new(CODE_INVALID_REGEX, format!("正则表达式无效：{message}"))
+            }
+            EditError::StaleSearch => {
+                Self::new(CODE_SEARCH_STALE, "文档已变化，请重新执行查找/替换")
+            }
         }
     }
 }

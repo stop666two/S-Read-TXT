@@ -59,6 +59,15 @@ pub enum EditError {
         /// 允许的最大命中数
         limit: usize,
     },
+    /// 正则表达式无效（编译失败；`message` 为引擎给出的详细说明）
+    #[error("正则表达式无效：{message}")]
+    InvalidRegex {
+        /// 引擎错误说明
+        message: String,
+    },
+    /// 预览后文档发生变化（状态号不一致），需重新查找（防御性）
+    #[error("文档已变化，请重新执行查找/替换")]
+    StaleSearch,
 }
 
 /// 编辑操作（位置坐标为「应用前」的文档状态）。
