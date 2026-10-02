@@ -235,3 +235,12 @@
 ### 6e E2E 扩展（本切片）
 - `smoke-settings.mjs` 修正与增强：默认页签已改为「常规」→ 快捷键操作前显式切换页签（S1/S9/reopenSettings）；**首启引导模态会挂起全局快捷键** → 按真实用户路径勾选「不再显示」并关闭（S8/S9/S11/S12 恢复）；`openPath` 改 fire-and-forget 防 WebView2 `Promise was collected`；S13 改为真实断言（常规页签字段 / 快捷键行数 / **字号修改实时应用到主窗口**）→ **27/27**。
 - `verify-all.mjs` 新增两步：`E2E 会话恢复（smoke-session）`、`E2E 数据目录引导（smoke-datadir）`；报告仍落盘 `docs/verify/latest.md`。
+
+### 6f 全量自检与回归修复（本切片）
+- 全量自检 **18/18 通过**（189.0s；报告 `docs/verify/latest.md`）——12 套 E2E + 6 个前置门禁全绿（含 100MB 长行 9/9）。
+- **修复真实缺陷（渲染层）**：`ReaderView` 排版变更 effect 内 `version += 1` 同时读写同一 `$state`，被 Svelte 5 依赖收集后自触发死循环（实测每帧数千次，行文本不渲染/渲染管线被持续冲刷）；修复 = `untrack` 包裹内部写入。用临时探针（get_rows 载荷/缓存/计数）二分定位到渲染层后取舍证据，调试钩子已移除。
+- **测试基建（CDP/WebView2 兼容）**：
+  - 新增共享 `openPathDone()`：WebView2 对「直接调用函数返回的 Promise」经 CDP `awaitPromise` 必报 “Promise was collected”（2026-10-02 起实测必现）；10 个套件统一迁移 + 旧 `smoke.mjs` 同步。
+  - 新增共享 `dismissOnboarding()`：首启引导模态会挂起全局快捷键并遮挡 `[role="dialog"]` 选择器（8 个套件因此失败）；按真实用户路径关闭（勾选「不再显示」+ 开始使用）。
+  - `smoke-buttons` D9/D12 的“灰态”断言更新为实测行为（字号±/快捷键…/关于页签，**30/30**）；`smoke-settings` S13 改为真实页签/实时排版断言并修复单引号模板比较 bug（**27/27**）。
+- 证据产物已刷新：`docs/verify/latest.md`、各阶段截图（4b/4c/5）。

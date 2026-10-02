@@ -46,4 +46,5 @@
 - 菜单「粘贴」触发 WebView 剪贴板权限弹窗且读取失败：复制/剪切/粘贴改经官方 `tauri-plugin-clipboard-manager`（Rust 侧读写，无浏览器弹窗；依赖精确锁定）
 - 「localhost 拒绝连接」空白页（已根治）：Tauri 以 `custom-protocol` feature 区分打包（内嵌资源）与开发（连 `http://localhost:1420`）模式，裸 `cargo build`/`cargo test` 未启用该 feature，产物被编译为开发语义；已在 `Cargo.toml` 常开该 feature，任何方式编译的 exe 均可独立运行
 - 替换/全部替换后键盘焦点停留在查找条，`Ctrl+Z` 到不了编辑器：两个动作成功后归还编辑器焦点
+- 阅读区行文本不渲染、渲染管线被持续冲刷：`ReaderView` 排版变更 effect 内 `version += 1` 同时读写同一 `$state`，被 Svelte 5 依赖收集后形成自触发循环（实测每帧数千次执行，行文本迟迟不出现）；改为 `untrack` 包裹内部状态写入
 - 会话滚动恢复失效（两处真实缺陷）：①滚动记忆只在切换标签时写入，滚动后直接退出保存的是旧位置——改为滚动时实时记录；②冷启动恢复早于首屏渲染时容器无可滚动高度，`scrollTop` 赋值被钳到 0——新增逐帧重试直至生效
