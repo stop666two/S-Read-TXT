@@ -1,5 +1,5 @@
 // S-Read-TXT 主进程入口（src-tauri/src/main.rs）
-// 阶段 1：storage/settings/logging/history 接入；
+// 阶段 1：storage/settings/logging/history/session 接入；
 // 每个 IPC 命令携带请求链路上下文（req id），日志可串联同一次调用。
 
 // 发布构建隐藏 Windows 控制台窗口；调试构建保留控制台以便查看日志
@@ -7,6 +7,7 @@
 
 mod history;
 mod logging;
+mod session;
 mod settings;
 mod storage;
 mod time_util;
@@ -16,6 +17,8 @@ use serde::Serialize;
 use history::entry::HistoryEntry;
 use history::store as history_store;
 use logging::context::{with_context, LogContext};
+use session::model::SessionState;
+use session::store as session_store;
 use settings::store as settings_store;
 use settings::{SettingsSaveRequest, SettingsSnapshot};
 use storage::data_dir;
@@ -161,6 +164,30 @@ fn clear_history() -> Result<(), String> {
     })
 }
 
+/// 命令：读取会话（窗口状态 + 标签锚点；自愈载入，损坏回退默认）。
+#[tauri::command]
+fn get_session() -> SessionState {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        session_store::load(&dir)
+    })
+}
+
+/// 命令：保存会话（退出/周期性调用；返回保存后的会话以便前端确认）。
+#[tauri::command]
+fn save_session(state: SessionState) -> Result<SessionState, String> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        session_store::save(&dir, &state).map_err(|err| format!("保存会话失败：{err}"))?;
+        log::debug!(
+            target: "sread::ipc",
+            "会话已保存（{} 个标签）",
+            state.tabs.len()
+        );
+        Ok(session_store::load(&dir))
+    })
+}
+
 fn main() {
     // 日志先行：级别来源 SRT_LOG_LEVEL > settings.json 的 logLevel > 默认 info；
     // 日志初始化失败不阻塞应用（降级为无文件日志）。
@@ -186,7 +213,9 @@ fn main() {
             save_settings,
             get_history,
             remove_history,
-            clear_history
+            clear_history,
+            get_session,
+            save_session
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

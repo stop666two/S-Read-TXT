@@ -1,7 +1,8 @@
 //! 配置文件读写（`settings.json` / `reader.json` / `shortcuts.json`）。
 //!
 //! 策略：
-//! - 读：文件缺失 → 默认值；内容损坏 → 备份为 `<文件名>.corrupt-<纳秒>` 后回退默认值（记日志）；
+//! - 读：文件缺失 → 默认值；内容损坏 → 备份为 `<文件名>.corrupt-<纳秒>` 后回退默认值
+//!   （实现：`storage::json_io::load_json_or_default`）；
 //! - 归一：载入与保存前对齐 `schemaVersion`、未知枚举回退默认、数值裁剪到文档范围；
 //! - 写：经 `json_io` 原子落盘（pretty JSON、UTF-8 无 BOM）；
 //! - 快捷键：文件仅存覆盖项；[`effective_bindings`] = 默认 + 覆盖；[`to_overrides`] = 与默认不同的项。
@@ -9,9 +10,6 @@
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use serde::de::DeserializeOwned;
 
 use crate::settings::defaults;
 use crate::settings::model::AppSettings;
@@ -57,17 +55,17 @@ pub fn load_snapshot(dir: &Path) -> SettingsSnapshot {
 
 /// 载入主配置（自愈：缺失/损坏回退默认值）。
 pub fn load_app_settings(dir: &Path) -> AppSettings {
-    load_or_default(&app_settings_path(dir), normalize_app)
+    json_io::load_json_or_default(&app_settings_path(dir), normalize_app)
 }
 
 /// 载入阅读排版配置（自愈：缺失/损坏回退默认值）。
 pub fn load_reader_settings(dir: &Path) -> ReaderSettings {
-    load_or_default(&reader_settings_path(dir), normalize_reader)
+    json_io::load_json_or_default(&reader_settings_path(dir), normalize_reader)
 }
 
 /// 载入快捷键覆盖表（自愈：缺失/损坏回退空覆盖；未知动作与空绑定被丢弃）。
 pub fn load_shortcuts(dir: &Path) -> ShortcutSettings {
-    load_or_default(&shortcuts_path(dir), normalize_shortcuts)
+    json_io::load_json_or_default(&shortcuts_path(dir), normalize_shortcuts)
 }
 
 /// 保存主配置（保存前归一，确保写入合法值）。
@@ -131,46 +129,6 @@ pub fn to_overrides(effective: &BTreeMap<String, String>) -> BTreeMap<String, St
         })
         .map(|(action, combo)| (action.clone(), combo.clone()))
         .collect()
-}
-
-/// 通用载入：成功则归一；缺失取默认；损坏备份后取默认。
-fn load_or_default<T, F>(path: &Path, normalize: F) -> T
-where
-    T: DeserializeOwned + Default,
-    F: FnOnce(&mut T),
-{
-    match json_io::read_json_opt::<T>(path) {
-        Ok(Some(mut value)) => {
-            normalize(&mut value);
-            value
-        }
-        Ok(None) => T::default(),
-        Err(err) => {
-            log::warn!(
-                "配置损坏，回退默认值并备份：{}（原因：{err}）",
-                path.display()
-            );
-            backup_corrupt(path);
-            T::default()
-        }
-    }
-}
-
-/// 将损坏配置重命名为 `<文件名>.corrupt-<纳秒>`；失败仅记日志（不阻塞启动）。
-fn backup_corrupt(path: &Path) -> Option<PathBuf> {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let file_name = path.file_name()?.to_string_lossy().into_owned();
-    let backup = path.with_file_name(format!("{file_name}.corrupt-{nanos}"));
-    match std::fs::rename(path, &backup) {
-        Ok(()) => Some(backup),
-        Err(err) => {
-            log::warn!("配置备份失败：{}（{err}）", path.display());
-            None
-        }
-    }
 }
 
 /// 主配置归一：版本对齐、枚举回退、数值裁剪。

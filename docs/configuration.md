@@ -69,9 +69,10 @@
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
 | `schemaVersion` | number | 固定 `1` | `1` | 格式版本 |
-| `window.x` / `window.y` | number | 屏幕坐标 | 居中 | 窗口位置（越界时回退居中） |
-| `window.width` / `window.height` | number | ≥720×480 | `1100×760` | 窗口尺寸（低于最小值回退默认） |
+| `window.x` / `window.y` | number \| null | 屏幕坐标或 `null` | `null`（居中） | 窗口位置；`null` 或越界（按当前显示器判定）时居中 |
+| `window.width` / `window.height` | number | 720–16384 | `1100×760` | 窗口尺寸；低于最小值/高于上限时回退默认（防手改配置导致窗口不可用） |
 | `window.maximized` | boolean | `true`/`false` | `false` | 是否最大化启动 |
+| `activeTabIndex` | number | ≥0 整数 | `0` | 活动标签下标；载入时收敛到 `tabs` 有效范围 |
 | `tabs[]` | array | 见下 | `[]` | 上次打开的标签（惰性恢复：仅激活标签建索引） |
 | `tabs[].path` | string | 文件绝对路径 | — | 文件不存在时启动跳过并 Toast 提示 |
 | `tabs[].encoding` | string \| null | 编码名或 `null` | `null` | `null` = 自动检测；手动切换过则记录 |
