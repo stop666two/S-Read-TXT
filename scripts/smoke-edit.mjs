@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { argValue, createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
+import { argValue, createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -79,9 +79,10 @@ async function main() {
         '前端未就绪（window.__srt 未注入）。请确认：① 已运行 npm run tauri build -- --debug --no-bundle（cargo build/test 产物是 dev 语义，不内嵌前端）；② 无残留实例占用端口。',
       );
     }
+    await dismissOnboarding(evalJs);
 
     // 1) 打开样本文件（轮询等待首行渲染完成）
-    await evalJs(`window.__srt.openPath(${JSON.stringify(testFile)})`);
+    await evalJs(openPathDone(testFile));
     const firstRow = await waitForValue(async () => {
       const text = await evalJs(`document.querySelector('.row')?.textContent ?? ''`);
       return text || '';

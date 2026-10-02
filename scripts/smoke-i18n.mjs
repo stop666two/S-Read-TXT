@@ -14,7 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createDialogOps } from './lib/dialog.mjs';
-import { argValue, createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
+import { argValue, createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe')));
@@ -150,6 +150,7 @@ async function main() {
       );
       return ready ? true : null;
     }, 30000);
+    await dismissOnboarding(evalJs);
 
     /** CDP 键盘注入（modifiers：Ctrl=2 Shift=8） */
     const press = async (key, code, vk, modifiers = 0) => {
@@ -169,7 +170,7 @@ async function main() {
       return payload.rows.map((row) => row.text);
     };
     const openAndWait = async (path) => {
-      await evalJs(`window.__srt.openPath(${JSON.stringify(path)})`);
+      await evalJs(openPathDone(path));
       await delay(500);
       return activeTab();
     };

@@ -11,7 +11,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readSync, readdirSync, rmSy
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { argValue, createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
+import { argValue, createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe')));
@@ -120,10 +120,11 @@ async function main() {
       await delay(250);
     }
     if (!ready) throw new Error('前端未就绪（window.__srt 未注入）');
+    await dismissOnboarding(evalJs);
 
     // C1/C2：打开并核对显示分段行数与前段文本
     currentStep = 'C1 打开文件';
-    await evalJs(`window.__srt.openPath(${JSON.stringify(testFile)})`);
+    await evalJs(openPathDone(testFile));
     const opened = await waitForValue(async () => {
       const state = await evalJs(
         `(async () => { const v = await window.__TAURI_INTERNALS__.invoke('list_tabs'); const t = v.tabs[0]; return { rows: t?.rowsTotal ?? 0, encoding: t?.encoding ?? '' }; })()`,

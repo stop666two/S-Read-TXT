@@ -44,9 +44,37 @@ export async function findTarget(port, urlIncludes = null) {
   throw new Error('未发现 CDP 页面目标（应用未启动或调试端口未开）');
 }
 
+/** 生成「等待 openPath 完成」的页面表达式（返回 Promise<true>）。
+ *  必须经 IIFE 包裹：WebView2 对「直接调用函数返回的 Promise」经 CDP `awaitPromise`
+ *  会立即报 “Promise was collected”（2026-10-02 起实测必现）；IIFE 外层 Promise 稳定可等待。 */
+export function openPathDone(path) {
+  return `(async () => { await window.__srt.openPath(${JSON.stringify(path)}); return true; })()`;
+}
+
+/** 关闭首启引导（若存在；真实用户路径：勾选「不再显示」并点「开始使用」）。
+ *  为什么必须关：引导以模态呈现——会遮挡 `[role="dialog"]` 选择器（测试易命中错弹窗），
+ *  并在设计上挂起全部全局快捷键（见 shortcuts/engine 的 modalOpen 判定）。 */
+export async function dismissOnboarding(evalJs) {
+  const present = await waitForValue(async () => {
+    const has = await evalJs(`!!document.querySelector('.overlay[aria-label="使用向导"]')`);
+    return has ? true : null;
+  }, 2000);
+  if (present !== true) return;
+  await evalJs(
+    `(() => { const overlay = document.querySelector('.overlay[aria-label="使用向导"]');
+      const check = overlay?.querySelector('.dont-show input');
+      if (check && !check.checked) check.click();
+      const button = [...(overlay?.querySelectorAll('button') ?? [])].find((b) => b.textContent.includes('开始使用'));
+      button?.click(); return true; })()`,
+  );
+  await waitForValue(async () => {
+    const gone = await evalJs(`!document.querySelector('.overlay[aria-label="使用向导"]')`);
+    return gone ? true : null;
+  }, 4000);
+}
+
 /** 建立 CDP 客户端（send/close）。 */
-export function createClient(wsUrl) {
-  return new Promise((resolveClient, rejectClient) => {
+export function createClient(wsUrl) {  return new Promise((resolveClient, rejectClient) => {
     const socket = new WebSocket(wsUrl);
     let nextId = 1;
     const pending = new Map();

@@ -11,7 +11,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createDialogOps } from './lib/dialog.mjs';
-import { argValue, createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
+import { argValue, createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe')));
@@ -89,6 +89,7 @@ async function main() {
       );
       return ready ? true : null;
     }, 30000);
+    await dismissOnboarding(evalJs);
 
     /** CDP 键盘注入（rawKeyDown 才会投递到页面；modifiers：Alt=1 Ctrl=2 Shift=8） */
     const press = async (key, code, vk, modifiers = 0) => {
@@ -126,7 +127,7 @@ async function main() {
     // K1 打开三个文件
     currentStep = 'K1 打开三个文件';
     for (const file of [mainFile, secondFile, thirdFile]) {
-      await evalJs(`window.__srt.openPath(${JSON.stringify(file)})`);
+      await evalJs(openPathDone(file));
       await delay(450);
     }
     let info = await tabsInfo();
@@ -244,7 +245,7 @@ async function main() {
 
     // K11 编辑态保存调用与模态弹窗挂起
     currentStep = 'K11 保存弹窗与挂起';
-    await evalJs(`window.__srt.openPath(${JSON.stringify(mainFile)})`);
+    await evalJs(openPathDone(mainFile));
     await delay(450);
     await press('e', 'KeyE', 69, 2);
     await waitForValue(async () => ((await activeTab())?.editing === true ? true : null), 5000);

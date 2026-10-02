@@ -175,7 +175,9 @@ async function runScenarios() {
   const emptyText = await evalJs("document.querySelector('.empty h1')?.textContent ?? ''");
   check('空状态显示', emptyText === '未打开任何文件', `空状态="${emptyText}"`);
 
-  await evalJs(`window.__srt.openPath(${JSON.stringify(samplePath)}).then(() => true)`);
+  // WebView2：直接对函数返回的 Promise 做 CDP awaitPromise 会报 “Promise was collected”，
+  // 统一经 IIFE 包裹（见 scripts/lib/smoke-cdp.mjs 的 openPathDone 说明）。
+  await evalJs(`(async () => { await window.__srt.openPath(${JSON.stringify(samplePath)}); return true; })()`);
   await delay(300);
   const tabName = await evalJs("document.querySelector('.tab-bar .tab .name')?.textContent ?? ''");
   check('标签栏显示文件名', tabName === 'sample-utf8.txt', `name="${tabName}"`);
@@ -199,7 +201,7 @@ async function runScenarios() {
   }
   writeFileSync(bigPath, bigLines.join('\n'), 'utf8');
 
-  await evalJs(`window.__srt.openPath(${JSON.stringify(bigPath)}).then(() => true)`);
+  await evalJs(`(async () => { await window.__srt.openPath(${JSON.stringify(bigPath)}); return true; })()`);
   await delay(600);
   const rowCount = await evalJs("document.querySelectorAll('.reader .row').length");
   check('虚拟滚动仅渲染可视行', rowCount > 0 && rowCount < 200, `渲染 ${rowCount} 行`);

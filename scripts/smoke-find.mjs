@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { argValue, createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
+import { argValue, createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe')));
@@ -139,10 +139,11 @@ async function main() {
       await delay(250);
     }
     if (!ready) throw new Error('前端未就绪（window.__srt 未注入）');
+    await dismissOnboarding(evalJs);
 
     // F1：打开 + 进入编辑
     currentStep = 'F1 打开并进入编辑';
-    await evalJs(`window.__srt.openPath(${JSON.stringify(testFile)})`);
+    await evalJs(openPathDone(testFile));
     const firstRow = await waitForValue(async () => {
       const text = await rowText(0);
       return text === 'alpha needle beta' ? text : null;

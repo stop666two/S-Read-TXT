@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { argValue, createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
+import { argValue, createClient, delay, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe')));
@@ -90,7 +90,7 @@ async function main() {
 
     // T1：标题栏随打开文件更新（自定义标题栏 + document.title）
     currentStep = 'T1 标题显示';
-    await evalJs(`window.__srt.openPath(${JSON.stringify(testFile)})`);
+    await evalJs(openPathDone(testFile));
     const title = await waitForValue(async () => {
       const bar = await evalJs(`document.querySelector('.app-title')?.textContent ?? ''`);
       const doc = await evalJs(`document.title`);

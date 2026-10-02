@@ -13,7 +13,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { argValue, createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
+import { argValue, createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe')));
@@ -88,7 +88,7 @@ const CTRL = 2;
 
 /** 打开文件并等待首行内容出现。 */
 async function openAndWait(path, expectedRow0) {
-  await evalJs(`window.__srt.openPath(${JSON.stringify(path)})`);
+  await evalJs(openPathDone(path));
   const text = await waitForValue(async () => {
     const row = await evalJs(`document.querySelector('.row')?.textContent ?? ''`);
     return row === expectedRow0 ? row : '';
@@ -166,6 +166,7 @@ async function main() {
       if (ready) break;
       await delay(250);
     }
+    await dismissOnboarding(evalJs);
 
     // ---- A. 空文件：编辑 → 写入 → 保存 → 清空再保存 ----
     check('A1 打开空文件（1 行）', await openAndWait(files.empty, ''), '首行应为空');

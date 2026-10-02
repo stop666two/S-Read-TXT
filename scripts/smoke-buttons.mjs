@@ -14,7 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createDialogOps } from './lib/dialog.mjs';
-import { argValue, createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
+import { argValue, createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe')));
@@ -166,6 +166,7 @@ async function main() {
       await delay(250);
     }
     if (!ready) throw new Error('前端未就绪（window.__srt 未注入）');
+    await dismissOnboarding(evalJs);
 
     // ---- B. 空状态 ----
     currentStep = 'B1 空状态打开按钮';
@@ -177,7 +178,7 @@ async function main() {
 
     // ---- C. 工具栏 ----
     currentStep = 'C1 打开样本文件';
-    await evalJs(`window.__srt.openPath(${JSON.stringify(fileA)})`);
+    await evalJs(openPathDone(fileA));
     const opened = await waitForValue(async () => {
       const text = await rowText(0);
       return text === 'alpha' ? text : null;
@@ -481,10 +482,25 @@ async function main() {
     );
     check('D8 编辑→「另存为…」→ 原生对话框出现 / 取消后标签不变', saveAsDialog && saveAsClosed && tabPathUnchanged === true);
 
-    currentStep = 'D9 编辑→字号/查看菜单灰态';
-    const sizeUpDisabled = await menuItemDisabled('查看', '字号增大');
-    const sizeDownDisabled = await menuItemDisabled('查看', '字号减小');
-    check('D9 查看→「字号增大/减小」未实现 → 灰态', sizeUpDisabled === true && sizeDownDisabled === true);
+    currentStep = 'D9 查看→字号增大/减小（实测生效）';
+    const fontBefore = await evalJs(
+      `getComputedStyle(document.documentElement).getPropertyValue('--reading-size').trim()`,
+    );
+    await menuClick('查看', '字号增大');
+    const fontUp = await waitForValue(async () => {
+      const value = await evalJs(
+        `getComputedStyle(document.documentElement).getPropertyValue('--reading-size').trim()`,
+      );
+      return value === `${Number.parseInt(fontBefore, 10) + 1}px` ? true : null;
+    }, 5000);
+    await menuClick('查看', '字号减小');
+    const fontDown = await waitForValue(async () => {
+      const value = await evalJs(
+        `getComputedStyle(document.documentElement).getPropertyValue('--reading-size').trim()`,
+      );
+      return value === fontBefore ? true : null;
+    }, 5000);
+    check('D9 查看→「字号增大/减小」生效（+1/还原）', fontUp === true && fontDown === true, `before=${fontBefore}`);
 
     currentStep = 'D10 查看→主题四项';
     let d10 = true;
@@ -515,14 +531,62 @@ async function main() {
     }, 6000);
     check('D11 查看→「全屏」开合（含 F11 同款逻辑）', fullscreened === true && windowed === true);
 
-    currentStep = 'D12 帮助菜单灰态';
-    const helpShortcut = await menuItemDisabled('帮助', '快捷键…');
-    const helpAbout = await menuItemDisabled('帮助', '关于 S-Read-TXT');
-    check(
-      'D12 帮助→「快捷键…」「关于」未实现 → 灰态',
-      helpShortcut === true && helpAbout === true,
-      `shortcut=${helpShortcut} about=${helpAbout}`,
-    );
+    // 打开设置窗口并等 CDP 目标（与 C8 同款：/json 轮询 + settings.html 过滤）
+    const waitSettingsWs = () =>
+      waitForValue(async () => {
+        try {
+          const response = await fetch(`http://127.0.0.1:${port}/json`);
+          const targets = await response.json();
+          const target = targets.find(
+            (item) => item.type === 'page' && (item.url ?? '').includes('settings.html'),
+          );
+          return target?.webSocketDebuggerUrl ?? null;
+        } catch {
+          return null;
+        }
+      }, 8000);
+    const closeSettingsWindow = async (sc) => {
+      // 关闭按钮 fire-and-forget（窗口销毁后响应永不到达）
+      await sc.send('Runtime.evaluate', {
+        expression: `document.querySelector('.title-bar button[aria-label="关闭"]')?.click() ?? true`,
+        returnByValue: true,
+      });
+      sc.close();
+      await delay(700);
+    };
+
+    currentStep = 'D12 帮助→快捷键…/关于（实测打开对应页签）';
+    await menuClick('帮助', '快捷键…');
+    const helpWs = await waitSettingsWs();
+    check('D12a 帮助「快捷键…」→ 设置窗口出现', typeof helpWs === 'string' && helpWs.length > 0);
+    if (helpWs) {
+      const shortcutClient = await createClient(helpWs);
+      const shortcutTab = await waitForValue(async () => {
+        const result = await shortcutClient.send('Runtime.evaluate', {
+          expression: `document.querySelectorAll('.row').length === 15`,
+          returnByValue: true,
+        });
+        return result.result?.value === true ? true : null;
+      }, 6000);
+      check('D12b 定位到「快捷键」页签（15 行）', shortcutTab === true);
+      await closeSettingsWindow(shortcutClient);
+    }
+    await menuClick('帮助', '关于 S-Read-TXT');
+    const aboutWs = await waitSettingsWs();
+    if (aboutWs) {
+      const aboutClient = await createClient(aboutWs);
+      const aboutShown = await waitForValue(async () => {
+        const result = await aboutClient.send('Runtime.evaluate', {
+          expression: `(document.body.textContent ?? '').includes('0.0.1-beta')`,
+          returnByValue: true,
+        });
+        return result.result?.value === true ? true : null;
+      }, 6000);
+      check('D12c 关于页显示版本 0.0.1-beta', aboutShown === true);
+      await closeSettingsWindow(aboutClient);
+    } else {
+      check('D12c 关于页显示版本 0.0.1-beta', false, '设置窗口未出现');
+    }
 
     // ---- G. 状态栏 ----
     currentStep = 'G1 状态栏编码菜单';
@@ -555,7 +619,7 @@ async function main() {
 
     // ---- E. 标签栏 ----
     currentStep = 'E1 关闭干净标签';
-    await evalJs(`window.__srt.openPath(${JSON.stringify(fileB)})`);
+    await evalJs(openPathDone(fileB));
     await waitForValue(async () => {
       const count = await evalJs(`document.querySelectorAll('.tab').length`);
       return count === 2 ? true : null;
@@ -606,7 +670,7 @@ async function main() {
 
     // ---- H. 退出流 ----
     currentStep = 'H1 退出（脏标签取消）';
-    await evalJs(`window.__srt.openPath(${JSON.stringify(fileA)})`);
+    await evalJs(openPathDone(fileA));
     await waitForValue(async () => ((await rowText(0)) !== '' ? true : null), 6000);
     await click('[aria-label="切换编辑模式"]');
     await waitForValue(async () => {
