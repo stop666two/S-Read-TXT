@@ -7,6 +7,7 @@
   import { onMount, tick } from 'svelte';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
   import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { save } from '@tauri-apps/plugin-dialog';
 
   import ConfirmDialog from './lib/components/ConfirmDialog.svelte';
   import DropOverlay from './lib/components/DropOverlay.svelte';
@@ -20,6 +21,7 @@
   import ToolBar from './lib/components/ToolBar.svelte';
   import UnsavedDialog from './lib/components/UnsavedDialog.svelte';
   import { formatBytes } from './lib/format';
+  import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
   import { describeIpcError, ipc, toIpcError, type EditApplied } from './lib/ipc';
   import { tabs } from './lib/state/tabs.svelte';
@@ -36,6 +38,16 @@
   let readPercent = $state(0);
   /** 支持的编码列表（后端提供） */
   let encodings = $state<string[]>([]);
+
+  /** 编辑动作信号（菜单 → 编辑层；seq 递增区分重复动作） */
+  let editorAction = $state<EditorAction | null>(null);
+  let editorActionSeq = 0;
+
+  /** 分发编辑动作到编辑层 */
+  function dispatchEditorAction(type: EditActionType): void {
+    editorActionSeq += 1;
+    editorAction = { type, seq: editorActionSeq };
+  }
 
   /** 当前活动标签 */
   const active = $derived(tabs.active);
@@ -75,9 +87,11 @@
 
   // ---- 编辑与关闭流程（阶段 4b/4c） ----
 
-  /** 保存询问请求（Promise 队列：关闭流程可逐个等待保存结果） */
+  /** 保存询问请求（Promise 队列：关闭流程可逐个等待保存结果；
+   *  targetPath 存在时表示「另存为」——保存到该路径而非原路径） */
   let saveRequest = $state<{
     tabId: number;
+    targetPath?: string;
     resolve: (ok: boolean) => void;
   } | null>(null);
   /** 保存弹窗的备份默认值（首存默认勾选；阶段 8 接入设置后按设置项） */
@@ -138,7 +152,13 @@
     const request = saveRequest;
     if (!request) return;
     saveRequest = null;
-    void performSave(request.tabId, encoding, backup, false).then(request.resolve);
+    if (request.targetPath) {
+      void performSaveAs(request.tabId, request.targetPath, encoding, backup).then(
+        request.resolve,
+      );
+    } else {
+      void performSave(request.tabId, encoding, backup, false).then(request.resolve);
+    }
     focusEditorProxy();
   }
 
@@ -194,6 +214,84 @@
     request.resolve(false);
     focusEditorProxy();
   }
+
+  /** 另存为执行（成功后标签重定向；标题/历史由后端同步） */
+  async function performSaveAs(
+    tabId: number,
+    newPath: string,
+    encoding: string | null,
+    backup: boolean,
+  ): Promise<boolean> {
+    try {
+      const result = await ipc.saveTabAs(tabId, newPath, encoding, backup);
+      tabs.update(result.tab);
+      toasts.show(`已另存为「${result.tab.name}」（${result.encoding}）`);
+      return true;
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[app] 另存为失败', payload);
+      toasts.error(describeIpcError(payload));
+      return false;
+    }
+  }
+
+  /** 另存为入口（选择目标路径 → 复用保存弹窗询问编码） */
+  async function saveAsFlow(): Promise<void> {
+    const tab = active;
+    if (!tab?.editing) return;
+    let filePath: string | null = null;
+    try {
+      filePath = await save({
+        defaultPath: tab.path,
+        filters: [
+          { name: '文本文件', extensions: ['txt', 'log', 'md'] },
+          { name: '所有文件', extensions: ['*'] },
+        ],
+      });
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('[app] 另存为对话框失败', error);
+      toasts.error('无法打开保存对话框');
+      return;
+    }
+    if (!filePath) return;
+    saveRequest = { tabId: tab.tabId, targetPath: filePath, resolve: () => {} };
+  }
+
+  /** 重新加载待确认（脏标签） */
+  let reloadRequest = $state<{ tabId: number } | null>(null);
+
+  /** 重新加载入口：脏标签先确认（放弃未保存修改） */
+  function reloadFlow(): void {
+    const tab = active;
+    if (!tab) return;
+    if (tab.dirty) {
+      reloadRequest = { tabId: tab.tabId };
+      return;
+    }
+    void performReload(tab.tabId);
+  }
+
+  /** 执行重新加载（后端从磁盘重建索引，丢弃编辑文档） */
+  async function performReload(tabId: number): Promise<void> {
+    try {
+      tabs.update(await ipc.reloadTab(tabId));
+      toasts.show('已重新加载');
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[app] 重新加载失败', payload);
+      toasts.error(describeIpcError(payload));
+    } finally {
+      focusEditorProxy();
+    }
+  }
+
+  /** 重载确认弹窗文案 */
+  const reloadMessage = $derived.by(() => {
+    const request = reloadRequest;
+    if (!request) return '';
+    const name = tabs.tabs.find((item) => item.tabId === request.tabId)?.name ?? '当前文件';
+    return `「${name}」有未保存的修改，重新加载将丢弃这些修改。`;
+  });
 
   // ---- 关闭流程 ----
 
@@ -363,6 +461,10 @@
     dirty={active?.dirty ?? false}
     onToggleEdit={() => void toggleEdit()}
     onSave={openSaveDialog}
+    hasTab={active !== null}
+    onSaveAs={() => void saveAsFlow()}
+    onReload={reloadFlow}
+    onEditorAction={dispatchEditorAction}
   />
   <ToolBar
     {themeChoice}
@@ -387,6 +489,7 @@
       tab={active}
       onPercent={(percent) => (readPercent = percent)}
       onEditApplied={handleEditApplied}
+      {editorAction}
     />
   {:else}
     <EmptyState onOpen={openFile} />
@@ -415,6 +518,21 @@
     confirmLabel="覆盖保存"
     onConfirm={onConflictOverride}
     onCancel={onConflictCancel}
+  />
+  <ConfirmDialog
+    open={reloadRequest !== null}
+    title="重新加载"
+    message={reloadMessage}
+    confirmLabel="重新加载"
+    onConfirm={() => {
+      const request = reloadRequest;
+      reloadRequest = null;
+      if (request) void performReload(request.tabId);
+    }}
+    onCancel={() => {
+      reloadRequest = null;
+      focusEditorProxy();
+    }}
   />
   <UnsavedDialog
     open={unsavedOpen}

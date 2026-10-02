@@ -3,6 +3,7 @@
   // 阶段 2b：完成结构、下拉交互与主题动作；其余动作在后续切片接线（回调缺省即无操作）。
   // 交互约定：点击标题开合；已有菜单打开时悬停切换；点击菜单项执行；Esc / 点击外部关闭。
   import type { ThemeChoice } from '../types';
+  import type { EditActionType } from '../edit/actions';
 
   interface Props {
     /** 当前主题选择（用于「查看」菜单的单选标记） */
@@ -21,9 +22,29 @@
     onToggleEdit?: () => void;
     /** 保存回调 */
     onSave?: () => void;
+    /** 另存为回调（仅编辑态可用） */
+    onSaveAs?: () => void;
+    /** 重新加载回调（文件菜单） */
+    onReload?: () => void;
+    /** 编辑动作分发（撤销/重做/剪贴板/全选/查找/替换） */
+    onEditorAction?: (type: EditActionType) => void;
+    /** 是否存在活动标签（重新加载可用性） */
+    hasTab: boolean;
   }
-  let { themeChoice, onThemeChange, onOpenFile, onQuit, editing, dirty, onToggleEdit, onSave }: Props =
-    $props();
+  let {
+    themeChoice,
+    onThemeChange,
+    onOpenFile,
+    onQuit,
+    editing,
+    dirty,
+    onToggleEdit,
+    onSave,
+    onSaveAs,
+    onReload,
+    onEditorAction,
+    hasTab,
+  }: Props = $props();
 
   /** 菜单名联合类型 */
   type MenuName = 'file' | 'edit' | 'view' | 'help';
@@ -80,6 +101,7 @@
   {#if openMenu === 'file'}
     <div class="dropdown" role="menu" style="left: 4px">
       <button class="item" onclick={() => run(onOpenFile)}><span>打开文件…</span><span class="hint">Ctrl+O</span></button>
+      <button class="item" disabled={!hasTab} onclick={() => run(onReload)}><span>重新加载</span></button>
       <div class="separator"></div>
       <button class="item" disabled><span>最近打开</span></button>
       <button class="item" disabled><span>历史记录</span></button>
@@ -88,6 +110,41 @@
     </div>
   {:else if openMenu === 'edit'}
     <div class="dropdown" role="menu" style="left: 46px">
+      <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('undo'))}>
+        <span>撤销</span>
+        <span class="hint">Ctrl+Z</span>
+      </button>
+      <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('redo'))}>
+        <span>重做</span>
+        <span class="hint">Ctrl+Y</span>
+      </button>
+      <div class="separator"></div>
+      <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('cut'))}>
+        <span>剪切</span>
+        <span class="hint">Ctrl+X</span>
+      </button>
+      <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('copy'))}>
+        <span>复制</span>
+        <span class="hint">Ctrl+C</span>
+      </button>
+      <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('paste'))}>
+        <span>粘贴</span>
+        <span class="hint">Ctrl+V</span>
+      </button>
+      <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('selectAll'))}>
+        <span>全选</span>
+        <span class="hint">Ctrl+A</span>
+      </button>
+      <div class="separator"></div>
+      <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('find'))}>
+        <span>查找…</span>
+        <span class="hint">Ctrl+F</span>
+      </button>
+      <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('replace'))}>
+        <span>替换…</span>
+        <span class="hint">Ctrl+H</span>
+      </button>
+      <div class="separator"></div>
       <button class="item" onclick={() => run(onToggleEdit)}>
         <span>{editing ? '退出编辑模式' : '启用编辑模式'}</span>
         <span class="hint">Ctrl+E</span>
@@ -96,9 +153,10 @@
         <span>保存</span>
         <span class="hint">Ctrl+S</span>
       </button>
-      <div class="separator"></div>
-      <button class="item" disabled><span>查找…</span><span class="hint">Ctrl+F</span></button>
-      <button class="item" disabled><span>替换…</span><span class="hint">Ctrl+H</span></button>
+      <button class="item" disabled={!editing} onclick={() => run(onSaveAs)}>
+        <span>另存为…</span>
+        <span class="hint">Ctrl+Shift+S</span>
+      </button>
     </div>
   {:else if openMenu === 'view'}
     <div class="dropdown" role="menu" style="left: 88px">

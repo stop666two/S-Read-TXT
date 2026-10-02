@@ -101,7 +101,10 @@ fn main() {
             commands::redo_edit,
             commands::save_tab,
             commands::save_tab_as,
-            commands::reload_tab
+            commands::reload_tab,
+            commands::find_in_edit,
+            commands::replace_in_edit,
+            commands::replace_all_in_edit
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

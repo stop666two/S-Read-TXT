@@ -1,0 +1,362 @@
+#!/usr/bin/env node
+// 查找/替换与编辑菜单冒烟（阶段 4c）：真实应用 + CDP 驱动。
+// 覆盖：查找条开关与聚焦、连续替换（大小写不敏感）、全部替换（单撤销步）、
+//       三次撤销全还原、大小写敏感未找到、菜单撤销、另存为链路（IPC 直调）、
+//       脏态重新加载（确认后丢弃）。
+//
+// 前置：已构建 debug 可执行文件（`npm run tauri build -- --debug --no-bundle`）。
+// 用法：node scripts/smoke-find.mjs [--exe <路径>] [--port 9223] [--screenshot <路径>]
+// 说明：系统原生「另存为」文件选择框无法脚本化，此处经 IPC 直调验证保存链路
+//       （对话框点选由人工核验）；键盘输入经 CDP Input.insertText 投递到焦点元素。
+
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { argValue, createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const exePath = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe')));
+const port = Number(argValue('--port', String(9200 + Math.floor(Math.random() * 600))));
+const screenshotPath = argValue('--screenshot', join(root, 'docs', 'screenshots', 'phase4c-find.png'));
+const watchdogMs = Number(process.env.SRT_SMOKE_WATCHDOG_MS ?? '300000');
+
+const workDir = join(process.env.TEMP ?? '.', 'srt-smoke-find');
+const testFile = join(workDir, 'find-sample.txt');
+const saveAsFile = join(workDir, 'renamed.txt');
+const originalText = 'alpha needle beta\nNeedle here\nno match x\nneedle again\n';
+const runDataDir = join(workDir, `data-${Date.now()}`);
+
+const checks = [];
+let currentStep = 'F0 启动';
+function check(name, passed, detail = '') {
+  checks.push({ name, passed, detail });
+  console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? `  ← ${detail}` : ''}`);
+}
+
+/** 带重试的删除（进程句柄释放/杀软扫描可能短暂锁定）。 */
+async function removeWithRetry(path, attempts = 12) {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      rmSync(path, { recursive: true, force: true });
+    } catch {
+      // 忽略并重试
+    }
+    if (!existsSync(path)) return;
+    await delay(250);
+  }
+}
+
+const watchdog = setTimeout(() => {
+  console.error(`看门狗超时（${watchdogMs}ms），最后步骤：${currentStep}`);
+  process.exit(4);
+}, watchdogMs);
+
+async function main() {
+  if (!existsSync(exePath)) {
+    console.error(`可执行文件不存在：${exePath}（先运行 npm run tauri build -- --debug --no-bundle）`);
+    process.exit(2);
+  }
+  mkdirSync(workDir, { recursive: true });
+  for (const entry of ['find-sample.txt', 'renamed.txt']) {
+    rmSync(join(workDir, entry), { force: true });
+  }
+  writeFileSync(testFile, originalText, 'utf8');
+
+  const child = spawn(exePath, [], {
+    env: {
+      ...process.env,
+      SRT_DATA_DIR: runDataDir,
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+    },
+    stdio: 'ignore',
+  });
+
+  let client;
+  try {
+    const wsUrl = await findTarget(port);
+    client = await createClient(wsUrl);
+    const evalJs = async (expression) => {
+      const result = await client.send('Runtime.evaluate', {
+        expression,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      if (result.exceptionDetails) {
+        throw new Error(`页面执行异常：${result.exceptionDetails.text}`);
+      }
+      return result.result?.value;
+    };
+    const rowText = (row) => evalJs(`document.querySelector('.row[data-row="${row}"]')?.textContent ?? ''`);
+    const activeTab = async () =>
+      evalJs(
+        `(async () => { const v = await window.__TAURI_INTERNALS__.invoke('list_tabs'); return v.tabs.find((t) => t.tabId === v.activeTabId); })()`,
+      );
+    /** CDP 组合键（modifiers=2 即 Ctrl）。 */
+    const ctrlKey = async (key, code, vk, modifiers = 2) => {
+      await client.send('Input.dispatchKeyEvent', {
+        type: 'rawKeyDown',
+        key,
+        code,
+        windowsVirtualKeyCode: vk,
+        nativeVirtualKeyCode: vk,
+        modifiers,
+      });
+      await client.send('Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key,
+        code,
+        windowsVirtualKeyCode: vk,
+        nativeVirtualKeyCode: vk,
+        modifiers,
+      });
+    };
+    const focusProxy = () => evalJs(`(document.querySelector('textarea.input-proxy')?.focus(), true)`);
+    const focusFindInput = () =>
+      evalJs(`(() => { const i = document.querySelector('.find-bar input'); i?.focus(); i?.select(); return !!i; })()`);
+    const clickBarButton = (text) =>
+      evalJs(
+        `(() => { const b = [...document.querySelectorAll('.find-bar button')].find((n) => n.textContent.trim() === '${text}'); b?.click(); return !!b; })()`,
+      );
+    const menuClick = async (title, itemText) => {
+      await evalJs(
+        `(() => { const t = [...document.querySelectorAll('.menu-bar .title')].find((n) => n.textContent.trim() === '${title}'); t?.click(); return !!t; })()`,
+      );
+      await delay(150);
+      return evalJs(
+        `(() => { const it = [...document.querySelectorAll('.menu-bar .item')].find((n) => n.textContent.trim().startsWith('${itemText}')); it?.click(); return !!it; })()`,
+      );
+    };
+    const toastText = () =>
+      evalJs(`[...document.querySelectorAll('.toast')].map((n) => n.textContent).join('|')`);
+
+    // 就绪护栏
+    let ready = false;
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      ready = (await evalJs('!!window.__srt?.openPath && !!window.__TAURI_INTERNALS__')) === true;
+      if (ready) break;
+      await delay(250);
+    }
+    if (!ready) throw new Error('前端未就绪（window.__srt 未注入）');
+
+    // F1：打开 + 进入编辑
+    currentStep = 'F1 打开并进入编辑';
+    await evalJs(`window.__srt.openPath(${JSON.stringify(testFile)})`);
+    const firstRow = await waitForValue(async () => {
+      const text = await rowText(0);
+      return text === 'alpha needle beta' ? text : null;
+    }, 8000);
+    await evalJs(`(document.querySelector('[aria-label="切换编辑模式"]')?.click(), true)`);
+    const editing = await waitForValue(async () => {
+      const tab = await activeTab();
+      return tab?.editing ? tab : null;
+    }, 8000);
+    check('F1 打开文件并进入编辑', firstRow === 'alpha needle beta' && editing !== null);
+
+    // F2：Ctrl+F 打开查找条并聚焦输入框
+    currentStep = 'F2 Ctrl+F 打开查找条';
+    await focusProxy();
+    await ctrlKey('f', 'KeyF', 70);
+    const barOpen = await waitForValue(
+      async () => (await evalJs(`document.querySelector('.find-bar') !== null`)) || null,
+      5000,
+    );
+    const focused = await evalJs(
+      `document.activeElement?.closest('.find-bar') !== null && document.activeElement?.tagName === 'INPUT'`,
+    );
+    check('F2 Ctrl+F 打开查找条（输入框聚焦）', barOpen === true && focused === true);
+
+    // F3：经菜单打开替换行
+    currentStep = 'F3 菜单打开替换行';
+    const replaceItem = await menuClick('编辑', '替换…');
+    const twoInputs = await waitForValue(async () => {
+      const count = await evalJs(`document.querySelectorAll('.find-bar input').length`);
+      return count === 2 ? count : null;
+    }, 5000);
+    check('F3 菜单打开替换行（两个输入框）', replaceItem === true && twoInputs === 2);
+    // 在替换输入框（第二个）输入替换文本
+    await evalJs(
+      `(() => { const inputs = document.querySelectorAll('.find-bar input'); inputs[1]?.focus(); inputs[1]?.select(); return inputs.length; })()`,
+    );
+    await client.send('Input.insertText', { text: 'REPLACED' });
+
+    // F4：输入查询并替换第一个命中（大小写不敏感命中 row0）
+    currentStep = 'F4 替换第一个命中';
+    await focusFindInput();
+    await client.send('Input.insertText', { text: 'needle' });
+    await clickBarButton('替换');
+    await delay(800);
+    const r4 = await waitForValue(async () => {
+      const text = await rowText(0);
+      const tab = await activeTab();
+      return text === 'alpha REPLACED beta' && tab?.dirty === true ? text : null;
+    }, 8000);
+    const diag4 = `row0=${await rowText(0)} toast=${await toastText()}`;
+    check('F4 替换命中 row0（脏态）', r4 === 'alpha REPLACED beta', r4 ?? diag4);
+
+    // F5：连续替换（大小写不敏感命中 row1 的 Needle）
+    currentStep = 'F5 连续替换（大小写不敏感）';
+    await clickBarButton('替换');
+    const r5 = await waitForValue(async () => {
+      const text = await rowText(1);
+      return text === 'REPLACED here' ? text : null;
+    }, 8000);
+    check('F5 大小写不敏感命中并替换 row1', r5 === 'REPLACED here', r5 ?? '(超时)');
+
+    // F6：全部替换（row3 剩余 1 处）
+    currentStep = 'F6 全部替换';
+    await clickBarButton('全部替换');
+    const r6 = await waitForValue(async () => {
+      const text = await rowText(3);
+      const toast = await toastText();
+      return text === 'REPLACED again' && toast.includes('已全部替换 1 处') ? text : null;
+    }, 8000);
+    check('F6 全部替换（1 处 + 提示）', r6 === 'REPLACED again', r6 ?? '(超时)');
+
+    // 截图：查找条（替换态）+ 替换结果
+    try {
+      const shot = await client.send('Page.captureScreenshot', { format: 'png' });
+      mkdirSync(dirname(screenshotPath), { recursive: true });
+      writeFileSync(screenshotPath, Buffer.from(shot.data, 'base64'));
+      check('F7 截图已保存', true, screenshotPath);
+    } catch (error) {
+      check('F7 截图已保存', false, String(error));
+    }
+
+    // F8：三次撤销全还原（2 次单替换 + 1 次全部替换）
+    currentStep = 'F8 撤销全还原';
+    await focusProxy();
+    await ctrlKey('z', 'KeyZ', 90);
+    await delay(150);
+    await focusProxy();
+    await ctrlKey('z', 'KeyZ', 90);
+    await delay(150);
+    await focusProxy();
+    await ctrlKey('z', 'KeyZ', 90);
+    const r8 = await waitForValue(async () => {
+      const tab = await activeTab();
+      const ok =
+        (await rowText(0)) === 'alpha needle beta' &&
+        (await rowText(1)) === 'Needle here' &&
+        (await rowText(3)) === 'needle again';
+      return ok && tab?.dirty === false ? true : null;
+    }, 8000);
+    check('F8 三次撤销全部还原且干净', r8 === true);
+
+    // F9：开启大小写 → NEEDLE 未找到
+    currentStep = 'F9 大小写敏感未找到';
+    await clickBarButton('Aa');
+    await focusFindInput();
+    await client.send('Input.insertText', { text: 'NEEDLE' });
+    await clickBarButton('下一个');
+    const r9 = await waitForValue(async () => {
+      const toast = await toastText();
+      return toast.includes('未找到') ? toast : null;
+    }, 6000);
+    check('F9 大小写敏感：未找到提示', r9 !== null, r9 ?? '(超时)');
+
+    // F10：关闭大小写 → 命中（selection 渲染）
+    currentStep = 'F10 关闭大小写后命中';
+    await clickBarButton('Aa');
+    await clickBarButton('下一个');
+    const r10 = await waitForValue(async () => {
+      const count = await evalJs(`document.querySelectorAll('.selection').length`);
+      return count > 0 ? count : null;
+    }, 6000);
+    check('F10 关闭大小写后命中并选中', r10 !== null, `selection=${r10}`);
+
+    // F11：Esc 关闭查找条
+    currentStep = 'F11 Esc 关闭查找条';
+    await focusFindInput();
+    await ctrlKey('Escape', 'Escape', 27, 0);
+    const r11 = await waitForValue(
+      async () => ((await evalJs(`document.querySelector('.find-bar') === null`)) ? true : null),
+      5000,
+    );
+    check('F11 Esc 关闭查找条', r11 === true);
+
+    // F12：菜单撤销（输入 Q 后经 编辑→撤销）
+    currentStep = 'F12 菜单撤销';
+    await focusProxy();
+    await client.send('Input.insertText', { text: 'Q' });
+    const qAdded = await waitForValue(async () => {
+      const text = await rowText(0);
+      return text === 'alpha Q beta' ? text : null;
+    }, 6000);
+    const undoItem = await menuClick('编辑', '撤销');
+    const qUndone = await waitForValue(async () => {
+      const text = await rowText(0);
+      const tab = await activeTab();
+      return text === 'alpha needle beta' && tab?.dirty === false ? true : null;
+    }, 8000);
+    check('F12 菜单撤销生效', qAdded !== null && undoItem === true && qUndone === true, `q=${qAdded} menu=${undoItem} undone=${qUndone}`);
+
+    // F13：另存为链路（IPC 直调；原生对话框人工核验）
+    currentStep = 'F13 另存为链路';
+    const tabId = (await activeTab())?.tabId;
+    const saveAsResult = await evalJs(
+      `(async () => { try { const v = await window.__TAURI_INTERNALS__.invoke('save_tab_as', { tabId: ${tabId}, newPath: ${JSON.stringify(saveAsFile)}, targetEncoding: null, makeBackup: false }); return { ok: true, name: v.tab.name, path: v.tab.path }; } catch (e) { return { ok: false, err: String(e && e.message ? e.message : e) }; } })()`,
+    );
+    const savedContent = existsSync(saveAsFile) ? readFileSync(saveAsFile, 'utf8') : null;
+    check(
+      'F13 另存为（新文件 + 标签重定向）',
+      saveAsResult?.ok === true &&
+        saveAsResult.name === 'renamed.txt' &&
+        savedContent === originalText,
+      JSON.stringify(saveAsResult ?? {}),
+    );
+
+    // F14：脏态重新加载（确认后丢弃修改）
+    currentStep = 'F14 脏态重新加载';
+    await focusProxy();
+    await client.send('Input.insertText', { text: 'W' });
+    const wAdded = await waitForValue(async () => {
+      const tab = await activeTab();
+      return tab?.dirty === true ? true : null;
+    }, 6000);
+    await menuClick('文件', '重新加载');
+    const dialogSeen = await waitForValue(
+      async () =>
+        (await evalJs(
+          `document.querySelector('[role="alertdialog"]')?.textContent?.includes('重新加载') === true`,
+        )) || null,
+      5000,
+    );
+    await evalJs(
+      `(() => { const dlg = document.querySelector('[role="alertdialog"]'); const btn = [...dlg.querySelectorAll('button')].find((b) => b.textContent.trim() === '重新加载'); btn?.click(); return true; })()`,
+    );
+    const r14 = await waitForValue(async () => {
+      const tab = await activeTab();
+      const text = await rowText(0);
+      return tab?.dirty === false && tab?.editing === false && text === 'alpha needle beta'
+        ? true
+        : null;
+    }, 8000);
+    check(
+      'F14 脏态重新加载（确认丢弃）',
+      wAdded !== null && dialogSeen === true && r14 === true,
+    );
+  } finally {
+    client?.close();
+    if (child.pid) {
+      // 仅回收本应用进程树（/T 连带其 WebView2 子进程）；严禁按 msedgewebview2 名称杀进程
+      spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    }
+    for (const entry of ['find-sample.txt', 'renamed.txt', 'find-sample.txt.bak']) {
+      await removeWithRetry(join(workDir, entry));
+    }
+    await removeWithRetry(runDataDir);
+  }
+
+  clearTimeout(watchdog);
+  const failed = checks.filter((item) => !item.passed);
+  console.log(`\n查找/替换冒烟结果：${checks.length - failed.length}/${checks.length} 通过`);
+  process.exit(failed.length === 0 ? 0 : 1);
+}
+
+main().catch((error) => {
+  clearTimeout(watchdog);
+  console.error(`查找/替换冒烟失败（${currentStep}）：${error?.message ?? error}`);
+  process.exit(3);
+});

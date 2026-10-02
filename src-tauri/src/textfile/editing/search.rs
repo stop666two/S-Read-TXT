@@ -21,17 +21,17 @@ const SEARCH_CHUNK_BYTES: usize = 1 << 20;
 /// 「全部替换」命中数上限（超出报 [`EditError::TooManyMatches`]）。
 pub const REPLACE_ALL_LIMIT: usize = 200_000;
 
-/// 一次查找命中（逻辑行坐标：行号 + 行内 UTF-16 偏移；与前端编辑坐标一致）。
+/// 一次查找命中（**显示行坐标**：段号 + 段内 UTF-16 偏移；超长行分段对前端透明）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FindHit {
-    /// 起始行号（逻辑行）
+    /// 起始显示行号
     pub start_row: u64,
-    /// 起始行内 UTF-16 偏移
+    /// 起始段内 UTF-16 偏移
     pub start_utf16: u64,
-    /// 结束行号（逻辑行）
+    /// 结束显示行号
     pub end_row: u64,
-    /// 结束行内 UTF-16 偏移
+    /// 结束段内 UTF-16 偏移
     pub end_utf16: u64,
 }
 
@@ -60,8 +60,21 @@ impl EditDoc {
     ///
     /// - `case_sensitive`：大小写敏感开关；
     /// - 不环绕（前端负责到文件末尾后从头重试）；
-    /// - 返回逻辑行坐标（超长行的显示分段映射由前端完成）。
+    /// - `from` 与返回值均为**显示行坐标**（超长行分段对前端透明）。
     pub fn find(
+        &self,
+        query: &str,
+        case_sensitive: bool,
+        from: Option<(u64, u64)>,
+    ) -> Result<Option<FindHit>, EditError> {
+        let logical_from = from.map(|(seg, local)| self.to_logical_pos(seg, local));
+        Ok(self
+            .find_logical(query, case_sensitive, logical_from)?
+            .map(|hit| self.to_display_hit(hit)))
+    }
+
+    /// 内部：查找逻辑坐标命中（编辑操作用）。
+    fn find_logical(
         &self,
         query: &str,
         case_sensitive: bool,
@@ -75,9 +88,29 @@ impl EditDoc {
         Ok(hit)
     }
 
+    /// 逻辑坐标命中 → 显示坐标命中（普通行恒等；超长行按段映射）。
+    fn to_display_hit(&self, hit: FindHit) -> FindHit {
+        let (start_row, start_utf16) = self.seg_of_row_utf16(hit.start_row, hit.start_utf16);
+        let (end_row, end_utf16) = self.seg_of_row_utf16(hit.end_row, hit.end_utf16);
+        FindHit {
+            start_row,
+            start_utf16,
+            end_row,
+            end_utf16,
+        }
+    }
+
+    /// 显示坐标（段号 + 段内 UTF-16 偏移）→ 逻辑坐标（行号 + 行内 UTF-16 偏移）。
+    fn to_logical_pos(&self, seg: u64, seg_utf16: u64) -> (u64, u64) {
+        match self.seg_to_row_utf16(seg) {
+            Some((row, base, _index)) => (row, base + seg_utf16),
+            None => (seg, seg_utf16),
+        }
+    }
+
     /// 查找并从 `from` 起替换下一次出现；返回替换结果与后续命中（便于连续替换）。
     ///
-    /// 无命中时返回 `Ok(None)`（文档不变）。
+    /// `from` 为显示坐标；无命中时返回 `Ok(None)`（文档不变）。
     pub fn replace_next(
         &mut self,
         query: &str,
@@ -85,7 +118,8 @@ impl EditDoc {
         from: Option<(u64, u64)>,
         replacement: &str,
     ) -> Result<Option<ReplaceNextOutcome>, EditError> {
-        let Some(hit) = self.find(query, case_sensitive, from)? else {
+        let logical_from = from.map(|(seg, local)| self.to_logical_pos(seg, local));
+        let Some(hit) = self.find_logical(query, case_sensitive, logical_from)? else {
             return Ok(None);
         };
         let op = EditOp::Replace {
@@ -96,11 +130,10 @@ impl EditDoc {
             text: replacement.to_string(),
         };
         let applied = self.apply_edits(&[op])?;
-        let next = self.find(
-            query,
-            case_sensitive,
-            Some((applied.caret_row, applied.caret_utf16)),
-        )?;
+        let (next_row, next_utf16) = self.to_logical_pos(applied.caret_row, applied.caret_utf16);
+        let next = self
+            .find_logical(query, case_sensitive, Some((next_row, next_utf16)))?
+            .map(|found| self.to_display_hit(found));
         Ok(Some(ReplaceNextOutcome { applied, next }))
     }
 
@@ -529,10 +562,10 @@ mod tests {
         content.push_str("ZZneedleZZ");
         let (_dir, doc) = open_doc(content.as_bytes(), None);
         let chunk = SEARCH_CHUNK_BYTES as u64;
-        assert_eq!(
-            find(&doc, "needle", true, None),
-            Some(hit(0, chunk, 0, chunk + 6))
-        );
+        // 超长单行 → 显示分段：命中坐标为逻辑坐标经段映射后的显示坐标
+        let (sr, su) = doc.seg_of_row_utf16(0, chunk);
+        let (er, eu) = doc.seg_of_row_utf16(0, chunk + 6);
+        assert_eq!(find(&doc, "needle", true, None), Some(hit(sr, su, er, eu)));
     }
 
     #[test]
@@ -541,10 +574,9 @@ mod tests {
         content.push_str("John john");
         let (_dir, doc) = open_doc(content.as_bytes(), None);
         let chunk = SEARCH_CHUNK_BYTES as u64;
-        assert_eq!(
-            find(&doc, "john", false, None),
-            Some(hit(0, chunk - 3, 0, chunk + 1))
-        );
+        let (sr, su) = doc.seg_of_row_utf16(0, chunk - 3);
+        let (er, eu) = doc.seg_of_row_utf16(0, chunk + 1);
+        assert_eq!(find(&doc, "john", false, None), Some(hit(sr, su, er, eu)));
     }
 
     #[test]

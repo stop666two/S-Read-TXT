@@ -7,7 +7,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
 
-  import { describeIpcError, ipc, toIpcError, type EditApplied } from '../ipc';
+  import { describeIpcError, ipc, toIpcError, type EditApplied, type FindHit } from '../ipc';
   import {
     clampPos,
     collapsed,
@@ -26,6 +26,8 @@
   import { planBackspace, planDeleteForward, type SegMeta } from '../edit/longline';
   import { deleteOp, deleteRangeOp, insertOp, replaceOp } from '../edit/ops';
   import { toasts } from '../state/toasts.svelte';
+  import FindBar from './FindBar.svelte';
+  import type { EditActionType, EditorAction } from '../edit/actions';
 
   interface Props {
     /** 当前标签 id */
@@ -46,9 +48,21 @@
     getContainer: () => HTMLElement | null;
     /** 编辑结果回报（父组件失效缓存、刷新并同步标签信息） */
     onApplied: (result: EditApplied) => void;
+    /** 外部编辑动作信号（菜单触发；seq 变化表示一次新动作） */
+    editorAction?: EditorAction | null;
   }
-  let { tabId, rowsTotal, revision, rowNode, rowText, rowMeta, ensureRow, getContainer, onApplied }: Props =
-    $props();
+  let {
+    tabId,
+    rowsTotal,
+    revision,
+    rowNode,
+    rowText,
+    rowMeta,
+    ensureRow,
+    getContainer,
+    onApplied,
+    editorAction,
+  }: Props = $props();
 
   /** 叠加层盒子（相对 .page 的像素坐标） */
   interface Box {
@@ -77,6 +91,13 @@
   let dragging = false;
   /** 垂直移动的列目标（水平移动/点击时清除） */
   let goalUtf16: number | null = null;
+  /** 查找条开关（查找/替换两种形态） */
+  let findOpen = $state(false);
+  let replaceOpen = $state(false);
+  /** 查找条聚焦信号（每次打开自增，通知 FindBar 重新聚焦输入框） */
+  let findFocusSeq = $state(0);
+  /** 最近一次已处理的外部动作序号（去重） */
+  let lastActionSeq = -1;
 
   // ---- 坐标与渲染 ----
 
@@ -408,6 +429,148 @@
     if (lastText === undefined) void ensureRow(lastRow);
   }
 
+  // ---- 查找/替换（阶段 4c） ----
+
+  /** 打开查找条（replace = 同时显示替换行）。 */
+  function openFind(replace: boolean): void {
+    findOpen = true;
+    replaceOpen = replace;
+    findFocusSeq += 1;
+  }
+
+  /** 关闭查找条并归还键盘焦点。 */
+  function closeFind(): void {
+    findOpen = false;
+    focusInput();
+  }
+
+  /** 把命中设为选区（显示坐标）并滚动可见。 */
+  function selectHit(hit: FindHit): void {
+    setSelection({
+      anchor: { row: hit.startRow, utf16: hit.startUtf16 },
+      head: { row: hit.endRow, utf16: hit.endUtf16 },
+    });
+  }
+
+  /** 查找下一个：从当前光标起；到文末未命中时从头再试一次。 */
+  async function doFindNext(query: string, caseSensitive: boolean): Promise<void> {
+    if (query.length === 0) return;
+    try {
+      const head = selection.head;
+      let hit = await ipc.findInEdit(tabId, query, caseSensitive, [head.row, head.utf16]);
+      if (!hit) hit = await ipc.findInEdit(tabId, query, caseSensitive, null);
+      if (!hit) {
+        toasts.error(`未找到「${query}」`);
+        return;
+      }
+      selectHit(hit);
+      void ensureRow(hit.startRow);
+      void ensureRow(hit.endRow);
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[edit] 查找失败', payload);
+      toasts.error(describeIpcError(payload));
+    }
+  }
+
+  /** 替换一个：优先替换当前选区起点处的命中，否则替换光标后的第一个；随后选中下一个。 */
+  async function doReplace(query: string, replacement: string, caseSensitive: boolean): Promise<void> {
+    if (query.length === 0) return;
+    try {
+      const start = orderedSelection(selection).start;
+      const outcome = await ipc.replaceInEdit(
+        tabId,
+        query,
+        caseSensitive,
+        [start.row, start.utf16],
+        replacement,
+      );
+      if (!outcome) {
+        toasts.error(`未找到「${query}」`);
+        return;
+      }
+      applyOutcome(outcome.applied);
+      if (outcome.next) {
+        selectHit(outcome.next);
+        void ensureRow(outcome.next.startRow);
+      }
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[edit] 替换失败', payload);
+      toasts.error(describeIpcError(payload));
+    }
+  }
+
+  /** 全部替换（单撤销步）。 */
+  async function doReplaceAll(query: string, replacement: string, caseSensitive: boolean): Promise<void> {
+    if (query.length === 0) return;
+    try {
+      const outcome = await ipc.replaceAllInEdit(tabId, query, caseSensitive, replacement);
+      if (outcome.replaced === 0) {
+        toasts.error(`未找到「${query}」`);
+        return;
+      }
+      if (outcome.applied) applyOutcome(outcome.applied);
+      toasts.show(`已全部替换 ${outcome.replaced} 处`);
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[edit] 全部替换失败', payload);
+      toasts.error(describeIpcError(payload));
+    }
+  }
+
+  /** 应用替换结果：回报父组件 + 光标落到后端权威位置。 */
+  function applyOutcome(result: EditApplied): void {
+    goalUtf16 = null;
+    onApplied(result);
+    const clamped = clampPos(
+      { row: result.caretRow, utf16: result.caretUtf16 },
+      result.rowsTotal,
+      (row) => rowText(row)?.length ?? result.caretUtf16,
+    );
+    setSelection(collapsed(clamped));
+  }
+
+  /** 菜单粘贴：读取系统剪贴板（浏览器 API；失败时提示改用 Ctrl+V）。 */
+  async function doPasteFromMenu(): Promise<void> {
+    try {
+      const text = await navigator.clipboard.readText();
+      await doInsert(text);
+    } catch {
+      toasts.error('无法读取系统剪贴板，请使用 Ctrl+V 粘贴');
+    }
+  }
+
+  /** 外部动作分发（菜单触发）。 */
+  function handleAction(type: EditActionType): void {
+    switch (type) {
+      case 'undo':
+        void doUndoRedo(false);
+        break;
+      case 'redo':
+        void doUndoRedo(true);
+        break;
+      case 'cut':
+        void doCopy(true);
+        break;
+      case 'copy':
+        void doCopy(false);
+        break;
+      case 'paste':
+        void doPasteFromMenu();
+        break;
+      case 'selectAll':
+        selectAll();
+        break;
+      case 'find':
+        openFind(false);
+        break;
+      case 'replace':
+        openFind(true);
+        break;
+    }
+  }
+
   // ---- 输入事件 ----
 
   /** 键盘（导航键与编辑快捷键；可打印字符走 beforeinput）。 */
@@ -467,6 +630,8 @@
         else if (mod && (event.key === 'y' || event.key === 'Y')) void doUndoRedo(true);
         else if (mod && (event.key === 'c' || event.key === 'C')) void doCopy(false);
         else if (mod && (event.key === 'x' || event.key === 'X')) void doCopy(true);
+        else if (mod && (event.key === 'f' || event.key === 'F')) openFind(false);
+        else if (mod && (event.key === 'h' || event.key === 'H')) openFind(true);
         else handled = false;
     }
     if (handled) event.preventDefault();
@@ -592,7 +757,9 @@
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (
-      target.closest('[role="dialog"],[role="alertdialog"],[role="menu"],.tab,.input-proxy')
+      target.closest(
+        '[role="dialog"],[role="alertdialog"],[role="menu"],[role="search"],.tab,.input-proxy,.find-bar',
+      )
     ) {
       return;
     }
@@ -614,6 +781,14 @@
   // 挂载（或输入框重建）后聚焦
   $effect(() => {
     textarea?.focus();
+  });
+
+  // 外部动作信号（菜单）：seq 变化执行一次
+  $effect(() => {
+    const action = editorAction;
+    if (!action || action.seq === lastActionSeq) return;
+    lastActionSeq = action.seq;
+    handleAction(action.type);
   });
 </script>
 
@@ -645,6 +820,18 @@
 
 {#if composing && preedit && caretBox}
   <div class="preedit" style="left: {caretBox.left}px; top: {caretBox.top}px">{preedit}</div>
+{/if}
+
+{#if findOpen}
+  <FindBar
+    replaceMode={replaceOpen}
+    focusSignal={findFocusSeq}
+    anchor={getContainer}
+    onFindNext={(q, cs) => void doFindNext(q, cs)}
+    onReplace={(q, r, cs) => void doReplace(q, r, cs)}
+    onReplaceAll={(q, r, cs) => void doReplaceAll(q, r, cs)}
+    onClose={closeFind}
+  />
 {/if}
 
 <textarea

@@ -76,6 +76,26 @@ export interface EditApplied {
   caretUtf16: number;
 }
 
+/** 查找命中（显示行坐标；超长行分段对前端透明）。 */
+export interface FindHit {
+  startRow: number;
+  startUtf16: number;
+  endRow: number;
+  endUtf16: number;
+}
+
+/** 替换一次的结果（next = 后续命中，无则 null）。 */
+export interface ReplaceNextOutcome {
+  applied: EditApplied;
+  next: FindHit | null;
+}
+
+/** 全部替换的结果（无命中时 applied 为 null）。 */
+export interface ReplaceAllOutcome {
+  replaced: number;
+  applied: EditApplied | null;
+}
+
 /** 保存结果（与 Rust commands::SaveTabResult 对齐）。 */
 export interface SaveTabResult {
   bytesWritten: number;
@@ -157,4 +177,25 @@ export const ipc = {
     invoke<SaveTabResult>('save_tab_as', { tabId, newPath, targetEncoding, makeBackup }),
   /** 从磁盘重载（丢弃未保存修改）。 */
   reloadTab: (tabId: number) => invoke<TabInfo>('reload_tab', { tabId }),
+  /** 查找下一个（from = 显示坐标；不环绕，由前端在文末后从头重试）。 */
+  findInEdit: (tabId: number, query: string, caseSensitive: boolean, from: [number, number] | null) =>
+    invoke<FindHit | null>('find_in_edit', { tabId, query, caseSensitive, from }),
+  /** 替换一次（从 from 起）并返回后续命中。 */
+  replaceInEdit: (
+    tabId: number,
+    query: string,
+    caseSensitive: boolean,
+    from: [number, number] | null,
+    replacement: string,
+  ) =>
+    invoke<ReplaceNextOutcome | null>('replace_in_edit', {
+      tabId,
+      query,
+      caseSensitive,
+      from,
+      replacement,
+    }),
+  /** 全部替换（单撤销步）。 */
+  replaceAllInEdit: (tabId: number, query: string, caseSensitive: boolean, replacement: string) =>
+    invoke<ReplaceAllOutcome>('replace_all_in_edit', { tabId, query, caseSensitive, replacement }),
 };

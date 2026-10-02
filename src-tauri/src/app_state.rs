@@ -22,6 +22,7 @@ use crate::textfile::editing::edit_doc::{EditApplied, EditDoc, EditError, EditOp
 use crate::textfile::editing::save::{
     save_doc, snapshot_of, DiskSnapshot, SaveError, SaveOptions, SaveOutcome,
 };
+use crate::textfile::editing::search::{FindHit, ReplaceAllOutcome, ReplaceNextOutcome};
 use crate::textfile::encoding::FileEncoding;
 use crate::textfile::session::{FileSession, TextFileError};
 use crate::textfile::source::DocumentSource;
@@ -284,6 +285,47 @@ impl AppState {
         Ok(doc.redo())
     }
 
+    /// 在编辑文档中查找下一个命中（普通文本，可大小写敏感；不环绕）。
+    ///
+    /// `from` 为逻辑行 UTF-16 坐标（`None` = 从文档开头）。
+    pub fn find_in_tab(
+        &self,
+        tab_id: u64,
+        query: &str,
+        case_sensitive: bool,
+        from: Option<(u64, u64)>,
+    ) -> Result<Option<FindHit>, AppStateError> {
+        let doc = self.edit_doc(tab_id)?;
+        Ok(doc.find(query, case_sensitive, from)?)
+    }
+
+    /// 替换一个命中（从 `from` 起）并返回应用结果与「新落点起的下一个命中」。
+    ///
+    /// 未命中时返回 `None`（不产生编辑、不改变脏态）。
+    pub fn replace_next_in_tab(
+        &mut self,
+        tab_id: u64,
+        query: &str,
+        case_sensitive: bool,
+        from: Option<(u64, u64)>,
+        replacement: &str,
+    ) -> Result<Option<ReplaceNextOutcome>, AppStateError> {
+        let doc = self.edit_doc_mut(tab_id)?;
+        Ok(doc.replace_next(query, case_sensitive, from, replacement)?)
+    }
+
+    /// 全部替换（单次编辑 = 单个撤销步；命中数超过上限时报 `TooManyMatches`）。
+    pub fn replace_all_in_tab(
+        &mut self,
+        tab_id: u64,
+        query: &str,
+        case_sensitive: bool,
+        replacement: &str,
+    ) -> Result<ReplaceAllOutcome, AppStateError> {
+        let doc = self.edit_doc_mut(tab_id)?;
+        Ok(doc.replace_all(query, case_sensitive, replacement)?)
+    }
+
     /// 保存编辑文档到原路径。
     ///
     /// 参数：`target_encoding` = 编码询问结果（`None` = 保持当前文档编码）；
@@ -383,7 +425,15 @@ impl AppState {
         Ok(tab_info(tab))
     }
 
-    /// 内部：取编辑文档（未创建时报 `NotEditing`）。
+    /// 只读访问标签的编辑文档（未进入编辑时报 `NotEditing`）。
+    fn edit_doc(&self, tab_id: u64) -> Result<&EditDoc, AppStateError> {
+        self.tab(tab_id)?
+            .edit
+            .as_ref()
+            .ok_or(AppStateError::NotEditing(tab_id))
+    }
+
+    /// 可变访问标签的编辑文档（未进入编辑时报 `NotEditing`）。
     fn edit_doc_mut(&mut self, tab_id: u64) -> Result<&mut EditDoc, AppStateError> {
         self.tabs
             .get_mut(&tab_id)

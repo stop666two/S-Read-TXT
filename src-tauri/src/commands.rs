@@ -29,6 +29,7 @@ use s_read_txt::settings::{SettingsSaveRequest, SettingsSnapshot};
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::paths::{self, DataDirOrigin};
 use s_read_txt::textfile::editing::edit_doc::{EditApplied, EditOp};
+use s_read_txt::textfile::editing::search::{FindHit, ReplaceAllOutcome, ReplaceNextOutcome};
 use s_read_txt::textfile::encoding::FileEncoding;
 use s_read_txt::time_util;
 
@@ -514,5 +515,60 @@ pub fn reload_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabI
         let info = lock_state(&state)?.reload_tab(tab_id, &settings)?;
         log::info!(target: "sread::ipc", "重载：标签 {}", tab_id);
         Ok(info)
+    })
+}
+
+/// 命令：在编辑文档中查找（不环绕；`from` = 逻辑行 UTF-16 坐标，None 从头开始）。
+#[tauri::command]
+pub fn find_in_edit(
+    tab_id: u64,
+    query: String,
+    case_sensitive: bool,
+    from: Option<(u64, u64)>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Option<FindHit>, IpcError> {
+    with_context(LogContext::request(), || {
+        lock_state(&state)?
+            .find_in_tab(tab_id, &query, case_sensitive, from)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：替换一个命中（从 `from` 起）并返回结果与「新落点起的下一个命中」。
+#[tauri::command]
+pub fn replace_in_edit(
+    tab_id: u64,
+    query: String,
+    case_sensitive: bool,
+    from: Option<(u64, u64)>,
+    replacement: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Option<ReplaceNextOutcome>, IpcError> {
+    with_context(LogContext::request(), || {
+        lock_state(&state)?
+            .replace_next_in_tab(tab_id, &query, case_sensitive, from, &replacement)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：全部替换（单个撤销步；命中过多报 QUERY_TOO_BROAD）。
+#[tauri::command]
+pub fn replace_all_in_edit(
+    tab_id: u64,
+    query: String,
+    case_sensitive: bool,
+    replacement: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<ReplaceAllOutcome, IpcError> {
+    with_context(LogContext::request(), || {
+        let outcome =
+            lock_state(&state)?.replace_all_in_tab(tab_id, &query, case_sensitive, &replacement)?;
+        log::info!(
+            target: "sread::ipc",
+            "全部替换：标签 {}，命中 {} 处",
+            tab_id,
+            outcome.replaced
+        );
+        Ok(outcome)
     })
 }

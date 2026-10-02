@@ -114,9 +114,9 @@
 
 | 切片 | 内容 | 状态 | 证据 |
 |---|---|---|---|
-| 4a | 编辑命令接线：`toggle_edit`（首次创建编辑文档 + 磁盘基准快照）/ `apply_edits` / `undo_edit` / `redo_edit` / `save_tab` / `save_tab_as` / `reload_tab`；`get_rows` 编辑态供数切换；`EditOp` 反序列化（kind + camelCase）；`EditDoc::percent_at_row`；脏态阻止编码切换；错误码映射（EDIT_LINE_TOO_LONG / INVALID_POSITION / FILE_CONFLICT / ENCODING_UNREPRESENTABLE / NOT_EDITING / EDIT_DIRTY） | ✅ 完成 | lib **148/148**（新增 9：编辑文档生命周期/撤销重做/保存与冲突/另存为重定向/重载丢弃/脏态拦截/超长行拒绝 + 错误映射 2）；`cargo build` 0 告警 |
+| 4a | 编辑命令接线：`toggle_edit`（首次创建编辑文档 + 磁盘基准快照）/ `apply_edits` / `undo_edit` / `redo_edit` / `save_tab` / `save_tab_as` / `reload_tab`；`get_rows` 编辑态供数切换；`EditOp` 反序列化（kind + camelCase）；`EditDoc::percent_at_row`；脏态阻止编码切换（重载为无条件重建，确认由前端负责）；错误码映射（INVALID_POSITION / FILE_CONFLICT / ENCODING_UNREPRESENTABLE / NOT_EDITING / EDIT_DIRTY） | ✅ 完成 | lib **148/148**（新增 9：编辑文档生命周期/撤销重做/保存与冲突/另存为重定向/重载丢弃/脏态拦截/超长行拒绝 + 错误映射 2）；`cargo build` 0 告警 |
 | 4b | 前端编辑 UI：切换入口与脏标记、光标/选区（点击/拖选/Shift+方向键/全选）、输入/删除/回车、IME 隐藏锚点、剪切复制粘贴、Ctrl+S 保存流（编码询问/冲突/.bak）、脏关闭三态确认 | ✅ 完成 | 见「切片 4b 详情」；vitest **47/47**、编辑冒烟 **12/12**、对抗冒烟 **40/40**、cargo **170/170**；截图 `docs/screenshots/phase4b-{edit,abuse}.png` |
-| 4c | 查找/替换（大小写、下一个/替换/全部）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟）、**超长行完整分段渲染（维护者确认）** | 🔨 进行中 | 超长行分段 ✅ 完成（100MB 验收 9/9）；查找/替换后端 ✅（流式扫描/大小写折叠/全部替换单撤销步，cargo 172/172）；剩：查找/替换 UI、另存为/重载 UI、IME E2E |
+| 4c | 查找/替换（大小写、下一个/替换/全部）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟）、**超长行完整分段渲染（维护者确认）** | 🔨 进行中 | 超长行分段 ✅（100MB 验收 9/9）；查找/替换 ✅ 前后端完成（E2E 14/14：连续替换/全部替换单撤销步/撤销还原/大小写/菜单撤销/另存为/重载）；剩：IME composition E2E |
 
 > 扩展点预留（维护者要求）：`textfile::source::DocumentSource` 契约已落地——未来解析器/新格式实现该 trait 并在打开流程分派即可接入（AppState 取行与前端渲染零改动）；编辑契约仅绑定文本引擎，解析类文档默认只读。
 
@@ -147,3 +147,10 @@
 - **发现并修复 O(n²) 卡死（关键）**：`scan_row` 对无换行超长行每切一个 8KB 块都把 `find_newline` 扫到文件尾才能确认“无换行”——100MB 单行 ≈ 12800 块×平均 50MB ≈ 640GB 扫描量（debug 下界面冻结数分钟，即维护者报告的“卡死”）。修复：有界窗口 `[start, start+8KB+2)` 查找（CRLF 跨窗保持原语义）；新增 16MB 单行线性构建回归测试 + 窗口边界测试。
 - E2E 工具加固：`smoke-longline.mjs` 增加**看门狗**（超时自动退出并打印最后步骤，杜绝无限挂起）、`.bak` 清理、随机端口、独立数据目录、仅按本应用 PID 整树回收。
 - 验收证据（2026-10-02）：cargo **177/177**（157 lib + 15 对抗 + 5 集成）；vitest **56/56**；svelte-check 0/0；smoke-edit **12/12**；smoke-abuse **41/41**（L 段更新为“超长行可编辑”新语义）；**smoke-longline 100MB 单行 9/9**（rows=12800 精确、中部渲染、文档末编辑、保存 +1 字节尾 'aX'）；截图 `docs/screenshots/phase4c-longline.png`。
+
+### 切片 4c-3 详情（查找/替换 UI 与菜单补全）
+
+- 查找条 `FindBar.svelte`（fixed 锚定阅读容器右上；聚焦信号重聚焦；输入框 Enter=下一个/替换；Esc=关闭；`--base/--surface/--line/--accent` 令牌）；`EditLayer` 接入 Ctrl+F/Ctrl+H、命中选中（显示坐标）、替换（优先当前选区起点）、全部替换（单撤销步）、后端权威落点；`ipc.ts` 新增 findInEdit/replaceInEdit/replaceAllInEdit；`FindHit` 改为显示坐标（后端命中构造后按段映射，超长行对前端透明）。
+- 编辑菜单补全（撤销/重做/剪切/复制/粘贴/全选/查找/替换/另存为）；文件菜单新增重新加载；动作经 `src/lib/edit/actions.ts` 信号通道（seq 去重）从菜单传到编辑层；另存为流程（save 对话框 → 复用编码询问弹窗 → `save_tab_as` → 标签重定向）。后端：AppState find/replace 三方法 + 3 个命令 + `QUERY_TOO_BROAD` 码；`reload_tab` 为无条件重建（丢弃编辑文档），前端负责脏态确认。
+- E2E `scripts/smoke-find.mjs` **14/14**（F1–F14：查找条/替换行/连续替换不区分大小写/全部替换+提示/三次撤销全还原/大小写未找到/命中选中/Esc/菜单撤销/另存为链路/脏态重载）；截图 `docs/screenshots/phase4c-find.png`；smoke-edit 回归 12/12；svelte-check 0/0。
+- 已知：系统原生「另存为」文件选择框无法脚本化，E2E 经 IPC 直调覆盖保存链路，对话框点选由人工核验（已登记）。

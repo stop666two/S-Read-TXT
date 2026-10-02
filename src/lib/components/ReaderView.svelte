@@ -3,6 +3,7 @@
   // 进度口径：状态栏百分比 = 顶部定位行的累计高度 / 内容总高度（视觉进度）。
   // 标签/编码切换：重建高度与缓存、按记忆行号恢复滚动位置（阶段 8 会话持久化同口径）。
   import EditLayer from './EditLayer.svelte';
+  import type { EditorAction } from '../edit/actions';
   import { describeIpcError, ipc, toIpcError, type EditApplied, type TabInfo } from '../ipc';
   import { HeightModel } from '../reader/heights';
   import { RowCache } from '../reader/row-cache';
@@ -16,8 +17,10 @@
     onPercent: (percent: number) => void;
     /** 编辑应用回报（App 同步标签信息：行数/字节数/脏态） */
     onEditApplied?: (tabId: number, result: EditApplied) => void;
+    /** 外部编辑动作信号（菜单触发；透传给编辑层） */
+    editorAction?: EditorAction | null;
   }
-  let { tab, onPercent, onEditApplied }: Props = $props();
+  let { tab, onPercent, onEditApplied, editorAction }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -306,6 +309,7 @@
         ensureRow={(row) => ensureRow(row)}
         getContainer={() => container}
         onApplied={handleEditApplied}
+        {editorAction}
       />
     {/if}
   </div>
