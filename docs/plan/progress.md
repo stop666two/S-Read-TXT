@@ -302,3 +302,11 @@
 ### 符号按钮悬浮提示审计（维护者要求）
 - 全量盘点：工具栏 8 键 / 标题栏三键 / 标签关闭 / 查找条（`.*`、`Aa`、`×`）/ 历史面板（关闭、单条删除、清空）/ Toast 关闭 —— 仅**历史面板「关闭」缺失**；已补齐 `title`，查找条关闭提示补注 Esc。
 - 顺带修复测试基建：`smoke-buttons` C8b 链条偶发失败根因 = **CDP 目标出现 ≠ Svelte 已挂载**（高负载时关闭按钮尚未渲染，`?.click()` 静默点空 → 设置窗口残留 → C8b/D12 连锁失败）；加固为先轮询关闭按钮存在的再点击；单跑 **30/30**。
+
+### 安装范围与启动按需提权（维护者要求，2026-10-02）
+- **安装器**：`bundle.windows.nsis.installMode: "both"` → 生成模板含 `INSTALLMODE "both"` + `MULTIUSER_EXECUTIONLEVEL Highest` + 多用户选择页（官方简体中文：「为本机所有用户安装 / 只为我自己安装」）；**选「所有用户」才请求 UAC**（MultiUser 宏按选择动态提权）；产物仍 1.87 MiB。
+- **启动按需提权**（新增 `src-tauri/src/elevation.rs`；`windows-sys =0.61.2` 精确锁定，features：Foundation/Security/System_Registry/System_Threading/UI_Shell/UI_WindowsAndMessaging）：判据 = 数据目录可写探测（唯一需要权限的操作即写 `data/`）；不可写+非管理员+未尝试 → `ShellExecuteExW("runas")` 重启（子进程继承环境含 `SRT_DATA_DIR`）；防循环 `SRT_ELEVATION_ATTEMPTED`；逃生阀 `SRT_NO_ELEVATION`；已提权仍不可写 → 回落引导；用户取消 → 引导。决策表 5 项单测 → cargo **219 库单测（239 全量）**。
+- **集成实测**：不可写目录 + `SRT_NO_ELEVATION=1` → 应用存活、`data_dir_status.writable=false`、数据目录引导弹窗出现（决策链与回落正确）；可写场景零打扰（全量套件回归）。真实 UAC 路径无法自动化（安全桌面不可脚本交互）→ 由维护者在「所有用户」安装后人工验收。
+- **测试基建修复**：`smoke-datadir` 显式 `SRT_NO_ELEVATION=1`（不可写场景不再触发 UAC——此前 verify-all 链中该套件失败即此因）；`measure-startup` 支持 `SRT_MEASURE_EXTRA_ARGS`（启动参数 A/B）。
+- **冷启动复测**（release，5 次 × 2 组）：默认参数组 可见 median 621ms / 内容就绪 median 758ms；仅 `--in-process-gpu` 组 615ms / 733ms —— 参数组对启动无实义影响（差异在噪声内）；首跑离群（可见 1077 / 就绪 1225ms）= 新构建后杀软扫描 + 全新 WebView2 配置目录，属环境性（稳定态全新 profile 实测 716ms）。结论：中位数较阶段 9 前（就绪 886ms）**反而更快**；离群值原因已写入 known-issues。
+- **CI/CD 更新**：CI 卫生作业新增编码与换行自检；CI/Release 的 Rust 作业新增 `cargo fmt --check`；Release 描述「安装说明」重写为 7 条（系统要求 / 安装范围二选一 / 架构 / 未签名 / WebView2 / **启动权限行为** / 离线与数据位置）。

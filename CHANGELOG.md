@@ -11,7 +11,7 @@
 - Rust 核心模块与 IPC（阶段 1）：便携存储（原子写/JSON 容错）、三类配置（settings/reader/shortcuts）、日志（JSON 行 + 5MB×3 轮转 + 请求链路上下文）、历史（JSONL 去重/剪枝）、会话（窗口 + 标签锚点）、文本读取引擎（mmap + 编码检测 + 稀疏行索引 + 按需解码，禁止整读）；对应命令 get_app_info / data_dir_status / get_settings / save_settings / get_history / remove_history / clear_history / get_session / save_session
 - 阅读界面（阶段 2）：打开文件（对话框多选 / 拖拽到窗口）、多标签打开/切换/关闭（重复打开复用标签、数量上限）、编码自动检测与手动切换（8 种编码，工具栏下拉）、虚拟滚动阅读（仅渲染可视行 + 实测行高缓存 + 滚动锚定，2 万行文件渲染 53 行）、状态栏（文件名 / 阅读百分比 / 大小 / 编码）、四主题（浅色/深色/护眼/跟随系统）、空状态与 Toast 提示、退出；新增命令 open_file / get_rows / set_encoding / list_encodings / list_tabs / close_tab
 - 编辑引擎后端（阶段 3，为编辑模式打底）：片表（原文零复制 + 只增新增缓冲）、双 Fenwick 行映射（512 行检查点外的新增路径，行↔位置 O(log n)）、跨片 CRLF 安全计数、编辑应用（插入/删除/替换，UTF-16 位置解析与代理对处理，批次 = 单撤销步）、撤销/重做（50MB/1000 步双上限交换式快照）、保存链（外部冲突检测与强制覆盖、`.bak` 首存备份、BOM 策略、同编码字节直拷与异编码流式转码、不可表示字符原子失败、临时文件 + rename 原子写）；编辑守卫：单行 >64KB 拒绝进入编辑（读取不受影响）
-- 持续集成与发布流水线：CI（任意分支 push / PR：仓库卫生检查含 AGENTS.md 防泄露、前端检查测试构建、Rust 全量测试与完整构建、32 位与 ARM64 兼容检查）；Release（仅 tag 触发：三架构 x64/x86/ARM64 NSIS 构建，描述含测试摘要/构建环境/变更明细/SHA256/已知问题与备份提醒，Releases 仅保留最新一个、旧 Release 自动清理、tag 永久保留）
+- 持续集成与发布流水线：CI（任意分支 push / PR：仓库卫生检查含 AGENTS.md 防泄露、前端检查测试构建、Rust 全量测试与完整构建（含 `cargo fmt` 检查）、编码与换行自检、32 位与 ARM64 兼容检查）；Release（仅 tag 触发：三架构 x64/x86/ARM64 NSIS 构建，描述含测试摘要/构建环境/变更明细/SHA256/已知问题与备份提醒，Releases 仅保留最新一个、旧 Release 自动清理、tag 永久保留）
 - 编辑交互后端接线（阶段 4a）：标签编辑文档生命周期（`toggle_edit` 首次进入创建并保留，脏态跨模式持续）、编辑命令（`apply_edits` / `undo_edit` / `redo_edit` / `save_tab` / `save_tab_as` / `reload_tab`）、另存为标签重定向（路径/会话/编辑文档重建 + 写入历史）、`get_rows` 编辑态供数切换、编辑态阅读百分比、脏态阻止编码切换与重载、新增错误码（EDIT_LINE_TOO_LONG / INVALID_POSITION / FILE_CONFLICT / ENCODING_UNREPRESENTABLE / NOT_EDITING / EDIT_DIRTY）
 - 编辑交互层（阶段 4b）：编辑模式切换与脏标记、光标与选区（点击/拖选/Shift+方向键/Ctrl+A）、输入/删除/回车、中文输入法组合输入（隐藏锚点）、剪切/复制/粘贴、撤销/重做快捷键、保存流（编码询问/冲突弹窗/.bak 备份）、脏标签与窗口关闭三态确认
 - 编辑态超长行显示分段：>8KB 逻辑行按 8KB 显示分段虚拟渲染（与只读视觉一致），段表随编辑增量维护、随撤销快照回滚；任意大小单行文件现在可正常进入编辑（原「单行 >64KB 拒绝编辑」限制移除）；`RowText` 载荷增加 `logicalRow` / `baseUtf16` 供前端跨段光标/选区映射，前端已适配（跨段光标/选区/复制、段内坐标↔逻辑坐标换算；编辑落点由后端 `caretRow`/`caretUtf16` 权威返回）
@@ -38,6 +38,8 @@
 - 查看菜单「全屏」启用（点击切换；F11 同款）
 - 系统要求明确为 **Windows 10 1803 及以上**（不支持 Windows 7 / 8.1）：Rust 1.78 起将 Windows 最低版本提高至 Windows 10（含本项目构建目标 `x86_64-pc-windows-gnu`），且微软已于 2023-01（Edge/WebView2 109）终止对旧系统的支持；README / Release 说明 / 已知问题均已同步
 - 符号按钮悬浮提示覆盖审计：历史面板「关闭」补齐提示文案；查找条「关闭」提示注明 Esc；其余 icon 按钮（工具栏/标题栏三键/标签关闭/查找条开关/Toast）经盘点均已具备悬浮提示
+- 安装范围可选（NSIS `installMode: both`）：安装向导提供「为本机所有用户安装」（`C:\Program Files`，需管理员权限——选择此项时请求 UAC）与「只为我自己安装」（`%LOCALAPPDATA%`，无需任何权限）二选一；多用户选择页为官方简体中文文案
+- 启动按需提权：仅当便携数据目录不可写（如按机器安装到 Program Files）且当前非管理员时，自动以管理员身份重启（UAC）；便携运行与「仅为我」安装零打扰；取消 UAC 后进入「数据目录引导」（可选其他可写目录或只读运行）；已提权仍不可写时不重复请求；`SRT_NO_ELEVATION=1` 可完全禁用（提权重启前写入 `SRT_ELEVATION_ATTEMPTED` 防循环标记，子进程继承）
 
 ### 修复
 
