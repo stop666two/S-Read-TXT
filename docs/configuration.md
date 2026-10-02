@@ -26,9 +26,9 @@
 | `schemaVersion` | number | 固定 `1` | `1` | 配置格式版本；将来迁移依据 |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
 | `maxFileSizeMB` | number | 1–2048 整数 | `100` | 可打开文件大小上限；超限提示固定文案，可在设置调整 |
-| `maxTabs` | number | 1–100 整数 | `20` | 标签数量上限；超限打开被拒绝并提示 |
-| `history.maxEntries` | number | 1–100000 整数 | `10000` | 历史保留条数上限（超出裁剪最旧） |
-| `history.retentionDays` | number | 1–3650 整数 | `365` | 历史保留天数（过期裁剪） |
+| `maxTabs` | number | 1–200 整数 | `20` | 标签数量上限；超限打开被拒绝并提示 |
+| `history.maxEntries` | number | 100–1000000 整数 | `10000` | 历史保留条数上限（超出裁剪最旧） |
+| `history.retentionDays` | number | 1–36500 整数 | `365` | 历史保留天数（过期裁剪） |
 | `saveBackupEnabled` | boolean | `true`/`false` | `true` | 首次保存前是否生成 `.bak` 备份 |
 | `showOnboarding` | boolean | `true`/`false` | `true` | 是否显示首启引导；用户选择「不再显示」后置 `false` |
 
@@ -39,10 +39,11 @@
 | `schemaVersion` | number | 固定 `1` | `1` | 格式版本 |
 | `theme` | string | `light`/`dark`/`eye`/`system` | `system` | 主题；`system` 跟随系统明暗解析 |
 | `typography.fontFamily` | string | 系统已安装字体名 | `Microsoft YaHei` | 正文西文+中文主字体 |
-| `typography.fontSize` | number | 12–32（px） | `16` | 正文字号 |
-| `typography.lineHeight` | number | 1.2–2.6 | `1.8` | 行高倍数 |
-| `typography.contentWidth` | number | 480–1200（px） | `720` | 正文限宽（约 40 汉字/行） |
-| `typography.pagePadding` | number | 24–96（px） | `48` | 阅读区上下左右页边距 |
+| `typography.fontSize` | number | 8–72（px） | `16` | 正文字号 |
+| `typography.lineHeight` | number | 1.0–3.2 | `1.8` | 行高倍数 |
+| `typography.contentWidth` | number | 320–2400（px） | `720` | 正文限宽（约 40 汉字/行） |
+| `typography.pagePadding` | number | 0–240（px） | `48` | 阅读区左右页边距 |
+| `typography.pagePaddingY` | number | 0–240（px） | `48` | 阅读区上下留白（旧版配置缺此字段时取默认，向后兼容） |
 
 ### 2.3 `shortcuts.json`（快捷键绑定子配置）
 

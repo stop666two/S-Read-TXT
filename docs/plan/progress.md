@@ -317,3 +317,12 @@
 - **修订方案（维护者选定「运行时一次性提权 + 仅当前用户」）**：`elevation.rs` 重写为**授权助手**——`--prepare-data-dir <路径> --grant-sid <SID>` 只创建目录并用 `icacls` 授予当前用户修改权限后立即退出（绝不进入 Tauri/WebView2）；应用本体始终以普通权限运行；已提权启动则就地幂等授权；启动失败补「日志 + 原生错误框」；移除 `SRT_ELEVATION_ATTEMPTED`（不再需要）；`SRT_NO_ELEVATION=1` 语义＝跳过提权初始化。
 - **验证**：单测 7 项（计划表 / 参数解析含顺序无关与缺参拒绝 / ACL 真实往返回归）+ 真实 exe 集成测试 2 项（助手建目录并授权；缺参退出码 2）→ cargo **243/243**；`smoke-datadir` **15/15**（新增 D5：只读 ACL 预置 → 助手模式修复 → 当前用户可写）；代码提交 `8dfd846`、测试提交 `3da8298`，文档随本次提交。
 - **文档同步**：README（权限行为表与补充说明、环境变量表）、known-issues #3、configuration.md、设计 D36、CHANGELOG、Release 安装说明第 6 条、本台账。
+
+### 设置界面改造与卸载清理（2026-10-02，维护者三项反馈中的第 1、2 项）
+- **设置界面**（提案确认后实施）：全部数值项改「滑块 + 实时数值」双控件（拖动经设置窗口 store 140ms 节流落盘实时预览、松开/数字框确认立即落盘）；通用控件（SliderRow/ChoiceRow/ToggleRow/ActionRow）+ 共享样式 `src/windows/settings/settings.css` 按配置表驱动；排版新增「上下边距」（后端 `pagePaddingY` + `--reading-pad-y` 接线；旧配置缺字段自动取默认，向后兼容测试覆盖）；范围放宽（`src-tauri/src/settings/defaults.rs` 常量 + store 钳制断言同步）：字号 8–72 / 行高 1.0–3.2 / 限宽 320–2400 / 边距 0–240 / 标签上限 200 / 历史 100–1,000,000 条、1–36500 天；设置窗口 640×520 → 800×620；控件带 `data-setting` 供自动化定位。
+- **卸载清理**（第 2 项）：根因 = Tauri NSIS 主模板的 `RMDir "$INSTDIR"` 不带 /r（便携 `data/` 非空即保留）且自带「删除应用程序数据」仅覆盖 `%APPDATA%`/`%LOCALAPPDATA%`；修复 = 新增 `src-tauri/nsis/installer-hooks.nsh`（POSTUNINSTALL：交互式询问是否删除 `data/`、默认删除；静默卸载 `/SD IDYES` 默认删除；清理注册表安装位置/语言残留；补删空安装目录），`tauri.conf.json` 启用 `installerHooks`。
+- **测试新增/加固**：
+  - `scripts/smoke-uninstall.mjs`（新增，已加进 verify-all）：预清理 → 静默安装（`/S /currentuser`）→ 造数据 → 静默卸载 → 断言目录（含 data）与注册表全清；**6/6 通过**。
+  - 关键解谜（记入脚本头注）：Node `spawn/spawnSync` 启动 `highestAvailable` 清单的 NSIS 安装器/卸载器会得到 **EACCES**（CreateProcess 返回 ERROR_ELEVATION_REQUIRED=740，libuv 映射为 EACCES）——必须经 ShellExecute（PowerShell `Start-Process`）；此前链式运行中所有 “status=null” 均为此因，而非卡死。
+  - `scripts/smoke-settings.mjs` 加固：`Page.bringToFront` + `startRecording`（点击后确认进入录制态、首击偶发丢失时重试一次）+ S2a/S2b 输出诊断详情；**27/27 通过**（此前一次 16/27 属首个按键注入的时序抖动，探针证实功能正常）。
+- **验证汇总**：cargo 244（222 lib + 15 对抗 + 2 助手 + 5 集成）；svelte-check 0 错 0 警；smoke-settings 27/27；smoke-uninstall 6/6；提交见 git 历史。
