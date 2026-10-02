@@ -98,7 +98,12 @@ fn mixed_newlines_merge_then_undo_all() {
     assert_eq!(state.tab_info(tab).expect("标签缺失").rows_total, 4);
     assert_eq!(
         row_texts(&state, tab, 0, 4),
-        vec!["a".to_string(), "b".to_string(), "c".to_string(), "d".to_string()]
+        vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string()
+        ]
     );
 }
 
@@ -208,9 +213,14 @@ fn large_paste_roundtrip() {
             }],
         )
         .expect("插入失败");
-    assert_eq!(state.tab_info(tab).expect("标签缺失").rows_total, 1);
+    // 20 003 字节单行 → 显示分段（8KB 粒度）= 3 段：8192 + 8192 + 3619
+    assert_eq!(state.tab_info(tab).expect("标签缺失").rows_total, 3);
+    // 分段展示不改变保存内容
     state.save_edit(tab, None, false, false).expect("保存失败");
-    assert_eq!(std::fs::read(&path).expect("读回失败"), format!("{text}abc").as_bytes());
+    assert_eq!(
+        std::fs::read(&path).expect("读回失败"),
+        format!("{text}abc").as_bytes()
+    );
 }
 
 /// 文档末尾连续追加 100 次，再撤销/重做各 100 次：计数与脏态精确。
@@ -363,7 +373,10 @@ fn save_as_missing_dir_fails_atomically() {
     let missing = dir.path().join("no-such-dir").join("x.txt");
     let result = state.save_edit_as(tab, &missing, None, false, &settings);
     assert!(result.is_err(), "不存在的目标目录应失败");
-    assert!(state.tab_info(tab).expect("标签缺失").dirty, "失败后应保持脏态");
+    assert!(
+        state.tab_info(tab).expect("标签缺失").dirty,
+        "失败后应保持脏态"
+    );
     assert_eq!(std::fs::read(&path).expect("读回失败"), b"abc");
 }
 
@@ -510,7 +523,10 @@ fn oversized_utf16_is_rejected_safely() {
         }],
     );
     assert!(
-        matches!(result, Err(AppStateError::Edit(EditError::Utf16OutOfRange { .. }))),
+        matches!(
+            result,
+            Err(AppStateError::Edit(EditError::Utf16OutOfRange { .. }))
+        ),
         "越界偏移应被拒绝：{result:?}"
     );
     assert_eq!(

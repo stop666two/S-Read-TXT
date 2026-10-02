@@ -116,7 +116,7 @@
 |---|---|---|---|
 | 4a | 编辑命令接线：`toggle_edit`（首次创建编辑文档 + 磁盘基准快照）/ `apply_edits` / `undo_edit` / `redo_edit` / `save_tab` / `save_tab_as` / `reload_tab`；`get_rows` 编辑态供数切换；`EditOp` 反序列化（kind + camelCase）；`EditDoc::percent_at_row`；脏态阻止编码切换；错误码映射（EDIT_LINE_TOO_LONG / INVALID_POSITION / FILE_CONFLICT / ENCODING_UNREPRESENTABLE / NOT_EDITING / EDIT_DIRTY） | ✅ 完成 | lib **148/148**（新增 9：编辑文档生命周期/撤销重做/保存与冲突/另存为重定向/重载丢弃/脏态拦截/超长行拒绝 + 错误映射 2）；`cargo build` 0 告警 |
 | 4b | 前端编辑 UI：切换入口与脏标记、光标/选区（点击/拖选/Shift+方向键/全选）、输入/删除/回车、IME 隐藏锚点、剪切复制粘贴、Ctrl+S 保存流（编码询问/冲突/.bak）、脏关闭三态确认 | ✅ 完成 | 见「切片 4b 详情」；vitest **47/47**、编辑冒烟 **12/12**、对抗冒烟 **40/40**、cargo **170/170**；截图 `docs/screenshots/phase4b-{edit,abuse}.png` |
-| 4c | 查找/替换（大小写、下一个/替换/全部）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟）、**超长行完整分段渲染（维护者确认）** | 🔨 进行中 | 超长行方案：编辑态 8KB 显示分段虚拟渲染 + 跨段光标/选区/复制映射，100MB 单行文件对抗验收 |
+| 4c | 查找/替换（大小写、下一个/替换/全部）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟）、**超长行完整分段渲染（维护者确认）** | 🔨 进行中 | 超长行分段：后端 ✅（显示分段 + 映射 + 增量维护 + 快照，cargo 173/173）；前端适配待做；其余子项待做 |
 
 > 扩展点预留（维护者要求）：`textfile::source::DocumentSource` 契约已落地——未来解析器/新格式实现该 trait 并在打开流程分派即可接入（AppState 取行与前端渲染零改动）；编辑契约仅绑定文本引擎，解析类文档默认只读。
 
@@ -131,3 +131,12 @@
 - 发布体积实测（红线核对）：release exe **3.95MB**、NSIS 安装包 **1.52MB**（目标 <10MB）；debug exe 244.6MB 仅为开发产物。
 - 安全规则（新增）：严禁按进程名结束 `msedgewebview2`（系统共享运行时）；清理残留仅按本应用 PID 整树回收。
 - 对抗冒烟 `scripts/smoke-abuse.mjs`（40 项：空文件/换行族/BOM/连打/撤销重做狂按/全选替换/首行边界/回车狂按/emoji+RTL+零宽/大粘贴/超长行拒绝/三态关闭/冲突流）；编辑冒烟 `smoke-edit.mjs` 重构复用 `scripts/lib/smoke-cdp.mjs`（统一 CDP 客户端与就绪护栏）。
+
+### 切片 4c-1 详情（超长行显示分段，后端）
+
+- 设计：编辑视图对 >8KB 逻辑行按 [`DISPLAY_SEGMENT_BYTES`]（与只读 `MAX_ROW_BYTES` 共用常量）生成显示段；`LongRowSegments{starts, utf16_bases}` 段表按需构建（普通行不登记）。
+- 映射：`seg_of_row_utf16`（逻辑→段号+段内偏移，二分）、`seg_to_row_utf16`（段→逻辑行+段首 UTF-16 基准）；`fetch_display_rows` 按段解码；`percent_at_seg` 段首字节百分比。
+- 编辑维护：`update_long_rows`（旧受影响键删除 + 后续键位移 + 新区间复查），撤销/重做将段表并入快照并计入预算；`EditApplied.touched_row` 与 `rows_total` 均改为显示行语义。
+- 契约：`DocumentSource.rows_total/fetch_rows/percent_at_row` 统一为显示行语义（`FileSession` 天然一致）；`RowText` 增加 `logicalRow`/`baseUtf16`（`skip_serializing_if`，只读视图省略）；移除 `EDIT_MAX_ROW_BYTES` 守卫、`UnsupportedLongLine` 错误与 `EDIT_LINE_TOO_LONG` 错误码。
+- 顺带修复真实缺陷：只读 `snap_row_boundary` UTF-8 分支按 `bytes[position-1]` 判定续字节（应为 `bytes[position]`），导致多字节长行在 8KB 边界被切进字符中间（两侧各出替换符）；已修复并加回归测试。
+- 验证：cargo **173/173**（新增：多字节分段与只读逐段一致且拼接无损、长行内编辑/撤销、长行拆分与恢复、只读多字节分块回归）；fmt 通过；0 告警。

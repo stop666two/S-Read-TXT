@@ -62,11 +62,7 @@ pub fn ends_with_cr(bytes: &[u8], encoding: FileEncoding, start: u64, end: u64) 
             if end - start < 2 {
                 return false;
             }
-            read_utf16_unit(
-                bytes,
-                (end - 2) as usize,
-                encoding == FileEncoding::Utf16Le,
-            ) == 0x000D
+            read_utf16_unit(bytes, (end - 2) as usize, encoding == FileEncoding::Utf16Le) == 0x000D
         }
         _ => bytes[(end - 1) as usize] == b'\r',
     }
@@ -141,12 +137,30 @@ mod tests {
     /// 换行族基本计数。
     #[test]
     fn counts_newline_families() {
-        assert_eq!(count_units(b"abc", FileEncoding::Utf8, 0, 3, false).units, 0);
-        assert_eq!(count_units(b"a\nb", FileEncoding::Utf8, 0, 3, false).units, 1);
-        assert_eq!(count_units(b"a\rb", FileEncoding::Utf8, 0, 3, false).units, 1);
-        assert_eq!(count_units(b"a\r\nb", FileEncoding::Utf8, 0, 4, false).units, 1);
-        assert_eq!(count_units(b"\n\n", FileEncoding::Utf8, 0, 2, false).units, 2);
-        assert_eq!(count_units(b"a\n", FileEncoding::Utf8, 0, 2, false).units, 1);
+        assert_eq!(
+            count_units(b"abc", FileEncoding::Utf8, 0, 3, false).units,
+            0
+        );
+        assert_eq!(
+            count_units(b"a\nb", FileEncoding::Utf8, 0, 3, false).units,
+            1
+        );
+        assert_eq!(
+            count_units(b"a\rb", FileEncoding::Utf8, 0, 3, false).units,
+            1
+        );
+        assert_eq!(
+            count_units(b"a\r\nb", FileEncoding::Utf8, 0, 4, false).units,
+            1
+        );
+        assert_eq!(
+            count_units(b"\n\n", FileEncoding::Utf8, 0, 2, false).units,
+            2
+        );
+        assert_eq!(
+            count_units(b"a\n", FileEncoding::Utf8, 0, 2, false).units,
+            1
+        );
     }
 
     /// 跨片 CRLF：左片以 `\r` 结尾、右片以 `\n` 开头时只计一次。
@@ -172,7 +186,10 @@ mod tests {
     fn utf16_units_and_cross_piece() {
         // "a\nb" LE: 61 00 0A 00 62 00
         let bytes = [0x61, 0x00, 0x0A, 0x00, 0x62, 0x00];
-        assert_eq!(count_units(&bytes, FileEncoding::Utf16Le, 0, 6, false).units, 1);
+        assert_eq!(
+            count_units(&bytes, FileEncoding::Utf16Le, 0, 6, false).units,
+            1
+        );
         // 左片 = 0D 00，右片 = 0A 00 61 00
         let left = count_units(&[0x0D, 0x00], FileEncoding::Utf16Le, 0, 2, false);
         assert_eq!(left.units, 1);

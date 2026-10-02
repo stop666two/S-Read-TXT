@@ -388,7 +388,9 @@ pub fn undo_edit(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Option<EditApplied>, IpcError> {
     with_context(LogContext::request(), || {
-        lock_state(&state)?.undo_edit(tab_id).map_err(IpcError::from)
+        lock_state(&state)?
+            .undo_edit(tab_id)
+            .map_err(IpcError::from)
     })
 }
 
@@ -399,7 +401,9 @@ pub fn redo_edit(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Option<EditApplied>, IpcError> {
     with_context(LogContext::request(), || {
-        lock_state(&state)?.redo_edit(tab_id).map_err(IpcError::from)
+        lock_state(&state)?
+            .redo_edit(tab_id)
+            .map_err(IpcError::from)
     })
 }
 
@@ -457,8 +461,13 @@ pub fn save_tab_as(
         let encoding = parse_encoding_opt(target_encoding)?;
         let (result, entry) = {
             let mut guard = lock_state(&state)?;
-            let outcome =
-                guard.save_edit_as(tab_id, Path::new(&new_path), encoding, make_backup, &settings)?;
+            let outcome = guard.save_edit_as(
+                tab_id,
+                Path::new(&new_path),
+                encoding,
+                make_backup,
+                &settings,
+            )?;
             let tab = guard.tab_info(tab_id).ok_or_else(|| {
                 IpcError::new(CODE_TAB_NOT_FOUND, format!("标签不存在：{tab_id}"))
             })?;

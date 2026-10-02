@@ -14,6 +14,7 @@
 //! 内存模型：原文片段引用 mmap（零复制）；新增片段引用只增缓冲；
 //! 行数元数据 = 每片段一个 `u64`（不是每行一个）。
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -22,9 +23,9 @@ use crate::textfile::editing::fenwick::Fenwick;
 use crate::textfile::editing::piece::{
     count_units, ends_with_cr, newline_width, starts_with_lf, Piece, PieceMeta, PieceSource,
 };
-use crate::textfile::editing::{EDIT_MAX_ROW_BYTES, UNDO_MAX_BYTES, UNDO_MAX_STEPS};
+use crate::textfile::editing::{DISPLAY_SEGMENT_BYTES, UNDO_MAX_BYTES, UNDO_MAX_STEPS};
 use crate::textfile::encoding::{detect, FileEncoding};
-use crate::textfile::line_index::find_newline;
+use crate::textfile::line_index::{find_newline, snap_row_boundary};
 use crate::textfile::mmap::MappedFile;
 use crate::textfile::session::TextFileError;
 use crate::textfile::window::RowText;
@@ -35,12 +36,6 @@ pub enum EditError {
     /// 打开/读取阶段的文件错误（不存在 / 超限 / IO），与只读路径共用语义
     #[error(transparent)]
     File(#[from] TextFileError),
-    /// 存在超过 [`EDIT_MAX_ROW_BYTES`] 的逻辑行，拒绝进入编辑
-    #[error("该文件包含超长行（{bytes} 字节），暂不支持编辑")]
-    UnsupportedLongLine {
-        /// 最长行字节数（诊断用）
-        bytes: u64,
-    },
     /// 行号越界
     #[error("行号越界：{row}")]
     RowOutOfRange {
@@ -69,7 +64,11 @@ pub enum EditError {
 /// IPC 序列化：外部标签为 `kind`（`insert` / `delete` / `replace`），
 /// 字段为 camelCase（如 `startRow`），与前端 TypeScript 类型一一对应。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum EditOp {
     /// 在 `(row, utf16)` 处插入文本（UTF-8 存入新增缓冲）
     Insert {
@@ -114,12 +113,49 @@ pub struct EditApplied {
     pub state_id: u64,
     /// 是否有未保存修改
     pub dirty: bool,
-    /// 首个受影响行（应用前坐标；前端从该行起重取可视窗）
+    /// 首个受影响的显示行（应用前坐标；前端从该行起重取可视窗）
     pub touched_row: u64,
-    /// 当前总行数
+    /// 当前显示行总数（超长逻辑行按 8KB 分段）
     pub rows_total: u64,
     /// 当前总字节数（不含 BOM）
     pub byte_len: u64,
+}
+
+/// 超长逻辑行的显示分段表（与只读模式的行内 8KB 分块语义一致）。
+///
+/// 仅当逻辑行字节数超过 [`DISPLAY_SEGMENT_BYTES`] 时构建；段边界经字符对齐
+/// （UTF-8 续字节回退 / UTF-16 代理项保护 / 传统多字节前向走查）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct LongRowSegments {
+    /// 各段起始（相对行首的字节偏移；首项恒为 0，严格递增）
+    starts: Vec<u64>,
+    /// 各段起始对应的行内 UTF-16 偏移（与 `starts` 一一对应；首项恒为 0）
+    utf16_bases: Vec<u64>,
+}
+
+impl LongRowSegments {
+    /// 段数（≥1）。
+    fn segments(&self) -> u64 {
+        self.starts.len() as u64
+    }
+
+    /// 相对普通行的「额外段数」（段数 - 1）。
+    fn extra(&self) -> u64 {
+        self.segments().saturating_sub(1)
+    }
+
+    /// 第 `index` 段的 `(行内起始字节, 行内结束字节)`（末段到 `row_len`）。
+    fn byte_span(&self, index: usize, row_len: u64) -> (u64, u64) {
+        (
+            self.starts[index],
+            self.starts.get(index + 1).copied().unwrap_or(row_len),
+        )
+    }
+
+    /// 表自身的撤销预算字节数（近似快照开销）。
+    fn cost_bytes(&self) -> u64 {
+        ((self.starts.len() + self.utf16_bases.len()) as u64) * 8
+    }
 }
 
 /// 撤销/重做步骤：某个状态的完整片段列表快照（交换式撤销/重做）。
@@ -131,6 +167,8 @@ struct UndoStep {
     pieces: Vec<Piece>,
     /// 对应的片段元数据
     metas: Vec<PieceMeta>,
+    /// 该状态的超长行分段表（随状态快照交换，保证撤销后分段视图一致）
+    long_rows: BTreeMap<u64, LongRowSegments>,
     /// 该状态的结尾换行标记
     trailing_newline: bool,
     /// 该状态的状态版本号
@@ -176,6 +214,8 @@ pub struct EditDoc {
     byte_tree: Fenwick,
     /// 片段换行单元数前缀和
     line_tree: Fenwick,
+    /// 超长逻辑行的显示分段表（键 = 逻辑行号；未超长的行不登记）
+    long_rows: BTreeMap<u64, LongRowSegments>,
     /// 文档是否以换行单元结尾（行数换算用）
     trailing_newline: bool,
     /// 状态版本号（每次变更递增；前端刷新依据）
@@ -223,7 +263,6 @@ impl EditDoc {
         }
         let encoding = encoding_override.unwrap_or_else(|| detect(mapped.bytes()));
         let bom_len = detect_bom_len(mapped.bytes(), encoding);
-        ensure_editable(mapped.bytes(), encoding, bom_len)?;
 
         let mut pieces = Vec::new();
         let mut metas = Vec::new();
@@ -251,6 +290,7 @@ impl EditDoc {
             added: Vec::new(),
             byte_tree: Fenwick::build_from(&[]),
             line_tree: Fenwick::build_from(&[]),
+            long_rows: BTreeMap::new(),
             trailing_newline: false,
             state_id: 1,
             next_state_id: 2,
@@ -261,6 +301,7 @@ impl EditDoc {
         };
         doc.rebuild_trees();
         doc.trailing_newline = doc.doc_ends_with_newline();
+        doc.rebuild_long_rows_initial();
         Ok(doc)
     }
 
@@ -324,6 +365,8 @@ impl EditDoc {
             rows.push(RowText {
                 row,
                 text: self.text_between(start, end),
+                logical_row: None,
+                base_utf16: None,
             });
             row += 1;
         }
@@ -338,6 +381,131 @@ impl EditDoc {
         let start = self.row_start_pos(row).ok()?;
         let end = self.row_end_pos(row).ok()?;
         Some(self.text_between(start, end))
+    }
+
+    // ---- 显示分段（超长逻辑行 8KB 虚拟分段；与只读行模型一致） ----
+
+    /// 显示行总数（= 逻辑行 + 超长行额外分段数）。
+    pub fn display_rows_total(&self) -> u64 {
+        self.rows_total() + self.extra_segments()
+    }
+
+    /// 逻辑行贡献的额外分段总数。
+    fn extra_segments(&self) -> u64 {
+        self.long_rows.values().map(LongRowSegments::extra).sum()
+    }
+
+    /// `row` 之前（不含）的长行额外分段累计数。
+    fn extras_before_row(&self, row: u64) -> u64 {
+        self.long_rows
+            .range(..row)
+            .map(|(_, table)| table.extra())
+            .sum()
+    }
+
+    /// 逻辑位置 → 显示位置：`(段序号, 段内 UTF-16 偏移)`。
+    ///
+    /// 普通行（未超长）映射为恒等；长行按分段表二分定位。
+    pub fn seg_of_row_utf16(&self, row: u64, utf16: u64) -> (u64, u64) {
+        let base_seg = row + self.extras_before_row(row);
+        match self.long_rows.get(&row) {
+            None => (base_seg, utf16),
+            Some(table) => {
+                let index = match table.utf16_bases.binary_search(&utf16) {
+                    Ok(found) => found,
+                    Err(insert) => insert.saturating_sub(1),
+                };
+                (base_seg + index as u64, utf16 - table.utf16_bases[index])
+            }
+        }
+    }
+
+    /// 显示位置 → 逻辑位置：`(逻辑行, 段首 UTF-16 偏移, 段在行内下标)`。
+    ///
+    /// 越界段返回 `None`。
+    pub fn seg_to_row_utf16(&self, seg: u64) -> Option<(u64, u64, u64)> {
+        if seg >= self.display_rows_total() {
+            return None;
+        }
+        let mut extra_acc = 0u64;
+        for (&row, table) in &self.long_rows {
+            let first_seg = row + extra_acc;
+            if seg < first_seg {
+                return Some((seg - extra_acc, 0, 0));
+            }
+            let end_seg = first_seg + table.segments();
+            if seg < end_seg {
+                let index = (seg - first_seg) as usize;
+                return Some((row, table.utf16_bases[index], index as u64));
+            }
+            extra_acc += table.extra();
+        }
+        Some((seg - extra_acc, 0, 0))
+    }
+
+    /// 取显示行的文本窗口（超长行按 8KB 分段；普通行与逻辑行等值）。
+    ///
+    /// 编辑视图的每个显示行携带 `logicalRow` / `baseUtf16`，供前端光标/选区
+    /// 在逻辑行坐标上跨段映射；只读视图省略这两个字段。
+    pub fn fetch_display_rows(&self, start_row: u64, count: usize) -> Vec<RowText> {
+        let total = self.display_rows_total();
+        let mut rows = Vec::new();
+        let mut seg = start_row;
+        while rows.len() < count && seg < total {
+            let Some((row, base_utf16, index)) = self.seg_to_row_utf16(seg) else {
+                break;
+            };
+            let Ok(row_start) = self.row_start_pos(row) else {
+                break;
+            };
+            let row_start_global = self.global_offset(row_start);
+            let text = match self.long_rows.get(&row) {
+                None => {
+                    let Ok(row_end) = self.row_end_pos(row) else {
+                        break;
+                    };
+                    self.text_between(row_start, row_end)
+                }
+                Some(table) => {
+                    let Ok(row_end) = self.row_end_pos(row) else {
+                        break;
+                    };
+                    let row_len = self.global_offset(row_end) - row_start_global;
+                    let (from, to) = table.byte_span(index as usize, row_len);
+                    let start_pos = self.pos_from_global(row_start_global + from);
+                    let end_pos = self.pos_from_global(row_start_global + to);
+                    self.text_between(start_pos, end_pos)
+                }
+            };
+            rows.push(RowText {
+                row: seg,
+                text,
+                logical_row: Some(row),
+                base_utf16: Some(base_utf16),
+            });
+            seg += 1;
+        }
+        rows
+    }
+
+    /// 显示行首对应的阅读百分比（0.0–100.0；段首字节语义）。
+    pub fn percent_at_seg(&self, seg: u64) -> f64 {
+        let total = self.byte_len();
+        if total == 0 {
+            return 0.0;
+        }
+        let last = self.display_rows_total().saturating_sub(1);
+        let Some((row, _, index)) = self.seg_to_row_utf16(seg.min(last)) else {
+            return 0.0;
+        };
+        let Ok(row_start) = self.row_start_pos(row) else {
+            return 0.0;
+        };
+        let mut offset = self.global_offset(row_start);
+        if let Some(table) = self.long_rows.get(&row) {
+            offset += table.starts[index as usize];
+        }
+        ((offset as f64 / total as f64) * 100.0).min(100.0)
     }
 
     // ---- 内部：位置与映射 ----
@@ -534,6 +702,192 @@ impl EditDoc {
         self.line_tree = Fenwick::build_from(&unit_counts);
     }
 
+    /// 全局字节偏移 → 文档位置（线性走片段；片段数经合并后为量级 O(1)–O(10²)）。
+    fn pos_from_global(&self, global: u64) -> DocPos {
+        let mut remaining = global;
+        for (index, piece) in self.pieces.iter().enumerate() {
+            if remaining <= piece.len {
+                return DocPos {
+                    piece: index,
+                    off: remaining,
+                };
+            }
+            remaining -= piece.len;
+        }
+        self.doc_end_pos()
+    }
+
+    /// 初次构建超长行分段表（打开时文档仅一个原始片段，直接顺序扫描避免逐行前缀定位）。
+    fn rebuild_long_rows_initial(&mut self) {
+        self.long_rows.clear();
+        if self.byte_len() == 0 {
+            return;
+        }
+        let mut long_rows: Vec<u64> = Vec::new();
+        {
+            let bytes = self.original.bytes();
+            let file_end = bytes.len() as u64;
+            let mut row: u64 = 0;
+            let mut pos = self.bom_len;
+            while pos < file_end {
+                let (row_end, next) = match find_newline(bytes, self.encoding, pos) {
+                    Some((newline_start, newline_end)) => {
+                        (newline_start, newline_end.min(file_end))
+                    }
+                    None => (file_end, file_end),
+                };
+                if row_end - pos > DISPLAY_SEGMENT_BYTES {
+                    long_rows.push(row);
+                }
+                row += 1;
+                pos = next;
+            }
+        }
+        for row in long_rows {
+            if let Some(table) = self.build_long_row_table(row) {
+                self.long_rows.insert(row, table);
+            }
+        }
+    }
+
+    /// 为逻辑行构建分段表（≤ [`DISPLAY_SEGMENT_BYTES`] 时返回 `None`；跨片段按片段编码对齐）。
+    fn build_long_row_table(&self, row: u64) -> Option<LongRowSegments> {
+        let start = self.row_start_pos(row).ok()?;
+        let end = self.row_end_pos(row).ok()?;
+        let row_start_global = self.global_offset(start);
+        let row_end_global = self.global_offset(end);
+        let row_len = row_end_global.checked_sub(row_start_global)?;
+        if row_len <= DISPLAY_SEGMENT_BYTES {
+            return None;
+        }
+        let mut starts = vec![0u64];
+        let mut utf16_bases = vec![0u64];
+        let mut utf16_base = 0u64;
+        let mut cursor = start;
+        let mut cursor_byte = row_start_global;
+        while cursor_byte + DISPLAY_SEGMENT_BYTES < row_end_global {
+            let target = cursor_byte + DISPLAY_SEGMENT_BYTES;
+            let (boundary, boundary_byte) = self.snap_global_in_row(target, cursor, cursor_byte);
+            if boundary_byte <= cursor_byte || boundary_byte > row_end_global {
+                break;
+            }
+            let text = self.text_between(cursor, boundary);
+            utf16_base += text.encode_utf16().count() as u64;
+            starts.push(boundary_byte - row_start_global);
+            utf16_bases.push(utf16_base);
+            cursor = boundary;
+            cursor_byte = boundary_byte;
+        }
+        Some(LongRowSegments {
+            starts,
+            utf16_bases,
+        })
+    }
+
+    /// 在行内把全局字节偏移对齐到字符边界；返回 `(对齐后的位置, 全局偏移)`。
+    ///
+    /// 语义与只读模式的行内 8KB 分块一致（复用 [`snap_row_boundary`]，以当前段
+    /// 起点为对齐基准）；目标正好落在片段末尾时对齐到片段边界。
+    fn snap_global_in_row(&self, target: u64, cursor: DocPos, cursor_byte: u64) -> (DocPos, u64) {
+        let mut piece_index = cursor.piece;
+        let mut piece_local_start = cursor.off;
+        let mut base = cursor_byte;
+        while piece_index < self.pieces.len() {
+            let piece = self.pieces[piece_index];
+            let remaining_in_piece = piece.len - piece_local_start;
+            if target <= base + remaining_in_piece {
+                let local_target = piece_local_start + (target - base);
+                if local_target >= piece.len {
+                    return (
+                        self.normalize_pos(DocPos {
+                            piece: piece_index,
+                            off: piece.len,
+                        }),
+                        base + remaining_in_piece,
+                    );
+                }
+                let bytes = self.piece_bytes(&piece);
+                let encoding = self.encoding_for(&piece);
+                let snapped = snap_row_boundary(bytes, encoding, piece_local_start, local_target);
+                // 防御：极端损坏编码下对齐函数可能不推进，此时采用原始候选点
+                let snapped = if snapped <= piece_local_start {
+                    local_target
+                } else {
+                    snapped
+                };
+                return (
+                    DocPos {
+                        piece: piece_index,
+                        off: snapped,
+                    },
+                    base + (snapped - piece_local_start),
+                );
+            }
+            base += remaining_in_piece;
+            piece_index += 1;
+            piece_local_start = 0;
+        }
+        (self.doc_end_pos(), base)
+    }
+
+    /// 维护超长行分段表（编辑后调用；增量更新受影响行 + 平移后续行号）。
+    ///
+    /// 参数（应用前后坐标系）：
+    /// - `touched`：首个受影响逻辑行（编辑起点行号在应用前后不变）；
+    /// - `old_end`：受影响区间在应用前的末行（插入 = 起点行；删除/替换 = 区间末行）；
+    /// - `inserted_newlines`：本批插入文本中的换行总数；
+    /// - `deleted_rows`：本批删除区间跨过的行数（Σ(end_row - start_row)）。
+    fn update_long_rows(
+        &mut self,
+        touched: u64,
+        old_end: u64,
+        inserted_newlines: u64,
+        deleted_rows: u64,
+    ) {
+        if !self.long_rows.is_empty() {
+            // 旧受影响区间内的表全部失效（内容变化或行合并）
+            let stale: Vec<u64> = self
+                .long_rows
+                .range(touched..=old_end)
+                .map(|(row, _)| *row)
+                .collect();
+            for row in stale {
+                self.long_rows.remove(&row);
+            }
+            // 区间之后的行号整体平移
+            let delta = inserted_newlines as i64 - deleted_rows as i64;
+            if delta != 0 {
+                let shifted: Vec<(u64, LongRowSegments)> = self
+                    .long_rows
+                    .range(old_end + 1..)
+                    .map(|(row, table)| (*row, table.clone()))
+                    .collect();
+                for (row, _) in &shifted {
+                    self.long_rows.remove(row);
+                }
+                for (row, table) in shifted {
+                    let new_row = (row as i64 + delta).max(0) as u64;
+                    self.long_rows.insert(new_row, table);
+                }
+            }
+        }
+        // 复查新受影响区间（编辑范围 + 插入换行产生的新行）
+        let new_end = touched + inserted_newlines;
+        for row in touched..=new_end {
+            if row >= self.rows_total() {
+                break;
+            }
+            match self.build_long_row_table(row) {
+                Some(table) => {
+                    self.long_rows.insert(row, table);
+                }
+                None => {
+                    self.long_rows.remove(&row);
+                }
+            }
+        }
+    }
+
     // ---- 编辑应用与撤销/重做（阶段 3b）----
 
     /// 当前状态版本号（单调递增；前端刷新依据）。
@@ -561,12 +915,23 @@ impl EditDoc {
         }
         // 1) 解析所有操作（相对编辑前状态）：全局字节区间 + 替换文本 + 受影响行
         let mut resolved: Vec<(u64, u64, Vec<u8>, u64)> = Vec::with_capacity(ops.len());
+        // 超长行分段维护所需的区间统计（应用前坐标系）
+        let mut old_end = 0u64;
+        let mut deleted_rows = 0u64;
+        let mut inserted_newlines = 0u64;
         for op in ops {
-            let (start, end, text, touched_row) = match op {
+            let (start, end, text, touched_row, span_rows, span_newlines) = match op {
                 EditOp::Insert { row, utf16, text } => {
                     let pos = self.resolve_pos(*row, *utf16)?;
                     let global = self.global_offset(pos);
-                    (global, global, text.clone().into_bytes(), *row)
+                    (
+                        global,
+                        global,
+                        text.clone().into_bytes(),
+                        *row,
+                        0,
+                        count_newlines(text.as_bytes()),
+                    )
                 }
                 EditOp::Delete {
                     start_row,
@@ -579,7 +944,14 @@ impl EditDoc {
                     if b < a {
                         return Err(EditError::InvalidPosition);
                     }
-                    (a, b, Vec::new(), *start_row)
+                    (
+                        a,
+                        b,
+                        Vec::new(),
+                        *start_row,
+                        end_row.saturating_sub(*start_row),
+                        0,
+                    )
                 }
                 EditOp::Replace {
                     start_row,
@@ -593,9 +965,19 @@ impl EditDoc {
                     if b < a {
                         return Err(EditError::InvalidPosition);
                     }
-                    (a, b, text.clone().into_bytes(), *start_row)
+                    (
+                        a,
+                        b,
+                        text.clone().into_bytes(),
+                        *start_row,
+                        end_row.saturating_sub(*start_row),
+                        count_newlines(text.as_bytes()),
+                    )
                 }
             };
+            old_end = old_end.max(touched_row + span_rows);
+            deleted_rows += span_rows;
+            inserted_newlines += span_newlines;
             resolved.push((start, end, text, touched_row));
         }
         let touched = resolved.iter().map(|item| item.3).min().unwrap_or(0);
@@ -612,11 +994,17 @@ impl EditDoc {
         self.coalesce();
         self.rebuild_trees();
         self.trailing_newline = self.doc_ends_with_newline();
+        self.update_long_rows(touched, old_end, inserted_newlines, deleted_rows);
         self.state_id = self.next_state_id;
         self.next_state_id += 1;
         self.redo_stack.clear();
         let snapshot_cost = (before.pieces.len() as u64)
-            * ((std::mem::size_of::<Piece>() + std::mem::size_of::<PieceMeta>()) as u64);
+            * ((std::mem::size_of::<Piece>() + std::mem::size_of::<PieceMeta>()) as u64)
+            + before
+                .long_rows
+                .values()
+                .map(LongRowSegments::cost_bytes)
+                .sum::<u64>();
         before.cost_bytes = cost + snapshot_cost;
         self.undo_cost += before.cost_bytes;
         self.undo_stack.push(before);
@@ -661,13 +1049,15 @@ impl EditDoc {
         self.original.bytes()
     }
 
-    /// 构造对外的编辑结果。
+    /// 构造对外的编辑结果（行号已换算为显示行）。
     fn applied(&self, touched_row: u64) -> EditApplied {
+        let last_row = self.rows_total().saturating_sub(1);
+        let touched_seg = self.seg_of_row_utf16(touched_row.min(last_row), 0).0;
         EditApplied {
             state_id: self.state_id,
             dirty: self.is_dirty(),
-            touched_row,
-            rows_total: self.rows_total(),
+            touched_row: touched_seg,
+            rows_total: self.display_rows_total(),
             byte_len: self.byte_len(),
         }
     }
@@ -677,6 +1067,7 @@ impl EditDoc {
         UndoStep {
             pieces: self.pieces.clone(),
             metas: self.metas.clone(),
+            long_rows: self.long_rows.clone(),
             trailing_newline: self.trailing_newline,
             state_id: self.state_id,
             touched_row,
@@ -690,6 +1081,7 @@ impl EditDoc {
         let current = UndoStep {
             pieces: std::mem::take(&mut self.pieces),
             metas: std::mem::take(&mut self.metas),
+            long_rows: std::mem::take(&mut self.long_rows),
             trailing_newline: self.trailing_newline,
             state_id: self.state_id,
             touched_row: step.touched_row,
@@ -697,6 +1089,7 @@ impl EditDoc {
         };
         self.pieces = step.pieces;
         self.metas = step.metas;
+        self.long_rows = step.long_rows;
         self.trailing_newline = step.trailing_newline;
         self.state_id = step.state_id;
         current
@@ -978,29 +1371,21 @@ fn detect_bom_len(bytes: &[u8], encoding: FileEncoding) -> u64 {
     }
 }
 
-/// 可编辑性守卫：任一逻辑行超过 [`EDIT_MAX_ROW_BYTES`] 即拒绝（提前退出）。
-fn ensure_editable(bytes: &[u8], encoding: FileEncoding, start: u64) -> Result<(), EditError> {
+/// 统计 UTF-8 字节中的换行单元数（插入文本的行数贡献；用于显示分段维护）。
+fn count_newlines(bytes: &[u8]) -> u64 {
     let len = bytes.len() as u64;
-    let mut pos = start;
+    let mut count = 0u64;
+    let mut pos = 0u64;
     while pos < len {
-        match find_newline(bytes, encoding, pos) {
-            Some((newline_start, next)) => {
-                if newline_start - pos > EDIT_MAX_ROW_BYTES {
-                    return Err(EditError::UnsupportedLongLine {
-                        bytes: newline_start - pos,
-                    });
-                }
-                pos = next.min(len);
+        match find_newline(bytes, FileEncoding::Utf8, pos) {
+            Some((_, end)) => {
+                count += 1;
+                pos = end.min(len);
             }
-            None => {
-                if len - pos > EDIT_MAX_ROW_BYTES {
-                    return Err(EditError::UnsupportedLongLine { bytes: len - pos });
-                }
-                break;
-            }
+            None => break,
         }
     }
-    Ok(())
+    count
 }
 
 #[cfg(test)]
@@ -1098,24 +1483,90 @@ mod tests {
         assert_eq!(doc.byte_len(), 0);
     }
 
-    /// 超长行拒绝编辑（> 64KB），但错误携带字节数。
+    /// 超长行可进入编辑：显示分段与只读模式逐段一致，拼接无损。
     #[test]
-    fn long_line_is_rejected() {
-        let dir = tempfile::tempdir().expect("创建临时目录失败");
-        let mut bytes = vec![b'x'; (EDIT_MAX_ROW_BYTES + 1) as usize];
-        bytes.push(b'\n');
-        let path = write_file(dir.path(), "long.txt", &bytes);
-        match EditDoc::open(&path, None, 100).err() {
-            Some(EditError::UnsupportedLongLine { bytes: reported }) => {
-                assert_eq!(reported, EDIT_MAX_ROW_BYTES + 1);
-            }
-            other => panic!("应拒绝编辑：{other:?}"),
+    fn long_row_display_segments_match_read_mode() {
+        let mut text = String::new();
+        while text.len() < 30_000 {
+            text.push_str("中文abc");
         }
-        // 64KB 整行可编辑
-        let dir2 = tempfile::tempdir().expect("创建临时目录失败");
-        let ok_bytes = vec![b'y'; EDIT_MAX_ROW_BYTES as usize];
-        let ok_path = write_file(dir2.path(), "ok.txt", &ok_bytes);
-        assert!(EditDoc::open(&ok_path, None, 100).is_ok());
+        let bytes = text.as_bytes();
+        let (_dir, doc) = open_doc(bytes, None);
+        let index = RowIndex::build(bytes, FileEncoding::Utf8);
+        assert_eq!(doc.rows_total(), 1);
+        assert_eq!(doc.display_rows_total(), index.rows_total());
+        let expected = read_fetch_rows(bytes, &index, 0, index.rows_total() as usize);
+        let actual = doc.fetch_display_rows(0, index.rows_total() as usize);
+        assert_eq!(actual.len(), expected.len());
+        let mut joined = String::new();
+        for (seg, (got, want)) in actual.iter().zip(expected.iter()).enumerate() {
+            assert_eq!(got.row, seg as u64);
+            assert_eq!(got.text, want.text, "段 {seg} 文本不一致");
+            assert_eq!(got.logical_row, Some(0), "段 {seg} 逻辑行归属错误");
+            joined.push_str(&got.text);
+        }
+        if joined != text {
+            let first = joined
+                .bytes()
+                .zip(text.bytes())
+                .position(|(left, right)| left != right);
+            panic!(
+                "分段拼接与原文不一致：joined.len()={} text.len()={} first_diff={first:?}",
+                joined.len(),
+                text.len()
+            );
+        }
+        // 映射往返：逻辑位置 → 段 → 逻辑位置
+        let (seg, local) = doc.seg_of_row_utf16(0, 5);
+        let (row, base, _) = doc.seg_to_row_utf16(seg).expect("段应存在");
+        assert_eq!(row, 0);
+        assert_eq!(base + local, 5);
+    }
+
+    /// 长行内编辑：分段表随编辑更新，撤销完整恢复。
+    #[test]
+    fn edit_inside_long_row_updates_segments() {
+        let text = "x".repeat(20_000);
+        let (_dir, mut doc) = open_doc(text.as_bytes(), None);
+        let baseline = doc.display_rows_total();
+        assert!(baseline >= 3, "20000 字节应产生多段：{baseline}");
+        let applied = doc
+            .apply_edits(&[EditOp::Insert {
+                row: 0,
+                utf16: 20_000,
+                text: "尾巴".into(),
+            }])
+            .expect("长行内插入失败");
+        assert_eq!(applied.rows_total, doc.display_rows_total());
+        assert!(doc.row_text(0).expect("行存在").ends_with("尾巴"));
+        doc.undo().expect("应可撤销");
+        assert_eq!(doc.display_rows_total(), baseline, "撤销后分段数应还原");
+        assert_eq!(doc.row_text(0).as_deref(), Some(text.as_str()));
+    }
+
+    /// 长行拆分（插入换行）后分段表消失；撤销后恢复。
+    #[test]
+    fn long_row_split_and_restore() {
+        let text = "a".repeat(12_000);
+        let (_dir, mut doc) = open_doc(text.as_bytes(), None);
+        let baseline = doc.display_rows_total();
+        assert!(baseline > 1);
+        // 在 6000 处拆分：两行长度均 ≤ 8KB，均不应再有分段
+        doc.apply_edits(&[EditOp::Insert {
+            row: 0,
+            utf16: 6000,
+            text: "\n".into(),
+        }])
+        .expect("插入换行失败");
+        assert_eq!(doc.rows_total(), 2);
+        assert_eq!(
+            doc.display_rows_total(),
+            doc.rows_total(),
+            "拆分后两行都未超长，显示段应等于逻辑行"
+        );
+        assert_eq!(doc.seg_of_row_utf16(1, 0).0, 1);
+        doc.undo().expect("应可撤销");
+        assert_eq!(doc.display_rows_total(), baseline);
     }
 
     /// 行定位越界与 fetch 越界行为。

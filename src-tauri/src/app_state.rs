@@ -237,7 +237,7 @@ impl AppState {
     /// 语义：
     /// - 编辑文档创建后保留（脏态跨模式持续），`rows()` 改由编辑文档供数；
     /// - 关闭编辑模式仅切换 `editing` 标志，不影响未保存修改；
-    /// - 单行超 64KB 的文件在进入时被拒绝（`EditError::UnsupportedLongLine`）。
+    /// - 超长行由显示分段承载（编辑视图与只读一致），可正常进入编辑。
     pub fn toggle_edit(
         &mut self,
         tab_id: u64,
@@ -584,7 +584,9 @@ mod tests {
         let settings = AppSettings::default();
         let (info, _) = state.open_file(&path, &settings).expect("打开失败");
 
-        let toggled = state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        let toggled = state
+            .toggle_edit(info.tab_id, &settings)
+            .expect("进入编辑失败");
         assert!(toggled.editing);
         assert!(!toggled.dirty);
 
@@ -607,7 +609,9 @@ mod tests {
         );
 
         // 切回只读：编辑文档保留（脏态持续），供数仍来自编辑文档
-        let off = state.toggle_edit(info.tab_id, &settings).expect("退出编辑失败");
+        let off = state
+            .toggle_edit(info.tab_id, &settings)
+            .expect("退出编辑失败");
         assert!(!off.editing);
         assert!(off.dirty);
         assert_eq!(
@@ -624,7 +628,9 @@ mod tests {
         let mut state = AppState::new();
         let settings = AppSettings::default();
         let (info, _) = state.open_file(&path, &settings).expect("打开失败");
-        state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        state
+            .toggle_edit(info.tab_id, &settings)
+            .expect("进入编辑失败");
         state
             .apply_edit_ops(
                 info.tab_id,
@@ -658,7 +664,9 @@ mod tests {
         let mut state = AppState::new();
         let settings = AppSettings::default();
         let (info, _) = state.open_file(&path, &settings).expect("打开失败");
-        state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        state
+            .toggle_edit(info.tab_id, &settings)
+            .expect("进入编辑失败");
         state
             .apply_edit_ops(
                 info.tab_id,
@@ -711,7 +719,9 @@ mod tests {
         let mut state = AppState::new();
         let settings = AppSettings::default();
         let (info, _) = state.open_file(&path, &settings).expect("打开失败");
-        state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        state
+            .toggle_edit(info.tab_id, &settings)
+            .expect("进入编辑失败");
         state
             .apply_edit_ops(
                 info.tab_id,
@@ -765,7 +775,9 @@ mod tests {
         let mut state = AppState::new();
         let settings = AppSettings::default();
         let (info, _) = state.open_file(&path, &settings).expect("打开失败");
-        state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        state
+            .toggle_edit(info.tab_id, &settings)
+            .expect("进入编辑失败");
         state
             .apply_edit_ops(
                 info.tab_id,
@@ -794,7 +806,9 @@ mod tests {
         let mut state = AppState::new();
         let settings = AppSettings::default();
         let (info, _) = state.open_file(&path, &settings).expect("打开失败");
-        state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        state
+            .toggle_edit(info.tab_id, &settings)
+            .expect("进入编辑失败");
         state
             .apply_edit_ops(
                 info.tab_id,
@@ -811,21 +825,22 @@ mod tests {
         ));
     }
 
-    /// 单行超 64KB 拒绝进入编辑（读取不受影响）。
+    /// 超长行可进入编辑（显示分段）；读取不受影响。
     #[test]
-    fn toggle_edit_rejects_long_line() {
+    fn toggle_edit_allows_long_line() {
         let dir = tempfile::tempdir().expect("创建临时目录失败");
         let long_line = "x".repeat(70 * 1024);
         let path = write_file(dir.path(), "long.txt", &long_line);
         let mut state = AppState::new();
         let settings = AppSettings::default();
         let (info, _) = state.open_file(&path, &settings).expect("打开失败");
-        assert!(matches!(
-            state.toggle_edit(info.tab_id, &settings),
-            Err(AppStateError::Edit(EditError::UnsupportedLongLine { .. }))
-        ));
-        // 读取仍可用（读模式对超长行做 8KB 显示分块）
+        let info = state
+            .toggle_edit(info.tab_id, &settings)
+            .expect("超长行应可进入编辑");
+        assert!(info.editing);
+        assert!(info.rows_total > 1, "超长行应产生显示分段");
         let payload = state.rows(info.tab_id, 0, 1).expect("取行失败");
         assert!(!payload.rows[0].text.is_empty());
+        assert!(payload.rows[0].logical_row.is_some());
     }
 }

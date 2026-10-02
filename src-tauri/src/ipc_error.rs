@@ -31,8 +31,6 @@ pub const CODE_CONFIG_SAVE: &str = "CONFIG_SAVE";
 pub const CODE_HISTORY_SAVE: &str = "HISTORY_SAVE";
 /// 会话保存失败
 pub const CODE_SESSION_SAVE: &str = "SESSION_SAVE";
-/// 存在超长行，无法进入编辑
-pub const CODE_EDIT_LINE_TOO_LONG: &str = "EDIT_LINE_TOO_LONG";
 /// 编辑位置无效/越界
 pub const CODE_INVALID_POSITION: &str = "INVALID_POSITION";
 /// 文件被外部修改（保存冲突）
@@ -97,10 +95,6 @@ impl From<EditError> for IpcError {
     fn from(err: EditError) -> Self {
         match err {
             EditError::File(err) => err.into(),
-            EditError::UnsupportedLongLine { bytes } => Self::new(
-                CODE_EDIT_LINE_TOO_LONG,
-                format!("该文件包含超长行（{bytes} 字节），暂不支持编辑"),
-            ),
             EditError::RowOutOfRange { row } => {
                 Self::new(CODE_INVALID_POSITION, format!("行号越界：{row}"))
             }
@@ -116,10 +110,9 @@ impl From<EditError> for IpcError {
 impl From<SaveError> for IpcError {
     fn from(err: SaveError) -> Self {
         match err {
-            SaveError::Conflict => Self::new(
-                CODE_FILE_CONFLICT,
-                "文件已在外部被修改，请选择覆盖或另存为",
-            ),
+            SaveError::Conflict => {
+                Self::new(CODE_FILE_CONFLICT, "文件已在外部被修改，请选择覆盖或另存为")
+            }
             SaveError::Unrepresentable { ch } => Self::new(
                 CODE_ENCODING_UNREPRESENTABLE,
                 format!("当前编码无法表示字符「{ch}」，可改用 UTF-8 保存"),
@@ -193,12 +186,9 @@ mod tests {
         assert_eq!(passthrough.code, CODE_FILE_NOT_FOUND);
     }
 
-    /// 编辑类错误映射（超长行 / 位置越界 / 脏态阻止）。
+    /// 编辑类错误映射（位置越界 / 脏态阻止）。
     #[test]
     fn edit_errors_map() {
-        let long_line: IpcError = EditError::UnsupportedLongLine { bytes: 70000 }.into();
-        assert_eq!(long_line.code, CODE_EDIT_LINE_TOO_LONG);
-        assert!(long_line.message.contains("70000"));
         let position: IpcError = EditError::RowOutOfRange { row: 99 }.into();
         assert_eq!(position.code, CODE_INVALID_POSITION);
         let dirty: IpcError = AppStateError::DirtyEdit(3).into();

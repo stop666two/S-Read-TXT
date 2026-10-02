@@ -29,16 +29,18 @@ pub trait DocumentSource {
     /// 当前生效编码（状态栏展示）。
     fn encoding(&self) -> FileEncoding;
 
-    /// 逻辑行总数（虚拟滚动高度依据）。
+    /// 显示行总数（虚拟滚动高度依据；超长逻辑行按 8KB 分段计入）。
     fn rows_total(&self) -> u64;
 
     /// 原始字节总长（状态栏展示；百分比计算基准）。
     fn byte_len(&self) -> u64;
 
-    /// 取 `[start_row, start_row + count)` 行文本；越界起点返回空列表。
+    /// 取 `[start_row, start_row + count)` 显示行文本；越界起点返回空列表。
+    ///
+    /// 编辑视图的超长行分段附带 `logicalRow` / `baseUtf16` 供光标映射。
     fn fetch_rows(&self, start_row: u64, count: usize) -> Vec<RowText>;
 
-    /// 行首对应的阅读百分比（0.0–100.0；行首字节语义，与只读路径一致）。
+    /// 显示行首对应的阅读百分比（0.0–100.0；行首字节语义，与只读路径一致）。
     fn percent_at_row(&self, row: u64) -> f64;
 }
 
@@ -78,7 +80,7 @@ impl DocumentSource for EditDoc {
     }
 
     fn rows_total(&self) -> u64 {
-        EditDoc::rows_total(self)
+        EditDoc::display_rows_total(self)
     }
 
     fn byte_len(&self) -> u64 {
@@ -86,11 +88,11 @@ impl DocumentSource for EditDoc {
     }
 
     fn fetch_rows(&self, start_row: u64, count: usize) -> Vec<RowText> {
-        EditDoc::fetch_rows(self, start_row, count)
+        EditDoc::fetch_display_rows(self, start_row, count)
     }
 
     fn percent_at_row(&self, row: u64) -> f64 {
-        EditDoc::percent_at_row(self, row)
+        EditDoc::percent_at_seg(self, row)
     }
 }
 

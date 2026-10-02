@@ -254,18 +254,28 @@ pub(crate) fn read_utf16_unit(bytes: &[u8], position: usize, little_endian: bool
 }
 
 /// 将 8KB 分块候选点回退到字符边界（保证 `start < 返回值 ≤ candidate`）。
-fn snap_row_boundary(bytes: &[u8], encoding: FileEncoding, start: u64, candidate: u64) -> u64 {
+///
+/// 可见性：`pub(crate)`（编辑引擎的显示分段复用同一对齐规则）。
+pub(crate) fn snap_row_boundary(
+    bytes: &[u8],
+    encoding: FileEncoding,
+    start: u64,
+    candidate: u64,
+) -> u64 {
     let len = bytes.len() as u64;
     let candidate = candidate.min(len);
     match encoding {
         FileEncoding::Utf8 => {
-            // 回退跳过 UTF-8 续字节（10xxxxxx）
-            let mut position = candidate;
-            while position > start && (bytes[(position - 1) as usize] & 0b1100_0000) == 0b1000_0000
+            // 回退到字符边界：position 处是续字节（10xxxxxx）时继续回退。
+            // 注意：判定必须看 bytes[position] 本身，否则会落在字符中间（历史缺陷）。
+            let mut position = candidate.min(len);
+            while position > start
+                && position < len
+                && (bytes[position as usize] & 0b1100_0000) == 0b1000_0000
             {
                 position -= 1;
             }
-            position
+            position.max(start + 1)
         }
         FileEncoding::Utf16Le | FileEncoding::Utf16Be => {
             let little_endian = encoding == FileEncoding::Utf16Le;

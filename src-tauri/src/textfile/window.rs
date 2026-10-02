@@ -9,12 +9,22 @@ use crate::textfile::encoding::decode_range;
 use crate::textfile::line_index::RowIndex;
 
 /// 单行文本（显示行号 + 解码后的 UTF-8 内容；可序列化供 IPC 载荷嵌套）。
+///
+/// 编辑视图对超长逻辑行按 8KB 分段后，附带 `logicalRow` / `baseUtf16`
+/// （段所属逻辑行与段首在行内的 UTF-16 偏移）；只读视图与普通行省略。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RowText {
     /// 显示行号（从 0 开始）
     pub row: u64,
     /// 解码后的行文本（不含换行符）
     pub text: String,
+    /// 段所属逻辑行（仅编辑视图的超长行分段提供）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_row: Option<u64>,
+    /// 段首在逻辑行内的 UTF-16 偏移（仅编辑视图的超长行分段提供）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_utf16: Option<u64>,
 }
 
 /// 取 `[start_row, start_row + count)` 的文本窗口。
@@ -25,6 +35,8 @@ pub fn fetch_rows(bytes: &[u8], index: &RowIndex, start_row: u64, count: usize) 
         .map(|(row, start, end)| RowText {
             row,
             text: decode_range(&bytes[start as usize..end as usize], index.encoding()),
+            logical_row: None,
+            base_utf16: None,
         })
         .collect()
 }
@@ -45,14 +57,18 @@ mod tests {
             rows[0],
             RowText {
                 row: 0,
-                text: "one".into()
+                text: "one".into(),
+                logical_row: None,
+                base_utf16: None,
             }
         );
         assert_eq!(
             rows[2],
             RowText {
                 row: 2,
-                text: "three".into()
+                text: "three".into(),
+                logical_row: None,
+                base_utf16: None,
             }
         );
         assert!(fetch_rows(bytes, &index, 3, 5).is_empty());
@@ -69,11 +85,15 @@ mod tests {
             vec![
                 RowText {
                     row: 1,
-                    text: "b".into()
+                    text: "b".into(),
+                    logical_row: None,
+                    base_utf16: None,
                 },
                 RowText {
                     row: 2,
-                    text: "c".into()
+                    text: "c".into(),
+                    logical_row: None,
+                    base_utf16: None,
                 },
             ]
         );
@@ -113,5 +133,20 @@ mod tests {
         let joined: String = rows.iter().map(|row| row.text.as_str()).collect();
         assert_eq!(joined.len(), 20_000);
         assert_eq!(rows.len(), 3);
+    }
+
+    /// 多字节超长行分块无损（回归：8KB 边界曾切进字符中间，两侧产生替换符）。
+    #[test]
+    fn long_line_chunks_multibyte_join_losslessly() {
+        let mut text = String::new();
+        while text.len() < 20_000 {
+            text.push_str("中文abc");
+        }
+        let bytes = text.as_bytes();
+        let index = RowIndex::build(bytes, FileEncoding::Utf8);
+        let rows = fetch_rows(bytes, &index, 0, index.rows_total() as usize);
+        let joined: String = rows.iter().map(|row| row.text.as_str()).collect();
+        assert_eq!(joined, text, "分段拼接必须与原文一致");
+        assert!(!joined.contains('\u{FFFD}'), "字符边界对齐后不应出现替换符");
     }
 }
