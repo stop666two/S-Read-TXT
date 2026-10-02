@@ -117,6 +117,8 @@
 | 4a | 编辑命令接线：`toggle_edit`（首次创建编辑文档 + 磁盘基准快照）/ `apply_edits` / `undo_edit` / `redo_edit` / `save_tab` / `save_tab_as` / `reload_tab`；`get_rows` 编辑态供数切换；`EditOp` 反序列化（kind + camelCase）；`EditDoc::percent_at_row`；脏态阻止编码切换（重载为无条件重建，确认由前端负责）；错误码映射（INVALID_POSITION / FILE_CONFLICT / ENCODING_UNREPRESENTABLE / NOT_EDITING / EDIT_DIRTY） | ✅ 完成 | lib **148/148**（新增 9：编辑文档生命周期/撤销重做/保存与冲突/另存为重定向/重载丢弃/脏态拦截/超长行拒绝 + 错误映射 2）；`cargo build` 0 告警 |
 | 4b | 前端编辑 UI：切换入口与脏标记、光标/选区（点击/拖选/Shift+方向键/全选）、输入/删除/回车、IME 隐藏锚点、剪切复制粘贴、Ctrl+S 保存流（编码询问/冲突/.bak）、脏关闭三态确认 | ✅ 完成 | 见「切片 4b 详情」；vitest **47/47**、编辑冒烟 **12/12**、对抗冒烟 **40/40**、cargo **170/170**；截图 `docs/screenshots/phase4b-{edit,abuse}.png` |
 | 4c | 查找/替换（大小写、下一个/替换/全部）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟）、**超长行完整分段渲染（维护者确认）** | ✅ 完成 | 超长行分段（100MB 验收 9/9）；查找/替换 E2E 14/14；**IME 组合输入 E2E 7/7**（组合显示/候选更新/提交入库/取消无副作用/UTF-8 保存）；截图 phase4c-{longline,find,ime}.png |
+| 5a | 快捷键引擎：15 动作默认方案、应用内全局捕获、Ctrl+1~9 固定键、编辑态让位、绑定热刷新 | ✅ 完成（`09cb953`） | E2E `smoke-shortcuts` **17/17**；修复 `select` 未同步后端活动标签的真实缺陷（含 close 东侧回落）；新增 `set_active_tab`/`get_default_shortcuts`；cargo 174 lib、vitest 70 |
+| 5b | 设置窗口（按需创建）+ 快捷键自定义（录制/冲突/保留键/恢复默认/修改即存/主窗热刷新） | ✅ 完成 | E2E `smoke-settings` **17/17**；`smoke-buttons` **28/28**（C8 改开设置窗）；回归 edit 12/12、abuse 41/41、shortcuts 17/17；截图 `docs/screenshots/phase5-settings.png` |
 
 > 扩展点预留（维护者要求）：`textfile::source::DocumentSource` 契约已落地——未来解析器/新格式实现该 trait 并在打开流程分派即可接入（AppState 取行与前端渲染零改动）；编辑契约仅绑定文本引擎，解析类文档默认只读。
 
@@ -181,3 +183,30 @@
   4. 状态栏「编码（点击切换）」是假标签 → 改为真实上弹菜单（新增共享组件 `EncodingMenu.svelte`，工具栏/状态栏同款）。
   5. 查看菜单「全屏」灰 → 启用（含 F11）。
 - 回归：smoke-edit 12/12、smoke-titlebar 7/7、smoke-abuse 41/41；截图 `docs/screenshots/phase5-buttons-{menu,statusbar}.png`。
+
+## 阶段 5 详情（快捷键引擎与设置窗口；2026-10-02）
+
+### 5a 引擎 + 默认方案（提交 09cb953）
+- `src/lib/shortcuts/{types,keys,engine}.ts` + 单测（vitest 70，其中新增 18）：捕获阶段全局监听、组合键规范化（与 Rust 默认表同格式 `Ctrl+Shift+Tab`/`PgDn`/`F11`）、弹窗挂起、编辑上下文让位（PgUp/PgDn/Home/End 归编辑器）、Ctrl+1~9 固定标签跳转（不参与自定义）
+- 15 动作接线（打开/保存/另存为/编辑切换/关闭/循环标签/翻页/首尾/全屏/查找/替换/历史提示）；绑定加载 `get_settings` + `srt://shortcuts-changed` 事件 + 窗口聚焦双通道热刷新
+- **修复真实缺陷**：前端 `tabs.select` 只改前端镜像 → 后端活动标签不同步（点击标签后关闭回落错误）；新增 `set_active_tab` 命令；后端 close 回落改为「东侧相邻优先，无则西侧」（`app_state.rs`）+ 2 测试
+- 新增 `get_default_shortcuts` 命令（默认表唯一真源）；`scripts/lib/dialog.mjs` 抽取共享原生对话框探针
+- E2E `scripts/smoke-shortcuts.mjs` **17/17**（固定键/循环/关闭/翻页首尾/F11/编辑切换/查找条/打开对话框）
+
+### 5b 设置窗口 + 自定义（本次提交）
+- Rust `open_settings` 命令：**按需创建**独立窗口（`WebviewWindowBuilder`，640×520、无边框、不可最大化）；已存在则显示+聚焦——避免常驻隐藏 WebView 的内存开销
+- 前端多入口：`settings.html` + `src/windows/settings/{main.ts,SettingsApp.svelte,ShortcutsTab.svelte}`；五页签（快捷键可用，其余占位）；`TitleBar` 增 `showMaximize` prop；`vite.config.ts` 多入口
+- 快捷键页签：15 动作列表、点击录制（Esc 取消、仅修饰键等待主键）、冲突检测（重复动作拒绝）、保留键拒绝（Ctrl+1~9）、单条/全部恢复默认、**修改即存**（覆盖表落盘）→ `emitTo('main','srt://shortcuts-changed')` 主窗口热刷新
+- 工具栏「设置」启用；ipc 增 `openSettings`/`getSettings`/`saveSettings`/`getDefaultShortcuts` 与配置类型
+- 修复：`save_settings` 前端入参形状错误（后端 `shortcuts` 为**扁平映射**，非 `{schemaVersion, bindings}`）——首次真实调用该命令时暴露
+- E2E `scripts/smoke-settings.mjs` **17/17**（录制→落盘→冲突→保留键→取消→单条恢复→全部恢复→主窗口自定义生效/旧键解绑/恢复后复原）；`smoke-buttons` C8 改「打开设置窗口→关闭」**28/28**；`smoke-cdp.findTarget` 增 URL 过滤（多窗口目标选择）
+- 截图 `docs/screenshots/phase5-settings.png`
+- **教训（写入本文件）**：①冒烟套件必须串行运行；②`cargo test`/`cargo build` 会用 dev 语义覆盖 `target/debug/s-read-txt.exe`（窗口显示「localhost 拒绝连接」）——冒烟前必须 `npm run tauri build -- --debug --no-bundle` 重新构建；③关闭窗口的 CDP 调用不可 `await`（窗口销毁后响应永不到达）——改走标题栏关闭按钮的 fire-and-forget 点击。
+
+### 5c 全量自检、多语言与扩展测试（本次提交）
+- **根治「localhost 拒绝连接」**（教训②的永久修复）：根因 = Tauri 以 `custom-protocol` feature 区分打包/开发模式，裸 `cargo build`/`cargo test` 未启用 → dev 语义；修复 = `Cargo.toml` 常开 `custom-protocol`（故意裸 `cargo build` 后直接启动实测正常）；README 已记录与代价（不支持 `tauri dev` HMR，本项目不用）
+- **`scripts/verify-all.mjs` 全量自检**：一条命令串行 16 步（编码/svelte-check/vitest/fmt/cargo 全测/构建/11 套 E2E），报告落盘 `docs/verify/latest.md`；首跑 11/15 暴露 4 项问题（fmt 未过、settings 缺对话框助手、shortcuts 打字竞态、abuse 偶发）→ 修复后 **15/15**
+- **多语言**：Rust +10 项（编码往返/EUC-KR 检测/日韩西里尔查找/ZWJ emoji 编辑/组合附加符/Shift_JIS 保存字节往返/会话自动检测）；新 E2E `smoke-i18n.mjs` **27/27**（8 语言内容 + Shift_JIS/EUC-KR/Big5/windows-1252 的检测/显示/切换/编辑/保存字节一致）
+- **E2E 扩展**：`smoke-settings` 30 项（录制/冲突/保留键/恢复默认/主窗生效/**跨重启持久化**/页签占位）、`smoke-shortcuts` 19 项（PgUp/历史提示/无标签安全/Ctrl+S 保存弹窗/Ctrl+Shift+S 另存为/三态弹窗与模态挂起）、`smoke-buttons` C8（开设置窗口→关闭）
+- **真实缺陷（测试发现）**：替换/全部替换后焦点停留在查找条 → `Ctrl+Z` 失效；修复 = 动作成功后 `focusEditorProxy()` 归还焦点
+- 测试总量（截至 5c）：cargo **186 lib + 15 对抗 + 5 集成**；vitest **77**；E2E 套件 11 个（edit/find/ime/i18n/titlebar/buttons/settings/shortcuts/abuse/longline/…）；`node scripts/verify-all.mjs` 一键复现全部质量门禁
