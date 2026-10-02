@@ -13,8 +13,13 @@
 - 编辑引擎后端（阶段 3，为编辑模式打底）：片表（原文零复制 + 只增新增缓冲）、双 Fenwick 行映射（512 行检查点外的新增路径，行↔位置 O(log n)）、跨片 CRLF 安全计数、编辑应用（插入/删除/替换，UTF-16 位置解析与代理对处理，批次 = 单撤销步）、撤销/重做（50MB/1000 步双上限交换式快照）、保存链（外部冲突检测与强制覆盖、`.bak` 首存备份、BOM 策略、同编码字节直拷与异编码流式转码、不可表示字符原子失败、临时文件 + rename 原子写）；编辑守卫：单行 >64KB 拒绝进入编辑（读取不受影响）
 - 持续集成与发布流水线：CI（任意分支 push / PR：仓库卫生检查含 AGENTS.md 防泄露、前端检查测试构建、Rust 全量测试与完整构建、32 位与 ARM64 兼容检查）；Release（仅 tag 触发：三架构 x64/x86/ARM64 NSIS 构建，描述含测试摘要/构建环境/变更明细/SHA256/已知问题与备份提醒，Releases 仅保留最新一个、旧 Release 自动清理、tag 永久保留）
 - 编辑交互后端接线（阶段 4a）：标签编辑文档生命周期（`toggle_edit` 首次进入创建并保留，脏态跨模式持续）、编辑命令（`apply_edits` / `undo_edit` / `redo_edit` / `save_tab` / `save_tab_as` / `reload_tab`）、另存为标签重定向（路径/会话/编辑文档重建 + 写入历史）、`get_rows` 编辑态供数切换、编辑态阅读百分比、脏态阻止编码切换与重载、新增错误码（EDIT_LINE_TOO_LONG / INVALID_POSITION / FILE_CONFLICT / ENCODING_UNREPRESENTABLE / NOT_EDITING / EDIT_DIRTY）
+- 编辑交互层（阶段 4b）：编辑模式切换与脏标记、光标与选区（点击/拖选/Shift+方向键/Ctrl+A）、输入/删除/回车、中文输入法组合输入（隐藏锚点）、剪切/复制/粘贴、撤销/重做快捷键、保存流（编码询问/冲突弹窗/.bak 备份）、脏标签与窗口关闭三态确认
+- 窗口与启动体验：消除调试控制台窗口、首帧渲染后显示（防冷启动空白）、窗口与任务栏图标、防白闪背景色、WebView2 用户数据目录便携化（data/webview）
 
 ### 修复
 
 - Windows GNU 工具链构建失败：PATH 中旧版 `libgcc_s_seh-1.dll`（Tesseract-OCR）遮蔽 MSYS2 运行库，导致 `cc1.exe` 启动失败（`0xC0000139 STATUS_ENTRYPOINT_NOT_FOUND`）而 `windres` 报 `preprocessing failed.`；修复方式见 README「Windows 构建环境注意」
 - Windows GNU 工具链下，链接 GUI 依赖的测试目标因缺少 Common-Controls v6 清单而加载旧版 comctl32（导入 `TaskDialogIndirect` 失败，`0xC0000139`）；通过 lib+bin 拆分（库 = 纯逻辑，测试不链接 GUI）规避，应用二进制不受影响
+- 冷启动窗口可能在内容就绪前显示为空白：窗口默认隐藏，前端在真实首帧（双 rAF）后显示，并加 8 秒兜底；补齐 `core:window:allow-show`/`allow-set-focus` 权限（缺失时显示调用被静默拒绝）
+- 编辑态光标/选区不渲染、Ctrl+A 后输入/删除失效：修复阅读区 DOM 注册表失步（改 data-row 实时查询）与全选哨兵越界（前端钳制 + 后端防御测试）
+- 安全教训：清理残留进程时严禁按名称结束 `msedgewebview2`（系统共享运行时，影响其他应用）

@@ -58,6 +58,19 @@ export class RowCache {
     this.charCount = 0;
   }
 
+  /**
+   * 失效 `row` 起（含）的缓存（编辑使行号/内容变化时调用）。
+   * 说明：整行插入/删除会平移后续行号，从受影响行起全部失效是最小正确范围。
+   */
+  invalidateFrom(row: number): void {
+    for (const [key, value] of this.entries) {
+      if (key >= row) {
+        this.charCount -= value.length;
+        this.entries.delete(key);
+      }
+    }
+  }
+
   /** 当前缓存行数（诊断用）。 */
   get size(): number {
     return this.entries.size;

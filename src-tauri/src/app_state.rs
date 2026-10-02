@@ -24,6 +24,7 @@ use crate::textfile::editing::save::{
 };
 use crate::textfile::encoding::FileEncoding;
 use crate::textfile::session::{FileSession, TextFileError};
+use crate::textfile::source::DocumentSource;
 use crate::textfile::window::RowText;
 
 /// 单次取行的最大行数（IPC 防御上限；前端按可视区 + 预取分批请求）。
@@ -178,7 +179,8 @@ impl AppState {
 
     /// 取文本窗口（`count` 受 [`MAX_ROWS_PER_FETCH`] 限制）。
     ///
-    /// 供数来源：存在编辑文档时用编辑文档（含未保存修改），否则用只读会话。
+    /// 供数来源经 [`DocumentSource`] 契约：存在编辑文档时用编辑视图
+    /// （含未保存修改），否则用只读会话——未来解析器/新格式实现同一契约即可接入。
     pub fn rows(
         &self,
         tab_id: u64,
@@ -187,30 +189,20 @@ impl AppState {
     ) -> Result<RowsPayload, AppStateError> {
         let tab = self.tab(tab_id)?;
         let count = count.min(MAX_ROWS_PER_FETCH) as usize;
-        let (rows, rows_total, start_percent) = if let Some(doc) = &tab.edit {
-            let rows = doc.fetch_rows(start_row, count);
-            let percent_row = rows
-                .first()
-                .map(|row| row.row)
-                .unwrap_or_else(|| start_row.min(doc.rows_total().saturating_sub(1)));
-            (rows, doc.rows_total(), doc.percent_at_row(percent_row))
-        } else {
-            let rows = tab.session.rows(start_row, count);
-            let percent_row = rows
-                .first()
-                .map(|row| row.row)
-                .unwrap_or_else(|| start_row.min(tab.session.rows_total().saturating_sub(1)));
-            (
-                rows,
-                tab.session.rows_total(),
-                tab.session.percent_at_row(percent_row),
-            )
+        let source: &dyn DocumentSource = match &tab.edit {
+            Some(doc) => doc,
+            None => &tab.session,
         };
+        let rows = source.fetch_rows(start_row, count);
+        let percent_row = rows
+            .first()
+            .map(|row| row.row)
+            .unwrap_or_else(|| start_row.min(source.rows_total().saturating_sub(1)));
         Ok(RowsPayload {
             tab_id,
             start_row,
-            rows_total,
-            start_percent,
+            rows_total: source.rows_total(),
+            start_percent: source.percent_at_row(percent_row),
             rows,
         })
     }
@@ -436,8 +428,15 @@ impl AppState {
 }
 
 /// 标签信息转换（内部辅助）。
+///
+/// 行数/字节数统一走文档源契约：编辑文档存在时取编辑视图
+/// （含未保存修改的行数与字节数），避免列表/保存返回的标签信息与阅读区不一致。
 fn tab_info(tab: &Tab) -> TabInfo {
     let session = &tab.session;
+    let source: &dyn DocumentSource = match &tab.edit {
+        Some(doc) => doc,
+        None => &tab.session,
+    };
     TabInfo {
         tab_id: tab.id,
         path: session.path().to_string_lossy().into_owned(),
@@ -448,8 +447,8 @@ fn tab_info(tab: &Tab) -> TabInfo {
             .map(|encoding| encoding.label().to_string()),
         editing: tab.editing,
         dirty: tab.edit.as_ref().is_some_and(|doc| doc.is_dirty()),
-        rows_total: session.rows_total(),
-        byte_len: session.byte_len(),
+        rows_total: source.rows_total(),
+        byte_len: source.byte_len(),
     }
 }
 

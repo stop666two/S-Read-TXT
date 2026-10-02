@@ -21,6 +21,14 @@
     onHistory?: () => void;
     /** 设置窗口回调（阶段 8 接线） */
     onSettings?: () => void;
+    /** 是否处于编辑模式（编辑按钮激活态） */
+    editing: boolean;
+    /** 是否有未保存修改（保存按钮可用性） */
+    canSave: boolean;
+    /** 编辑模式切换回调 */
+    onToggleEdit?: () => void;
+    /** 保存回调 */
+    onSave?: () => void;
   }
   let {
     themeChoice,
@@ -31,6 +39,10 @@
     onOpenFile,
     onHistory,
     onSettings,
+    editing,
+    canSave,
+    onToggleEdit,
+    onSave,
   }: Props = $props();
 
   /** 编码下拉开合 */
@@ -73,6 +85,26 @@
   </button>
   <button class="icon-btn" title="历史记录" aria-label="历史记录" onclick={() => onHistory?.()}>
     <Icon name="history" />
+  </button>
+  <div class="sep"></div>
+  <button
+    class="icon-btn"
+    class:active={editing}
+    title={editing ? '退出编辑模式（Ctrl+E）' : '启用编辑模式（Ctrl+E）'}
+    aria-label="切换编辑模式"
+    aria-pressed={editing}
+    onclick={() => onToggleEdit?.()}
+  >
+    <Icon name="edit" />
+  </button>
+  <button
+    class="icon-btn"
+    title="保存（Ctrl+S）"
+    aria-label="保存"
+    disabled={!canSave}
+    onclick={() => onSave?.()}
+  >
+    <Icon name="save" />
   </button>
   <div class="sep"></div>
   <div class="encoding-wrap">
@@ -141,6 +173,16 @@
 
   .icon-btn:hover {
     background: var(--hover);
+  }
+
+  .icon-btn.active {
+    background: var(--hover);
+    color: var(--accent);
+  }
+
+  .icon-btn:disabled {
+    color: var(--muted);
+    opacity: 0.55;
   }
 
   .text-btn {

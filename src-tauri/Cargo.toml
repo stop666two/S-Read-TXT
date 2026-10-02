@@ -10,7 +10,8 @@ rust-version = "1.77.2"
 
 [dependencies]
 # Tauri 框架（精确锁定；禁用范围符是项目规则）
-tauri = { version = "=2.12.1", features = [] }
+# image-png：运行期解码 PNG 窗口图标（128px 源，覆盖任务栏与 Alt-Tab 两种尺寸）
+tauri = { version = "=2.12.1", features = ["image-png"] }
 # 原生文件/目录对话框（打开文件、选择数据目录、消息框）
 tauri-plugin-dialog = "=2.8.1"
 # 序列化/反序列化：IPC 载荷、配置、历史、会话

@@ -3,7 +3,7 @@
   // 新增图标时在 Props 的联合类型与 {#if} 分支中同步登记。
   interface Props {
     /** 图标名 */
-    name: 'open' | 'history' | 'palette' | 'settings' | 'close';
+    name: 'open' | 'history' | 'palette' | 'settings' | 'close' | 'edit' | 'save';
     /** 像素尺寸（默认 16） */
     size?: number;
   }
@@ -44,5 +44,12 @@
   {:else if name === 'close'}
     <path d="M6 6l12 12" />
     <path d="M18 6L6 18" />
+  {:else if name === 'edit'}
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+  {:else if name === 'save'}
+    <path d="M5 3h11l3 3v15H5z" />
+    <path d="M8 3v6h7V3" />
+    <path d="M8 21v-6h8v6" />
   {/if}
 </svg>

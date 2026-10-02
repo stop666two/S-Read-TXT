@@ -290,10 +290,10 @@ impl EditDoc {
         self.byte_tree.total()
     }
 
-    /// 行首对应的阅读百分比（与只读路径语义一致：行首字节偏移 / 总字节数）。
+    /// 行首对应的阅读百分比（与只读路径语义一致：行首字节偏移 / 总字节数 × 100）。
     ///
     /// 参数：`row` 行号（越界时按末行处理）。
-    /// 返回：0.0–1.0 的百分比；空文档返回 0.0。
+    /// 返回：0.0–100.0 的百分比；空文档返回 0.0。
     pub fn percent_at_row(&self, row: u64) -> f64 {
         let total = self.byte_len();
         if total == 0 {
@@ -304,7 +304,7 @@ impl EditDoc {
             .row_start_pos(row.min(last_row))
             .map(|pos| self.global_offset(pos))
             .unwrap_or(0);
-        (offset as f64 / total as f64).min(1.0)
+        ((offset as f64 / total as f64) * 100.0).min(100.0)
     }
 
     /// 取 `[start_row, start_row + count)` 的行文本（跨片段拼接、按片段源解码）。

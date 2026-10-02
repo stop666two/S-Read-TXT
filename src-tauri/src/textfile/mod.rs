@@ -13,10 +13,12 @@
 //! - `window`：按行取文本窗口
 //! - `session`：单文件会话（打开/取窗/百分比/切换编码）
 //! - `editing`：编辑引擎（片表 + 撤销重做 + 保存链，设计 §5 / D17–D19）
+//! - `source`：文档源契约（扩展点：未来解析器/格式实现该 trait 即可接入）
 
 pub mod editing;
 pub mod encoding;
 pub mod line_index;
 pub mod mmap;
 pub mod session;
+pub mod source;
 pub mod window;

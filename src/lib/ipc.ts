@@ -23,6 +23,10 @@ export interface TabInfo {
   name: string;
   encoding: string;
   encodingOverride: string | null;
+  /** 是否处于编辑模式（编辑文档已创建且模式开关为开） */
+  editing: boolean;
+  /** 是否有未保存修改 */
+  dirty: boolean;
   rowsTotal: number;
   byteLen: number;
 }
@@ -40,6 +44,36 @@ export interface RowsPayload {
 export interface TabsView {
   tabs: TabInfo[];
   activeTabId: number | null;
+}
+
+/** 编辑操作（与 Rust textfile::editing::edit_doc::EditOp 对齐；kind 为外部标签）。 */
+export type EditOp =
+  | { kind: 'insert'; row: number; utf16: number; text: string }
+  | { kind: 'delete'; startRow: number; startUtf16: number; endRow: number; endUtf16: number }
+  | {
+      kind: 'replace';
+      startRow: number;
+      startUtf16: number;
+      endRow: number;
+      endUtf16: number;
+      text: string;
+    };
+
+/** 一次编辑应用结果（与 Rust EditApplied 对齐）。 */
+export interface EditApplied {
+  stateId: number;
+  dirty: boolean;
+  touchedRow: number;
+  rowsTotal: number;
+  byteLen: number;
+}
+
+/** 保存结果（与 Rust commands::SaveTabResult 对齐）。 */
+export interface SaveTabResult {
+  bytesWritten: number;
+  backupPath: string | null;
+  encoding: string;
+  tab: TabInfo;
 }
 
 /** 后端统一错误载荷（与 Rust ipc_error::IpcError 对齐）。 */
@@ -98,4 +132,21 @@ export const ipc = {
   listTabs: () => invoke<TabsView>('list_tabs'),
   /** 关闭标签（返回剩余视图）。 */
   closeTab: (tabId: number) => invoke<TabsView>('close_tab', { tabId }),
+  /** 切换编辑模式（首次进入创建编辑文档）。 */
+  toggleEdit: (tabId: number) => invoke<TabInfo>('toggle_edit', { tabId }),
+  /** 应用编辑批次（批次 = 单个撤销步）。 */
+  applyEdits: (tabId: number, ops: EditOp[]) =>
+    invoke<EditApplied>('apply_edits', { tabId, ops }),
+  /** 撤销一步（无可撤销内容返回 null）。 */
+  undoEdit: (tabId: number) => invoke<EditApplied | null>('undo_edit', { tabId }),
+  /** 重做一步（无可重做内容返回 null）。 */
+  redoEdit: (tabId: number) => invoke<EditApplied | null>('redo_edit', { tabId }),
+  /** 保存（targetEncoding = null 表示保持当前编码；force = 冲突时覆盖）。 */
+  saveTab: (tabId: number, targetEncoding: string | null, makeBackup: boolean, force: boolean) =>
+    invoke<SaveTabResult>('save_tab', { tabId, targetEncoding, makeBackup, force }),
+  /** 另存为（成功后标签重定向到新路径）。 */
+  saveTabAs: (tabId: number, newPath: string, targetEncoding: string | null, makeBackup: boolean) =>
+    invoke<SaveTabResult>('save_tab_as', { tabId, newPath, targetEncoding, makeBackup }),
+  /** 从磁盘重载（丢弃未保存修改）。 */
+  reloadTab: (tabId: number) => invoke<TabInfo>('reload_tab', { tabId }),
 };

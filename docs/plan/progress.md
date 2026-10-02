@@ -46,7 +46,8 @@
 - **构建/运行命令配方（重要）**：
   - 所有 cargo/tauri 命令前置 `D:\msys64\ucrt64\bin` 到 PATH（Tesseract 旧版 DLL 遮蔽，见 README）；
   - `cargo test` 需再把 `src-tauri\target\debug` 加入 PATH（WebView2Loader.dll 由构建脚本放在该目录，GNU 测试目标从 deps 目录运行找不到它）；
-  - **运行冒烟必须使用 `npm run tauri build -- --debug --no-bundle` 产物**：普通 `cargo build` 的 debug 产物按 Tauri dev 语义指向 `http://localhost:1420`（Vite 未启动则为空白页）。
+  - **运行冒烟必须使用 `npm run tauri build -- --debug --no-bundle` 产物，且冒烟前重新构建一次**：`cargo build`/`cargo test` 的 debug 产物可能按 Tauri dev 语义指向 `http://localhost:1420`（不内嵌前端 → 页面无 `window.__srt`）；smoke 脚本已对「前端未就绪」给出明确诊断。
+  - **严禁按进程名结束 `msedgewebview2`（安全红线，抹录在案）**：WebView2 是系统共享运行时，其他应用也在使用；清理残留只能按本应用 PID 结束整树（`taskkill /PID <pid> /T /F`，其 WebView2 子进程随树回收）。此前排查时曾误杀全系统 WebView2 进程一次，已作为反面教训记录。
 - **GNU 工具链测试目标清单问题（架构性规避）**：链接 GUI 依赖的测试目标缺 Common-Controls v6 清单 → 加载旧 comctl32 → `TaskDialogIndirect` 入口点缺失（`0xC0000139`）；lib+bin 拆分后库测试不链接 GUI 即规避；应用二进制由 tauri-build 注入清单，不受影响。
 - **阶段 9 打包清单（预登记）**：确认 NSIS 是否携带 `WebView2Loader.dll`（构建脚本已置于 profile 目录；如未携带需加入 `bundle.resources`）；同机安装/便携运行核验。
 - 阶段 1 完成：2026-10-02（97/97 测试；0 告警；运行冒烟通过）。
@@ -114,5 +115,19 @@
 | 切片 | 内容 | 状态 | 证据 |
 |---|---|---|---|
 | 4a | 编辑命令接线：`toggle_edit`（首次创建编辑文档 + 磁盘基准快照）/ `apply_edits` / `undo_edit` / `redo_edit` / `save_tab` / `save_tab_as` / `reload_tab`；`get_rows` 编辑态供数切换；`EditOp` 反序列化（kind + camelCase）；`EditDoc::percent_at_row`；脏态阻止编码切换；错误码映射（EDIT_LINE_TOO_LONG / INVALID_POSITION / FILE_CONFLICT / ENCODING_UNREPRESENTABLE / NOT_EDITING / EDIT_DIRTY） | ✅ 完成 | lib **148/148**（新增 9：编辑文档生命周期/撤销重做/保存与冲突/另存为重定向/重载丢弃/脏态拦截/超长行拒绝 + 错误映射 2）；`cargo build` 0 告警 |
-| 4b | 前端编辑 UI：切换入口与脏标记、光标/选区（点击/拖选/Shift+方向键/全选）、输入/删除/回车、IME 隐藏锚点、剪切复制粘贴、Ctrl+S 保存流（编码询问/冲突/.bak） | ⬜ 待开始 | — |
-| 4c | 查找/替换（大小写、下一个/替换/全部）、脏关闭确认（标签/窗口）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟） | ⬜ 待开始 | — |
+| 4b | 前端编辑 UI：切换入口与脏标记、光标/选区（点击/拖选/Shift+方向键/全选）、输入/删除/回车、IME 隐藏锚点、剪切复制粘贴、Ctrl+S 保存流（编码询问/冲突/.bak）、脏关闭三态确认 | ✅ 完成 | 见「切片 4b 详情」；vitest **47/47**、编辑冒烟 **12/12**、对抗冒烟 **40/40**、cargo **170/170**；截图 `docs/screenshots/phase4b-{edit,abuse}.png` |
+| 4c | 查找/替换（大小写、下一个/替换/全部）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟）、**超长行完整分段渲染（维护者确认）** | 🔨 进行中 | 超长行方案：编辑态 8KB 显示分段虚拟渲染 + 跨段光标/选区/复制映射，100MB 单行文件对抗验收 |
+
+> 扩展点预留（维护者要求）：`textfile::source::DocumentSource` 契约已落地——未来解析器/新格式实现该 trait 并在打开流程分派即可接入（AppState 取行与前端渲染零改动）；编辑契约仅绑定文本引擎，解析类文档默认只读。
+
+### 切片 4b 详情
+
+- 前端新增（`src/lib/`）：`edit/caret.ts`（CaretPos/Selection/UTF16_END、移动与选区工具）、`edit/ops.ts`（InsertOp/DeleteOp/ReplaceOp、退格/前删含代理对整对）、`edit/caret-memory.ts`（跨标签光标记忆）、`edit/focus.ts`（弹窗后归还键盘焦点）；组件 `EditLayer.svelte`（叠加层：光标/选区/preedit/隐藏输入框 textarea，`caretRangeFromPoint` 点击定位、IME 组合三段、剪贴板、快捷键路由）、`SaveDialog.svelte`（编码询问 + 备份勾选）、`ConfirmDialog.svelte`（冲突「覆盖保存/取消」）、`UnsavedDialog.svelte`（保存/不保存/取消）。
+- 行高/行缓存：`invalidateFrom(row)`（编辑后从受影响行起失效——行号平移的最小正确范围）；`ReaderView` 编辑层挂载与 `data-row` 属性。
+- 两个真实缺陷（探针脚本定位）：
+  1. **编辑叠加层失步**：`nodes` Map 注册表在属性更新触发的 effect 重建时被 `clear()`，但 keyed `{#each}` 未重建 DOM → 注册表永久为空 → 光标/选区不渲染；修复 = 按 `data-row` 实时 DOM 查询（`rowNodeOf`），`measureRendered` 同步改 DOM 迭代。
+  2. **全选哨兵越界**：`selectAll` 用 `Number.MAX_SAFE_INTEGER` 作为行内 UTF-16 偏移直发后端 → `Utf16OutOfRange` 静默失败；修复 = 前端取末行真实长度并 `resolveSelection()` 两端钳制；后端追加防御测试 `oversized_utf16_is_rejected_safely`。
+- 窗口/启动修复（跨阶段问题排查结论）：① `windows_subsystem = "windows"` 无条件（debug 不再弹控制台窗口）；② 主窗 `visible:false` + 前端双 rAF 后 `show()/setFocus()` + Rust 8s 兜底（capabilities 增 `core:window:allow-show`/`allow-set-focus`，缺失时 show 被静默拒绝）；③ 窗口图标：Tauri v2 WindowConfig 不支持 icon 字段 → setup 中 `set_icon(include_bytes ../icons/128x128.png)`（Cargo 启用 `image-png`），任务栏图标修复；④ 背景色 `#FAF9F7` 防白闪；⑤ WebView2 用户数据目录重定向到便携 `data/webview`（`WEBVIEW2_USER_DATA_FOLDER`）。实测 TIME_TO_VISIBLE **1139ms 且显示即完整 UI**。
+- 发布体积实测（红线核对）：release exe **3.95MB**、NSIS 安装包 **1.52MB**（目标 <10MB）；debug exe 244.6MB 仅为开发产物。
+- 安全规则（新增）：严禁按进程名结束 `msedgewebview2`（系统共享运行时）；清理残留仅按本应用 PID 整树回收。
+- 对抗冒烟 `scripts/smoke-abuse.mjs`（40 项：空文件/换行族/BOM/连打/撤销重做狂按/全选替换/首行边界/回车狂按/emoji+RTL+零宽/大粘贴/超长行拒绝/三态关闭/冲突流）；编辑冒烟 `smoke-edit.mjs` 重构复用 `scripts/lib/smoke-cdp.mjs`（统一 CDP 客户端与就绪护栏）。

@@ -62,4 +62,25 @@ describe('HeightModel', () => {
     expect(model.estimated).toBe(20);
     expect(model.measuredRows).toBe(0);
   });
+
+  it('invalidateFrom：仅失效目标行及之后并重算估计', () => {
+    const model = new HeightModel(20);
+    model.measure(0, 100);
+    model.measure(1, 40);
+    model.measure(3, 60);
+    model.invalidateFrom(1);
+    expect(model.measuredRows).toBe(1);
+    expect(model.heightOf(0)).toBe(100);
+    expect(model.heightOf(1)).toBe(100); // 估计值 = 剩余实测均值
+    expect(model.heightOf(3)).toBe(100);
+  });
+
+  it('invalidateFrom：全部失效后恢复基准', () => {
+    const model = new HeightModel(25);
+    model.measure(0, 50);
+    model.measure(1, 70);
+    model.invalidateFrom(0);
+    expect(model.measuredRows).toBe(0);
+    expect(model.estimated).toBe(25);
+  });
 });

@@ -111,6 +111,26 @@ export class HeightModel {
     this.estimate = this.baseHeight;
   }
 
+  /**
+   * 失效 `row` 起（含）的实测高度（编辑导致行内容/行号变化时调用）。
+   * 说明：整行插入/删除会使后续行号整体平移，从受影响行起重测是最小正确范围；
+   * 估计值按剩余实测重新校准（无剩余时恢复基准）。
+   */
+  invalidateFrom(row: number): void {
+    for (const key of [...this.heights.keys()]) {
+      if (key >= row) {
+        const height = this.heights.get(key);
+        if (height !== undefined) {
+          this.measuredSum -= height;
+          this.measuredCount -= 1;
+          this.heights.delete(key);
+        }
+      }
+    }
+    this.estimate =
+      this.measuredCount > 0 ? this.measuredSum / this.measuredCount : this.baseHeight;
+  }
+
   /** 单块高度 = 块内实测之和 + 未测量行数 × 估计。 */
   private chunkHeight(chunk: number): number {
     const start = chunk * CHUNK_SIZE;

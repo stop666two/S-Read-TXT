@@ -2,7 +2,8 @@
   // 阅读视图：虚拟滚动（仅渲染可视行 + 实测高度缓存 + 滚动锚定）+ 按窗取行。
   // 进度口径：状态栏百分比 = 顶部定位行的累计高度 / 内容总高度（视觉进度）。
   // 标签/编码切换：重建高度与缓存、按记忆行号恢复滚动位置（阶段 8 会话持久化同口径）。
-  import { describeIpcError, ipc, toIpcError, type TabInfo } from '../ipc';
+  import EditLayer from './EditLayer.svelte';
+  import { describeIpcError, ipc, toIpcError, type EditApplied, type TabInfo } from '../ipc';
   import { HeightModel } from '../reader/heights';
   import { RowCache } from '../reader/row-cache';
   import { computePercent, computeWindow, planBatches } from '../reader/viewport';
@@ -13,8 +14,10 @@
     tab: TabInfo;
     /** 阅读百分比回报（状态栏显示） */
     onPercent: (percent: number) => void;
+    /** 编辑应用回报（App 同步标签信息：行数/字节数/脏态） */
+    onEditApplied?: (tabId: number, result: EditApplied) => void;
   }
-  let { tab, onPercent }: Props = $props();
+  let { tab, onPercent, onEditApplied }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -42,8 +45,6 @@
   const cache = new RowCache();
   /** 在途取行批次键（防重复请求） */
   const inflight = new Set<string>();
-  /** 已渲染行节点（测量用） */
-  const nodes = new Map<number, HTMLElement>();
   /** 标签 → 顶部定位行号（跨标签切换恢复位置） */
   const scrollMemory = new Map<number, number>();
   /** 程序化滚动标记（锚定补偿时避免重入滚动处理） */
@@ -105,6 +106,37 @@
     }
   }
 
+  /** 编辑结果回报：失效受影响行起的缓存与行高（行号平移的最小正确范围），
+   *  刷新窗口并上报 App（同步标签信息）。 */
+  function handleEditApplied(result: EditApplied): void {
+    cache.invalidateFrom(result.touchedRow);
+    heights.invalidateFrom(result.touchedRow);
+    inflight.clear();
+    lastPercent = -1;
+    refreshWindow();
+    version += 1;
+    onEditApplied?.(tab.tabId, result);
+  }
+
+  /** 确保单行已加载（编辑层光标定位/复制使用；返回加载后的文本）。 */
+  async function ensureRow(row: number): Promise<string | undefined> {
+    const cached = cache.get(row);
+    if (cached !== undefined) return cached;
+    try {
+      const payload = await ipc.getRows(tab.tabId, row, 1);
+      const text = payload.rows[0]?.text;
+      if (text !== undefined) {
+        cache.set(row, text);
+        version += 1;
+      }
+      return text;
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('[reader] 单行取行失败', error);
+      toasts.error(describeIpcError(toIpcError(error)));
+      return undefined;
+    }
+  }
+
   /** 依据当前滚动位置重建渲染窗口、触发取行并上报进度。 */
   function refreshWindow(): void {
     const el = container;
@@ -150,7 +182,10 @@
     const anchorRow = heights.rowAtOffset(beforeScroll, tab.rowsTotal);
     const anchorDelta = Math.max(0, beforeScroll - heights.offsetOf(anchorRow, tab.rowsTotal));
     let changed = false;
-    for (const [row, node] of nodes) {
+    // 实时查询已渲染行（与 rowNodeOf 同一策略：不维护易失步的注册表）
+    for (const node of el.querySelectorAll<HTMLElement>('.row[data-row]')) {
+      const row = Number(node.dataset.row ?? -1);
+      if (!Number.isFinite(row) || row < 0) continue;
       const height = node.offsetHeight;
       if (height > 0 && Math.abs(heights.heightOf(row) - height) > 0.5) {
         heights.measure(row, height);
@@ -174,14 +209,12 @@
     version += 1;
   }
 
-  /** 行节点注册（Svelte action）。 */
-  function rowHost(node: HTMLElement, row: number) {
-    nodes.set(row, node);
-    return {
-      destroy(): void {
-        nodes.delete(row);
-      },
-    };
+  /** 按行号实时查询已渲染的行元素。
+   *  说明：此前用「注册表 Map」记录节点，但属性对象更新触发重建后注册表会失步
+   *  （编辑层找不到行 → 光标/选区叠加层死亡）；DOM 实时查询天然与渲染状态一致。 */
+  function rowNodeOf(row: number): HTMLElement | undefined {
+    const el = container?.querySelector(`[data-row="${row}"]`);
+    return el instanceof HTMLElement ? el : undefined;
   }
 
   // DOM 更新后测量（窗口变化或文本到达均会改变 version/startRow/endRow）
@@ -219,7 +252,6 @@
     cache.clear();
     heights.clear();
     inflight.clear();
-    nodes.clear();
     lastPercent = -1;
     const restoredRow = Math.min(scrollMemory.get(currentTabId) ?? 0, Math.max(0, rowsTotal - 1));
     if (container) {
@@ -244,9 +276,21 @@
     {:else}
       <div class="spacer" style="height: {spacerTop}px"></div>
       {#each renderedRows as item (item.row)}
-        <div class="row" use:rowHost={item.row}>{item.text}</div>
+        <div class="row" data-row={item.row}>{item.text}</div>
       {/each}
       <div class="spacer" style="height: {spacerBottom}px"></div>
+    {/if}
+    {#if tab.editing}
+      <EditLayer
+        tabId={tab.tabId}
+        rowsTotal={tab.rowsTotal}
+        revision={version}
+        rowNode={rowNodeOf}
+        rowText={(row) => cache.get(row)}
+        ensureRow={(row) => ensureRow(row)}
+        getContainer={() => container}
+        onApplied={handleEditApplied}
+      />
     {/if}
   </div>
 </div>
@@ -259,6 +303,8 @@
   }
 
   .page {
+    position: relative;
+    z-index: 0;
     max-width: var(--reading-width);
     margin: 0 auto;
     padding: var(--reading-pad-y) var(--reading-pad-x);

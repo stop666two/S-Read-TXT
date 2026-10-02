@@ -1,22 +1,27 @@
 <!--
   App.svelte — 根组件：应用外壳与全局接线。
-  阶段 2c：打开（对话框/拖拽）、标签、空状态、Toast、退出、虚拟阅读、编码切换、进度上报。
+  已接线：打开（对话框/拖拽）、标签、空状态、Toast、虚拟阅读、编码切换、进度上报、
+  编辑/保存/冲突/未保存三态关闭流程（阶段 4b/4c）、冷启动就绪即显。
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
+  import ConfirmDialog from './lib/components/ConfirmDialog.svelte';
   import DropOverlay from './lib/components/DropOverlay.svelte';
   import EmptyState from './lib/components/EmptyState.svelte';
   import MenuBar from './lib/components/MenuBar.svelte';
   import ReaderView from './lib/components/ReaderView.svelte';
+  import SaveDialog from './lib/components/SaveDialog.svelte';
   import StatusBar from './lib/components/StatusBar.svelte';
   import TabBar from './lib/components/TabBar.svelte';
   import Toast from './lib/components/Toast.svelte';
   import ToolBar from './lib/components/ToolBar.svelte';
+  import UnsavedDialog from './lib/components/UnsavedDialog.svelte';
   import { formatBytes } from './lib/format';
-  import { describeIpcError, ipc, toIpcError } from './lib/ipc';
+  import { focusEditorProxy } from './lib/edit/focus';
+  import { describeIpcError, ipc, toIpcError, type EditApplied } from './lib/ipc';
   import { tabs } from './lib/state/tabs.svelte';
   import { toasts } from './lib/state/toasts.svelte';
   import type { ResolvedTheme, ThemeChoice } from './lib/types';
@@ -58,10 +63,208 @@
     }
   }
 
-  /** 退出应用（关闭窗口即退出；未保存拦截在编辑阶段接入） */
+  /** 退出应用：脏标签走「保存/不保存/取消」三态确认（窗口 X 同样被拦截） */
   async function quit(): Promise<void> {
+    if (tabs.tabs.some((tab) => tab.dirty)) {
+      pendingClose = { kind: 'quit' };
+      return;
+    }
+    allowClose = true;
     await getCurrentWindow().close();
   }
+
+  // ---- 编辑与关闭流程（阶段 4b/4c） ----
+
+  /** 保存询问请求（Promise 队列：关闭流程可逐个等待保存结果） */
+  let saveRequest = $state<{
+    tabId: number;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
+  /** 保存弹窗的备份默认值（首存默认勾选；阶段 8 接入设置后按设置项） */
+  const saveBackup = true;
+  /** 外部修改冲突弹窗（Promise 化，覆盖/取消都回填原保存请求） */
+  let conflictRequest = $state<{
+    tabId: number;
+    encoding: string | null;
+    backup: boolean;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
+  /** 关闭确认待办（脏标签关闭 / 退出应用） */
+  let pendingClose = $state<{ kind: 'tab'; tabId: number } | { kind: 'quit' } | null>(null);
+  /** 允许窗口关闭（绕过 onCloseRequested 拦截；仅在用户确认后置 true） */
+  let allowClose = false;
+
+  /** 打开保存询问并等待结果（关闭流程逐个调用；取消返回 false） */
+  function askSave(tabId: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      saveRequest = { tabId, resolve };
+    });
+  }
+
+  /** 切换编辑模式（失败走 Toast：超长行 / 标签不存在等） */
+  async function toggleEdit(): Promise<void> {
+    const tab = active;
+    if (!tab) return;
+    try {
+      tabs.update(await ipc.toggleEdit(tab.tabId));
+      focusEditorProxy();
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[app] 切换编辑失败', payload);
+      toasts.error(describeIpcError(payload));
+    }
+  }
+
+  /** 编辑结果回报：同步标签信息（行数/字节数/脏态） */
+  function handleEditApplied(tabId: number, result: EditApplied): void {
+    const tab = tabs.tabs.find((item) => item.tabId === tabId);
+    if (!tab) return;
+    tabs.update({
+      ...tab,
+      rowsTotal: result.rowsTotal,
+      byteLen: result.byteLen,
+      dirty: result.dirty,
+    });
+  }
+
+  /** 打开保存弹窗（编辑态；编码询问走弹窗，默认保持当前编码） */
+  function openSaveDialog(): void {
+    if (!active?.editing) return;
+    void askSave(active.tabId);
+  }
+
+  /** 保存弹窗确认（回填 askSave 的等待） */
+  function onSaveDialogConfirm(encoding: string | null, backup: boolean): void {
+    const request = saveRequest;
+    if (!request) return;
+    saveRequest = null;
+    void performSave(request.tabId, encoding, backup, false).then(request.resolve);
+    focusEditorProxy();
+  }
+
+  /** 保存弹窗取消（回填 false：调用方据此中止关闭流程） */
+  function onSaveDialogCancel(): void {
+    const request = saveRequest;
+    if (!request) return;
+    saveRequest = null;
+    request.resolve(false);
+    focusEditorProxy();
+  }
+
+  /** 执行保存（Promise<boolean>）；外部修改冲突时经覆盖弹窗再回填 */
+  async function performSave(
+    tabId: number,
+    encoding: string | null,
+    backup: boolean,
+    force: boolean,
+  ): Promise<boolean> {
+    if (!tabId) return false;
+    try {
+      const result = await ipc.saveTab(tabId, encoding, backup, force);
+      tabs.update(result.tab);
+      toasts.show(`已保存（${result.encoding}${result.backupPath ? '，已生成 .bak 备份' : ''}）`);
+      return true;
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (payload.code === 'FILE_CONFLICT') {
+        return await new Promise<boolean>((resolve) => {
+          conflictRequest = { tabId, encoding, backup, resolve };
+        });
+      }
+      if (import.meta.env.DEV) console.error('[app] 保存失败', payload);
+      toasts.error(describeIpcError(payload));
+      return false;
+    }
+  }
+
+  /** 冲突弹窗：覆盖保存 */
+  function onConflictOverride(): void {
+    const request = conflictRequest;
+    if (!request) return;
+    conflictRequest = null;
+    void performSave(request.tabId, request.encoding, request.backup, true).then(request.resolve);
+    focusEditorProxy();
+  }
+
+  /** 冲突弹窗：取消（保存失败） */
+  function onConflictCancel(): void {
+    const request = conflictRequest;
+    if (!request) return;
+    conflictRequest = null;
+    request.resolve(false);
+    focusEditorProxy();
+  }
+
+  // ---- 关闭流程 ----
+
+  /** 请求关闭标签（脏标签先经三态确认；不脏直接关闭） */
+  async function requestCloseTab(tabId: number): Promise<void> {
+    const tab = tabs.tabs.find((item) => item.tabId === tabId);
+    if (!tab) return;
+    if (!tab.dirty) {
+      await tabs.close(tabId);
+      return;
+    }
+    pendingClose = { kind: 'tab', tabId };
+  }
+
+  /** 逐个保存指定标签（任一取消即中止，返回是否全部完成） */
+  async function saveTabsSequentially(tabIds: number[]): Promise<boolean> {
+    for (const tabId of tabIds) {
+      const ok = await askSave(tabId);
+      if (!ok) return false;
+    }
+    return true;
+  }
+
+  /** 三态弹窗动作：保存 / 不保存 / 取消 */
+  async function resolvePendingClose(action: 'save' | 'discard' | 'cancel'): Promise<void> {
+    const pending = pendingClose;
+    if (!pending) return;
+    if (action === 'cancel') {
+      pendingClose = null;
+      return;
+    }
+    const dirtyIds =
+      pending.kind === 'tab'
+        ? [pending.tabId].filter(
+            (tabId) => tabs.tabs.find((item) => item.tabId === tabId)?.dirty ?? false,
+          )
+        : tabs.tabs.filter((item) => item.dirty).map((item) => item.tabId);
+    if (action === 'save') {
+      const saved = await saveTabsSequentially(dirtyIds);
+      if (!saved) {
+        // 取消保存：保留待办（用户可重新选择），不执行关闭
+        return;
+      }
+    }
+    pendingClose = null;
+    if (pending.kind === 'tab') {
+      await tabs.close(pending.tabId);
+      focusEditorProxy();
+    } else {
+      allowClose = true;
+      await getCurrentWindow().close();
+    }
+  }
+
+  /** 三态弹窗说明文案 */
+  const closeMessage = $derived.by(() => {
+    const pending = pendingClose;
+    if (!pending) return '';
+    if (pending.kind === 'quit') {
+      const count = tabs.tabs.filter((item) => item.dirty).length;
+      return `有 ${count} 个标签存在未保存的修改，退出将丢失这些修改。`;
+    }
+    const name = tabs.tabs.find((item) => item.tabId === pending.tabId)?.name ?? '当前文件';
+    return `「${name}」有未保存的修改，关闭将丢失这些修改。`;
+  });
+
+  /** 三态弹窗可见性（保存询问/冲突弹窗进行中时让位，避免叠层） */
+  const unsavedOpen = $derived(pendingClose !== null && saveRequest === null && conflictRequest === null);
+
+  /** 保存弹窗当前服务的标签信息（默认编码显示用） */
+  const saveDialogTab = $derived(tabs.tabs.find((item) => item.tabId === saveRequest?.tabId) ?? null);
 
   // 解析主题：「跟随系统」依据 prefers-color-scheme，其余直接采用；
   // 结果写入 <html data-theme>，全部令牌随之切换。
@@ -78,6 +281,25 @@
   });
 
   onMount(() => {
+    // 冷启动防空白：页面首帧（主题/骨架）渲染完成后才显示窗口。
+    // WebView2 初始化在磁盘压力大时可能耗时较长；隐藏期间用户不会看到空白窗口，
+    // Rust 侧另有 8 秒兜底强制显示（防前端异常导致不可见的僵尸进程）。
+    void (async () => {
+      try {
+        await tick();
+        // 等待真实首帧绘制（双重 rAF）：tick 只保证 DOM 更新，rAF 之后才有像素，
+        // 否则「显示瞬间」仍可能是空窗口（内容晚若干帧才出现）。
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+        const appWindow = getCurrentWindow();
+        await appWindow.show();
+        await appWindow.setFocus();
+      } catch (error) {
+        // 不吞错：显示失败时记录（Rust 兜底仍会在 8 秒后显示窗口）
+        if (import.meta.env.DEV) console.error('[app] 窗口显示失败', error);
+      }
+    })();
     // 版本号（状态栏无文件时展示；失败不阻塞启动）
     void ipc.getAppInfo().then(
       (info) => {
@@ -92,6 +314,18 @@
       },
       (error: unknown) => toasts.error(describeIpcError(toIpcError(error))),
     );
+
+    // 窗口关闭拦截（X 按钮/系统关闭）：脏标签先走三态确认
+    let unlistenClose: (() => void) | undefined;
+    void getCurrentWindow()
+      .onCloseRequested((event) => {
+        if (allowClose || !tabs.tabs.some((tab) => tab.dirty)) return;
+        event.preventDefault();
+        pendingClose = { kind: 'quit' };
+      })
+      .then((stop) => {
+        unlistenClose = stop;
+      });
 
     // 文件拖拽（Tauri 原生事件：over → 遮罩；drop → 逐个打开）
     let unlisten: (() => void) | undefined;
@@ -114,12 +348,22 @@
 
     return () => {
       unlisten?.();
+      unlistenClose?.();
     };
   });
 </script>
 
 <div class="shell">
-  <MenuBar {themeChoice} onThemeChange={setTheme} onOpenFile={openFile} onQuit={() => void quit()} />
+  <MenuBar
+    {themeChoice}
+    onThemeChange={setTheme}
+    onOpenFile={openFile}
+    onQuit={() => void quit()}
+    editing={active?.editing ?? false}
+    dirty={active?.dirty ?? false}
+    onToggleEdit={() => void toggleEdit()}
+    onSave={openSaveDialog}
+  />
   <ToolBar
     {themeChoice}
     onThemeChange={setTheme}
@@ -127,15 +371,23 @@
     encodingOverride={active?.encodingOverride ?? null}
     onEncodingChange={(label) => void changeEncoding(label)}
     onOpenFile={openFile}
+    editing={active?.editing ?? false}
+    canSave={active?.dirty ?? false}
+    onToggleEdit={() => void toggleEdit()}
+    onSave={openSaveDialog}
   />
   <TabBar
     tabs={tabs.tabs}
     activeId={tabs.activeId}
     onSelect={(tabId) => tabs.select(tabId)}
-    onClose={(tabId) => void tabs.close(tabId)}
+    onClose={(tabId) => void requestCloseTab(tabId)}
   />
   {#if active}
-    <ReaderView tab={active} onPercent={(percent) => (readPercent = percent)} />
+    <ReaderView
+      tab={active}
+      onPercent={(percent) => (readPercent = percent)}
+      onEditApplied={handleEditApplied}
+    />
   {:else}
     <EmptyState onOpen={openFile} />
   {/if}
@@ -148,6 +400,30 @@
   />
   <Toast />
   <DropOverlay visible={dragging} />
+  <SaveDialog
+    open={saveRequest !== null}
+    currentEncoding={saveDialogTab?.encoding ?? ''}
+    {encodings}
+    defaultBackup={saveBackup}
+    onConfirm={onSaveDialogConfirm}
+    onCancel={onSaveDialogCancel}
+  />
+  <ConfirmDialog
+    open={conflictRequest !== null}
+    title="文件已在外部被修改"
+    message="磁盘上的文件与打开时不一致，可能被其他程序修改过。仍要覆盖保存吗？"
+    confirmLabel="覆盖保存"
+    onConfirm={onConflictOverride}
+    onCancel={onConflictCancel}
+  />
+  <UnsavedDialog
+    open={unsavedOpen}
+    title={pendingClose?.kind === 'quit' ? '退出应用' : '关闭标签'}
+    message={closeMessage}
+    onSave={() => void resolvePendingClose('save')}
+    onDiscard={() => void resolvePendingClose('discard')}
+    onCancel={() => void resolvePendingClose('cancel')}
+  />
 </div>
 
 <style>

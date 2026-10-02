@@ -13,8 +13,17 @@
     onOpenFile?: () => void;
     /** 退出回调（阶段 2c 接线） */
     onQuit?: () => void;
+    /** 是否处于编辑模式（编辑菜单文案与可用性） */
+    editing: boolean;
+    /** 是否有未保存修改（保存项可用性） */
+    dirty: boolean;
+    /** 编辑模式切换回调 */
+    onToggleEdit?: () => void;
+    /** 保存回调 */
+    onSave?: () => void;
   }
-  let { themeChoice, onThemeChange, onOpenFile, onQuit }: Props = $props();
+  let { themeChoice, onThemeChange, onOpenFile, onQuit, editing, dirty, onToggleEdit, onSave }: Props =
+    $props();
 
   /** 菜单名联合类型 */
   type MenuName = 'file' | 'edit' | 'view' | 'help';
@@ -79,6 +88,15 @@
     </div>
   {:else if openMenu === 'edit'}
     <div class="dropdown" role="menu" style="left: 46px">
+      <button class="item" onclick={() => run(onToggleEdit)}>
+        <span>{editing ? '退出编辑模式' : '启用编辑模式'}</span>
+        <span class="hint">Ctrl+E</span>
+      </button>
+      <button class="item" disabled={!editing || !dirty} onclick={() => run(onSave)}>
+        <span>保存</span>
+        <span class="hint">Ctrl+S</span>
+      </button>
+      <div class="separator"></div>
       <button class="item" disabled><span>查找…</span><span class="hint">Ctrl+F</span></button>
       <button class="item" disabled><span>替换…</span><span class="hint">Ctrl+H</span></button>
     </div>
