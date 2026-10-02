@@ -8,7 +8,12 @@
   import Toast from '../../lib/components/Toast.svelte';
   import TitleBar from '../../lib/components/TitleBar.svelte';
   import { ipc } from '../../lib/ipc';
+  import AboutTab from './AboutTab.svelte';
+  import GeneralTab from './GeneralTab.svelte';
+  import HistoryTab from './HistoryTab.svelte';
   import ShortcutsTab from './ShortcutsTab.svelte';
+  import TypographyTab from './TypographyTab.svelte';
+  import { settings } from './store.svelte';
 
   /** 页签定义（顺序即展示顺序） */
   const TABS = [
@@ -21,10 +26,16 @@
 
   type TabId = (typeof TABS)[number]['id'];
 
-  /** 当前页签（阶段 5 默认聚焦唯一可用页签；阶段 8 可改为「常规」） */
-  let tab = $state<TabId>('shortcuts');
+  /** 当前页签（默认「常规」；菜单打开时经 take_settings_tab 定位） */
+  let tab = $state<TabId>('general');
 
   onMount(() => {
+    // 菜单请求的初始页签（如 帮助→快捷键/关于；读取即清空）
+    void ipc.takeSettingsTab().then((pending) => {
+      if (pending && TABS.some((item) => item.id === pending)) {
+        tab = pending as TabId;
+      }
+    });
     // 应用已保存主题：设置窗口与主窗口同一套令牌
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     let choice = 'system';
@@ -32,16 +43,11 @@
       const resolved = choice === 'system' ? (media.matches ? 'dark' : 'light') : choice;
       document.documentElement.dataset.theme = resolved;
     };
-    void ipc
-      .getSettings()
-      .then((snapshot) => {
-        choice = snapshot.reader.theme;
-        apply();
-        media.addEventListener('change', apply);
-      })
-      .catch(() => {
-        // 主题读取失败时保持 base.css 默认（浅色），不阻塞设置功能
-      });
+    void settings.load().then(() => {
+      choice = settings.snapshot?.reader.theme ?? 'system';
+      apply();
+      media.addEventListener('change', apply);
+    });
     return () => media.removeEventListener('change', apply);
   });
 </script>
@@ -63,10 +69,16 @@
     {/each}
   </div>
   <main class="content">
-    {#if tab === 'shortcuts'}
+    {#if tab === 'general'}
+      <GeneralTab />
+    {:else if tab === 'typography'}
+      <TypographyTab />
+    {:else if tab === 'shortcuts'}
       <ShortcutsTab />
+    {:else if tab === 'history'}
+      <HistoryTab />
     {:else}
-      <p class="placeholder">该设置项将在后续版本提供。</p>
+      <AboutTab />
     {/if}
   </main>
   <Toast />
@@ -113,12 +125,5 @@
     flex: 1;
     overflow: auto;
     padding: 16px;
-  }
-
-  .placeholder {
-    margin-top: 48px;
-    text-align: center;
-    color: var(--muted);
-    font-size: 13px;
   }
 </style>

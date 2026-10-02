@@ -30,6 +30,16 @@
     onEditorAction?: (type: EditActionType) => void;
     /** 全屏切换回调（查看菜单） */
     onToggleFullscreen?: () => void;
+    /** 字号增大（查看菜单；步进由 App 归一后保存） */
+    onFontIncrease?: () => void;
+    /** 字号减小（查看菜单） */
+    onFontDecrease?: () => void;
+    /** 重置字号（查看菜单；回默认 16px） */
+    onFontReset?: () => void;
+    /** 打开设置窗口并定位「快捷键」页签（帮助菜单） */
+    onOpenShortcuts?: () => void;
+    /** 打开设置窗口并定位「关于」页签（帮助菜单） */
+    onOpenAbout?: () => void;
     /** 是否存在活动标签（重新加载可用性） */
     hasTab: boolean;
   }
@@ -46,6 +56,11 @@
     onReload,
     onEditorAction,
     onToggleFullscreen,
+    onFontIncrease,
+    onFontDecrease,
+    onFontReset,
+    onOpenShortcuts,
+    onOpenAbout,
     hasTab,
   }: Props = $props();
 
@@ -170,15 +185,16 @@
         </button>
       {/each}
       <div class="separator"></div>
-      <button class="item" disabled><span>字号增大</span><span class="hint">Ctrl+=</span></button>
-      <button class="item" disabled><span>字号减小</span><span class="hint">Ctrl+-</span></button>
+      <button class="item" onclick={() => run(() => onFontIncrease?.())}><span>字号增大</span></button>
+      <button class="item" onclick={() => run(() => onFontDecrease?.())}><span>字号减小</span></button>
+      <button class="item" onclick={() => run(() => onFontReset?.())}><span>重置字号</span></button>
       <div class="separator"></div>
       <button class="item" onclick={() => run(onToggleFullscreen)}><span>全屏</span><span class="hint">F11</span></button>
     </div>
   {:else if openMenu === 'help'}
     <div class="dropdown" role="menu" style="left: 130px">
-      <button class="item" disabled><span>快捷键…</span></button>
-      <button class="item" disabled><span>关于 S-Read-TXT</span></button>
+      <button class="item" onclick={() => run(() => onOpenShortcuts?.())}><span>快捷键…</span></button>
+      <button class="item" onclick={() => run(() => onOpenAbout?.())}><span>关于 S-Read-TXT</span></button>
     </div>
   {/if}
 </nav>

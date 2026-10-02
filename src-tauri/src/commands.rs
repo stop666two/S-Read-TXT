@@ -593,13 +593,23 @@ pub fn set_active_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<
     })
 }
 
+/// 设置窗口待打开的页签（`open_settings` 写入；设置窗口启动时经 `take_settings_tab` 取走）。
+/// 用进程级静态而非 AppState：设置窗口生命周期与标签状态无关，且值极小。
+static SETTINGS_PENDING_TAB: Mutex<Option<String>> = Mutex::new(None);
+
 /// 命令：打开设置窗口（已存在则显示并聚焦；不存在按需创建）。
 ///
 /// 说明：设置窗口按需创建而非启动时常驻——隐藏的 WebView 仍占内存（约数十 MB），
 /// 会挤压「10 标签 <100MB」的内存红线；关闭后窗口销毁，再次打开重建。
+/// `tab`：请求打开时定位的页签（如 `shortcuts` / `about`；None 用默认页签）。
 #[tauri::command]
-pub async fn open_settings(app: tauri::AppHandle) -> Result<(), IpcError> {
+pub async fn open_settings(app: tauri::AppHandle, tab: Option<String>) -> Result<(), IpcError> {
     use tauri::Manager;
+    if let Some(requested) = tab {
+        if let Ok(mut guard) = SETTINGS_PENDING_TAB.lock() {
+            *guard = Some(requested);
+        }
+    }
     if let Some(window) = app.get_webview_window("settings") {
         window
             .show()
@@ -625,4 +635,10 @@ pub async fn open_settings(app: tauri::AppHandle) -> Result<(), IpcError> {
     .map_err(|err| IpcError::internal(format!("创建设置窗口失败：{err}")))?;
     log::info!(target: "sread::ipc", "设置窗口已创建");
     Ok(())
+}
+
+/// 命令：取走设置窗口待打开页签（读取即清空；无待办返回 None）。
+#[tauri::command]
+pub fn take_settings_tab() -> Option<String> {
+    SETTINGS_PENDING_TAB.lock().ok().and_then(|mut guard| guard.take())
 }

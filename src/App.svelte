@@ -25,7 +25,7 @@
   import { formatBytes } from './lib/format';
   import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
-  import { describeIpcError, ipc, toIpcError, type EditApplied } from './lib/ipc';
+  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings } from './lib/ipc';
   import { tabs } from './lib/state/tabs.svelte';
   import { toasts } from './lib/state/toasts.svelte';
   import { decideShortcut, isEditorContext, modalOpen } from './lib/shortcuts/engine';
@@ -43,6 +43,10 @@
   let readPercent = $state(0);
   /** 支持的编码列表（后端提供） */
   let encodings = $state<string[]>([]);
+  /** 应用配置（阶段 6：启动加载；设置窗口变更后热刷新） */
+  let appSettings = $state<AppSettings | null>(null);
+  /** 阅读排版配置（主题 + 排版；变更实时应用） */
+  let readerSettings = $state<ReaderSettings | null>(null);
 
   /** 编辑动作信号（菜单 → 编辑层；seq 递增区分重复动作） */
   let editorAction = $state<EditorAction | null>(null);
@@ -60,14 +64,51 @@
   /** 生效快捷键绑定（后端为唯一真源；启动加载，设置变更后刷新） */
   let shortcuts = $state<ShortcutMap>({});
 
-  /** 重新载入快捷键绑定（启动 / 设置窗口事件 / 窗口聚焦兑底） */
-  async function reloadShortcuts(): Promise<void> {
+  /** 重新载入全部配置快照（启动 / 设置窗口变更事件 / 窗口聚焦兜底） */
+  async function reloadSettings(): Promise<void> {
     try {
       const snapshot = await ipc.getSettings();
+      appSettings = snapshot.app;
+      readerSettings = snapshot.reader;
       shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
+      themeChoice = snapshot.reader.theme as ThemeChoice;
     } catch (error) {
-      if (import.meta.env.DEV) console.error('[app] 载入快捷键失败', error);
+      if (import.meta.env.DEV) console.error('[app] 载入配置失败', error);
     }
+  }
+
+  /** 保存阅读排版配置（修改即存；以本地快照为基准合并补丁） */
+  async function persistReader(patch: Partial<ReaderSettings>): Promise<void> {
+    if (!readerSettings || !appSettings) return;
+    const next: ReaderSettings = { ...readerSettings, ...patch };
+    try {
+      const snapshot = await ipc.saveSettings({
+        app: appSettings,
+        reader: next,
+        shortcuts: shortcuts as Record<string, string>,
+      });
+      appSettings = snapshot.app;
+      readerSettings = snapshot.reader;
+      shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
+      themeChoice = snapshot.reader.theme as ThemeChoice;
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 字号调整（查看菜单；与后端范围一致的前端钳制，避免无效往返） */
+  function adjustFontSize(step: number): void {
+    if (!readerSettings) return;
+    const current = readerSettings.typography.fontSize;
+    const next = Math.min(32, Math.max(12, current + step));
+    if (next === current) return;
+    void persistReader({ typography: { ...readerSettings.typography, fontSize: next } });
+  }
+
+  /** 重置字号为默认（16px） */
+  function resetFontSize(): void {
+    if (!readerSettings) return;
+    void persistReader({ typography: { ...readerSettings.typography, fontSize: 16 } });
   }
 
   /** 循环切换标签（nextTab / prevTab） */
@@ -158,9 +199,10 @@
     document.title = windowTitle;
   });
 
-  /** 主题切换入口 */
+  /** 主题切换入口（菜单/工具栏；修改即存） */
   function setTheme(theme: ThemeChoice): void {
     themeChoice = theme;
+    void persistReader({ theme });
   }
 
   /** 切换全屏（查看菜单 / F11；阶段 5 快捷键引擎接入后统一管理） */
@@ -494,6 +536,21 @@
     return () => media.removeEventListener('change', apply);
   });
 
+  /** 排版变更键（传给 ReaderView 触发行高失效重排；值变化即重排） */
+  const typographyKey = $derived(readerSettings ? JSON.stringify(readerSettings.typography) : '');
+
+  // 排版令牌写入 CSS 变量：阅读区实时生效（字号/行高/字体/限宽/边距）
+  $effect(() => {
+    const typo = readerSettings?.typography;
+    if (!typo) return;
+    const root = document.documentElement;
+    root.style.setProperty('--font-reading', `${typo.fontFamily}, system-ui, sans-serif`);
+    root.style.setProperty('--reading-size', `${typo.fontSize}px`);
+    root.style.setProperty('--reading-line-height', `${typo.lineHeight}`);
+    root.style.setProperty('--reading-width', `${typo.contentWidth}px`);
+    root.style.setProperty('--reading-pad-x', `${typo.pagePadding}px`);
+  });
+
   onMount(() => {
     // 冷启动防空白：页面首帧（主题/骨架）渲染完成后才显示窗口。
     // WebView2 初始化在磁盘压力大时可能耗时较长；隐藏期间用户不会看到空白窗口，
@@ -560,16 +617,16 @@
         unlisten = stop;
       });
 
-    // 快捷键：启动加载 + 设置窗口变更事件刷新 + 窗口聚焦兑底刷新
-    void reloadShortcuts();
-    let unlistenShortcuts: (() => void) | undefined;
-    void listen('srt://shortcuts-changed', () => void reloadShortcuts()).then((stop) => {
-      unlistenShortcuts = stop;
+    // 配置：启动加载 + 设置窗口变更事件刷新 + 窗口聚焦兜底刷新
+    void reloadSettings();
+    let unlistenSettings: (() => void) | undefined;
+    void listen('srt://settings-changed', () => void reloadSettings()).then((stop) => {
+      unlistenSettings = stop;
     });
     let unlistenFocus: (() => void) | undefined;
     void getCurrentWindow()
       .onFocusChanged(({ payload: focused }) => {
-        if (focused) void reloadShortcuts();
+        if (focused) void reloadSettings();
       })
       .then((stop) => {
         unlistenFocus = stop;
@@ -598,7 +655,7 @@
     return () => {
       unlisten?.();
       unlistenClose?.();
-      unlistenShortcuts?.();
+      unlistenSettings?.();
       unlistenFocus?.();
       window.removeEventListener('keydown', onGlobalKeydown, true);
     };
@@ -621,6 +678,11 @@
     onReload={reloadFlow}
     onEditorAction={dispatchEditorAction}
     onToggleFullscreen={() => void toggleFullscreen()}
+    onFontIncrease={() => adjustFontSize(1)}
+    onFontDecrease={() => adjustFontSize(-1)}
+    onFontReset={resetFontSize}
+    onOpenShortcuts={() => void ipc.openSettings('shortcuts')}
+    onOpenAbout={() => void ipc.openSettings('about')}
   />
   <ToolBar
     {themeChoice}
@@ -647,6 +709,7 @@
       onPercent={(percent) => (readPercent = percent)}
       onEditApplied={handleEditApplied}
       {editorAction}
+      layoutKey={typographyKey}
     />
   {:else}
     <EmptyState onOpen={openFile} />

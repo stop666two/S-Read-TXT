@@ -7,6 +7,7 @@
   import { describeIpcError, ipc, toIpcError, type EditApplied, type TabInfo } from '../ipc';
   import { HeightModel } from '../reader/heights';
   import { RowCache } from '../reader/row-cache';
+  import { scrollMemory } from '../reader/scroll-memory';
   import { computePercent, computeWindow, planBatches } from '../reader/viewport';
   import { toasts } from '../state/toasts.svelte';
 
@@ -19,8 +20,10 @@
     onEditApplied?: (tabId: number, result: EditApplied) => void;
     /** 外部编辑动作信号（菜单触发；透传给编辑层） */
     editorAction?: EditorAction | null;
+    /** 排版变更键（字体/字号/行高/限宽/边距；变化触发行高失效重排） */
+    layoutKey: string;
   }
-  let { tab, onPercent, onEditApplied, editorAction }: Props = $props();
+  let { tab, onPercent, onEditApplied, editorAction, layoutKey }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -48,8 +51,7 @@
   const cache = new RowCache();
   /** 在途取行批次键（防重复请求） */
   const inflight = new Set<string>();
-  /** 标签 → 顶部定位行号（跨标签切换恢复位置） */
-  const scrollMemory = new Map<number, number>();
+  /** 标签 → 顶部定位行的注册表（跨模块共享；见 reader/scroll-memory.ts） */
   /** 程序化滚动标记（锚定补偿时避免重入滚动处理） */
   let programmatic = false;
   let lastPercent = -1;
@@ -255,6 +257,14 @@
     return () => {
       observer.disconnect();
     };
+  });
+
+  // 排版变更（字体/字号/行高/限宽/边距）：行高模型失效并重排；
+  // 滚动位置由 measureRendered 的锚定机制保持（不会跳回顶部）。
+  $effect(() => {
+    void layoutKey;
+    heights.clear();
+    version += 1;
   });
 
   // 标签或编码变化：重建缓存/高度，按记忆行号恢复位置；离开前记录当前行号

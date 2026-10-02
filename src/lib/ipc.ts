@@ -181,6 +181,42 @@ export interface ShortcutSettings {
   bindings: Record<string, string>;
 }
 
+/** 历史记录条目（与 Rust `HistoryEntry` 对应）。 */
+export interface HistoryEntry {
+  path: string;
+  name: string;
+  size: number;
+  encoding: string;
+  openedAt: string;
+  lastRow: number;
+  lastPercent: number;
+}
+
+/** 窗口状态（会话恢复用；x/y 可为空表示未定位）。 */
+export interface WindowState {
+  x: number | null;
+  y: number | null;
+  width: number;
+  height: number;
+  maximized: boolean;
+}
+
+/** 会话中的单个标签（恢复用；scrollRow = 顶部定位行）。 */
+export interface SessionTab {
+  path: string;
+  encoding: string | null;
+  scrollRow: number;
+  editMode: boolean;
+}
+
+/** 会话状态（与 Rust `SessionState` 对应）。 */
+export interface SessionState {
+  schemaVersion: number;
+  window: WindowState;
+  activeTabIndex: number;
+  tabs: SessionTab[];
+}
+
 /** 配置聚合快照（`get_settings` 返回体）。 */
 export interface SettingsSnapshot {
   app: AppSettings;
@@ -215,8 +251,10 @@ export const ipc = {
   closeTab: (tabId: number) => invoke<TabsView>('close_tab', { tabId }),
   /** 同步活动标签到后端（点击/快捷键选择后调用）。 */
   setActiveTab: (tabId: number) => invoke<void>('set_active_tab', { tabId }),
-  /** 打开设置窗口（已存在则聚焦；按需创建）。 */
-  openSettings: () => invoke<void>('open_settings'),
+  /** 打开设置窗口（已存在则聚焦；按需创建；tab 指定初始页签）。 */
+  openSettings: (tab?: string) => invoke<void>('open_settings', { tab: tab ?? null }),
+  /** 取走设置窗口待打开页签（读取即清空；无待办返回 null）。 */
+  takeSettingsTab: () => invoke<string | null>('take_settings_tab'),
   /** 切换编辑模式（首次进入创建编辑文档）。 */
   toggleEdit: (tabId: number) => invoke<TabInfo>('toggle_edit', { tabId }),
   /** 应用编辑批次（批次 = 单个撤销步）。 */
@@ -262,4 +300,14 @@ export const ipc = {
     invoke<SettingsSnapshot>('save_settings', { request }),
   /** 默认快捷键表（设置界面「恢复默认」用）。 */
   getDefaultShortcuts: () => invoke<Record<string, string>>('get_default_shortcuts'),
+  /** 历史记录（去重剪枝后、时间倒序）。 */
+  getHistory: () => invoke<HistoryEntry[]>('get_history'),
+  /** 删除单条历史（以文件路径为键；返回更新后的列表）。 */
+  removeHistory: (filePath: string) => invoke<HistoryEntry[]>('remove_history', { filePath }),
+  /** 清空历史记录。 */
+  clearHistory: () => invoke<void>('clear_history'),
+  /** 读取会话（窗口/标签/滚动；无会话返回默认值）。 */
+  getSession: () => invoke<SessionState>('get_session'),
+  /** 保存会话（返回归一化后的结果）。 */
+  saveSession: (session: SessionState) => invoke<SessionState>('save_session', { session }),
 };
