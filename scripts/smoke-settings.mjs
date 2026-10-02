@@ -100,11 +100,34 @@ async function main() {
     const dialogOp = (action) => createDialogOps(child.pid).dialogOp(action);
     const waitDialog = (expectFound, timeoutMs) => createDialogOps(child.pid).waitDialog(expectFound, timeoutMs);
 
+    /** 关闭首启引导（模态遮罩会挂起全局快捷键；勾选「不再显示」后点「开始使用」） */
+    const dismissOnboarding = async () => {
+      await waitForValue(async () => {
+        const present = await evalMain(
+          `(() => { const overlay = document.querySelector('.overlay[aria-label="使用向导"]');
+            if (!overlay) return false;
+            const check = overlay.querySelector('.dont-show input');
+            if (check && !check.checked) check.click();
+            const button = [...overlay.querySelectorAll('button')].find((b) => b.textContent.includes('开始使用'));
+            button?.click();
+            return true; })()`,
+        );
+        return present ? true : null;
+      }, 10000);
+    };
+    await dismissOnboarding();
+
     // S1 打开设置窗口（工具栏「设置」按钮）
     currentStep = 'S1 打开设置窗口';
     await evalMain(`document.querySelector('button[title="设置"]')?.click() ?? true`);
     settingsClient = await createClient(await findTarget(port, 'settings.html'));
     const evalSet = (expression) => evalIn(settingsClient, expression);
+    /** 按名称切换设置页签（默认页签为「常规」，快捷键操作前必须先切换） */
+    const clickTab = (name) =>
+      evalSet(
+        `(() => { const tab = [...document.querySelectorAll('.tabs [role="tab"]')].find((b) => b.textContent.trim() === '${name}'); tab?.click(); return !!tab; })()`,
+      );
+    await clickTab('快捷键');
     const rowsReady = await waitForValue(
       async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 15 ? true : null),
       15000,
@@ -201,13 +224,16 @@ async function main() {
     await waitForValue(async () => ((await comboText('关闭当前标签')) === 'Ctrl+Q' ? true : null), 6000);
     await evalSet(`document.querySelector('.title-bar button[aria-label="关闭"]')?.click() ?? true`);
     await delay(800);
-    await evalMain(`window.__srt.openPath(${JSON.stringify(firstFile)})`);
+    // 注意：openPath 的原生 Promise 不交给 CDP await（WebView2 下会偶发 “Promise was collected”），
+    // 改为页面内触发 + 轮询后端状态确认（与 smoke-session 同一处理）。
+    await evalMain(`(void window.__srt.openPath(${JSON.stringify(firstFile)}), true)`);
     await delay(450);
-    await evalMain(`window.__srt.openPath(${JSON.stringify(secondFile)})`);
+    await evalMain(`(void window.__srt.openPath(${JSON.stringify(secondFile)}), true)`);
     await delay(450);
     const countAll = () =>
       evalMain(`(async () => (await window.__TAURI_INTERNALS__.invoke('list_tabs')).tabs.length)()`);
-    check('S8a 主窗口两个标签', (await countAll()) === 2);
+    const twoTabsS8 = await waitForValue(async () => ((await countAll()) === 2 ? true : null), 8000);
+    check('S8a 主窗口两个标签', twoTabsS8 === true);
     await pressOn(mainClient, 'q', 'KeyQ', 81, 2);
     const afterQ = await waitForValue(async () => ((await countAll()) === 1 ? 1 : null), 6000);
     check('S8b 自定义 Ctrl+Q 关闭标签生效', afterQ === 1);
@@ -221,6 +247,7 @@ async function main() {
     await delay(900);
     settingsClient?.close?.();
     settingsClient = await createClient(await findTarget(port, 'settings.html'));
+    await clickTab('快捷键');
     await waitForValue(async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 15 ? true : null), 15000);
     await evalSet(`document.querySelector('.reset-all')?.click() ?? true`);
     await waitForValue(async () => ((await comboText('关闭当前标签')) === 'Ctrl+W' ? true : null), 6000);
@@ -239,6 +266,7 @@ async function main() {
       await evalMain(`document.querySelector('button[title="设置"]')?.click() ?? true`);
       settingsClient?.close?.();
       settingsClient = await createClient(await findTarget(port, 'settings.html'));
+      await clickTab('快捷键');
       return waitRows();
     };
     const closeSettings = async () => {
@@ -300,31 +328,61 @@ async function main() {
       );
       return ready ? true : null;
     }, 30000);
-    await evalMain(`window.__srt.openPath(${JSON.stringify(firstFile)})`);
+    await evalMain(`(void window.__srt.openPath(${JSON.stringify(firstFile)}), true)`);
     await delay(450);
-    await evalMain(`window.__srt.openPath(${JSON.stringify(secondFile)})`);
+    await evalMain(`(void window.__srt.openPath(${JSON.stringify(secondFile)}), true)`);
     await delay(450);
-    check('S12a 重启后两个标签', (await countAll()) === 2);
+    const twoTabsS12 = await waitForValue(async () => ((await countAll()) === 2 ? true : null), 8000);
+    check('S12a 重启后两个标签', twoTabsS12 === true);
     await pressOn(mainClient, 'q', 'KeyQ', 81, 2);
     const afterRestartQ = await waitForValue(async () => ((await countAll()) === 1 ? 1 : null), 6000);
     check('S12b 重启后自定义 Ctrl+Q 仍生效', afterRestartQ === 1);
 
-    // S13 设置页签切换与占位
-    currentStep = 'S13 页签切换与占位';
+    // S13 设置页签：常规真实字段 / 快捷键行完整 / 排版实时应用到主窗口
+    currentStep = 'S13 页签与实时应用';
     await reopenSettings();
     await evalSet(
       `(() => { const tab = [...document.querySelectorAll('.tabs [role="tab"]')].find((b) => b.textContent.trim() === '常规'); tab?.click(); return true; })()`,
     );
     await delay(300);
-    const placeholder = await evalSet(
-      `document.querySelector('.placeholder')?.textContent?.includes('后续版本') ?? false`,
+    const generalHasField = await evalSet(
+      `(() => { const labels = [...document.querySelectorAll('.rows .label')].map((el) => el.textContent ?? ''); return labels.some((t) => t.includes('可打开文件大小上限')); })()`,
     );
-    check('S13a 常规页签显示占位说明', placeholder === true);
+    check('S13a 常规页签显示真实字段', generalHasField === true);
     await evalSet(
       `(() => { const tab = [...document.querySelectorAll('.tabs [role="tab"]')].find((b) => b.textContent.trim() === '快捷键'); tab?.click(); return true; })()`,
     );
     await delay(300);
     check('S13b 切回快捷键页签行完整', (await evalSet(`document.querySelectorAll('.row').length`)) === 15);
+
+    // S13c 阅读排版：改字号 → 主窗口 CSS 变量实时生效（并还原）
+    currentStep = 'S13c 排版实时应用';
+    await evalSet(
+      `(() => { const tab = [...document.querySelectorAll('.tabs [role="tab"]')].find((b) => b.textContent.trim() === '阅读排版'); tab?.click(); return true; })()`,
+    );
+    await delay(300);
+    const setFontSize = async (size) => {
+      await evalSet(
+        `(() => {
+          const range = document.querySelector('.rows input[type="range"]');
+          if (!range) return false;
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          setter.call(range, '${size}');
+          range.dispatchEvent(new Event('input', { bubbles: true }));
+          range.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()`,
+      );
+      // 注意：此处必须用模板字符串（`${size}px`）比较；单引号会变成字面量导致永不匹配
+      return waitForValue(async () => {
+        const value = await evalMain(
+          `getComputedStyle(document.documentElement).getPropertyValue('--reading-size').trim()`,
+        );
+        return value === `${size}px` ? true : null;
+      }, 8000);
+    };
+    check('S13c 字号修改实时应用到主窗口', (await setFontSize(20)) === true);
+    await setFontSize(16);
 
     // 汇总
     const failed = checks.filter((item) => !item.passed);

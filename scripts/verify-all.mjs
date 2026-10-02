@@ -60,6 +60,8 @@ const steps = [
   { name: 'E2E 全按钮（smoke-buttons）', cmd: 'node scripts/smoke-buttons.mjs', cwd: root, env: process.env, timeout: 900_000 },
   { name: 'E2E 设置窗口（smoke-settings）', cmd: 'node scripts/smoke-settings.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 快捷键（smoke-shortcuts）', cmd: 'node scripts/smoke-shortcuts.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 会话恢复（smoke-session）', cmd: 'node scripts/smoke-session.mjs', cwd: root, env: process.env, timeout: 900_000 },
+  { name: 'E2E 数据目录引导（smoke-datadir）', cmd: 'node scripts/smoke-datadir.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 对抗（smoke-abuse）', cmd: 'node scripts/smoke-abuse.mjs', cwd: root, env: process.env, timeout: 900_000 },
   ...(skipLongline
     ? []
