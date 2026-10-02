@@ -116,16 +116,21 @@
     }
   }
 
-  /** 保存阅读排版配置（修改即存；以本地快照为基准合并补丁） */
+  /** 保存阅读排版配置（修改即存；以本地快照为基准合并补丁）。
+   *  并发保护：快速连续修改（如连点主题按钮）时，仅采纳**最后一次**请求的响应，
+   *  避免较旧的快照回灌覆盖更新的本地选择（主题回跳的真实缺陷根因）。 */
+  let readerSaveSeq = 0;
   async function persistReader(patch: Partial<ReaderSettings>): Promise<void> {
     if (!readerSettings || !appSettings) return;
     const next: ReaderSettings = { ...readerSettings, ...patch };
+    const seq = ++readerSaveSeq;
     try {
       const snapshot = await ipc.saveSettings({
         app: appSettings,
         reader: next,
         shortcuts: shortcuts as Record<string, string>,
       });
+      if (seq !== readerSaveSeq) return;
       appSettings = snapshot.app;
       readerSettings = snapshot.reader;
       shortcuts = snapshot.shortcuts.bindings as ShortcutMap;

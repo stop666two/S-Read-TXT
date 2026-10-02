@@ -180,11 +180,11 @@ async function main() {
     await evalJs(
       `(() => { const entry = [...document.querySelectorAll('.panel .entry')].find((n) => n.querySelector('.name')?.textContent.trim() === 'za.txt'); entry?.click(); return true; })()`,
     );
-    await waitForValue(async () => ((await tabCount()) === 3 ? true : null), 8000);
+    await waitForValue(async () => ((await tabCount()) === 3 ? true : null), 12000);
     const restored = await waitForValue(async () => {
       const top = await evalJs(`document.querySelector('.reader')?.scrollTop ?? 0`);
       return top > 500 ? top : null;
-    }, 8000);
+    }, 12000);
     check('H3b 从历史重开恢复阅读进度', restored !== null, `scrollTop=${restored}`);
     check(
       'H3c 打开后面板自动关闭且活动标签正确',

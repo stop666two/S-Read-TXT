@@ -289,17 +289,24 @@ async function main() {
     currentStep = 'C7 工具栏主题循环';
     const themeSeq = [];
     // 初始为「跟随系统」（解析浅色）：点击循环 light→dark→eye→system
-    for (let i = 0; i < 3; i += 1) {
+    // 每次点击后按期望值轮询（链式运行较慢时固定延时读取会抖动）
+    const expectedSeq = ['light', 'dark', 'eye'];
+    for (const expected of expectedSeq) {
       await click('[aria-label="切换主题"]');
-      await delay(250);
-      themeSeq.push(await evalJs(`document.documentElement.dataset.theme`));
+      const got = await waitForValue(async () => {
+        const theme = await evalJs(`document.documentElement.dataset.theme`);
+        return theme === expected ? theme : null;
+      }, 4000);
+      themeSeq.push(got ?? (await evalJs(`document.documentElement.dataset.theme`)));
     }
     await click('[aria-label="切换主题"]');
-    await delay(250);
-    const systemTheme = await evalJs(`document.documentElement.dataset.theme`);
+    const systemTheme = await waitForValue(async () => {
+      const theme = await evalJs(`document.documentElement.dataset.theme`);
+      return theme === 'light' || theme === 'dark' ? theme : null;
+    }, 4000);
     check(
       'C7 工具栏「切换主题」循环（light→dark→eye→system）',
-      themeSeq[0] === 'light' && themeSeq[1] === 'dark' && themeSeq[2] === 'eye' && (systemTheme === 'light' || systemTheme === 'dark'),
+      themeSeq[0] === 'light' && themeSeq[1] === 'dark' && themeSeq[2] === 'eye' && systemTheme !== null,
       `seq=${themeSeq.join(',')} system=${systemTheme}`,
     );
 

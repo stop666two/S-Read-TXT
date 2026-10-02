@@ -39,19 +39,24 @@ class SettingsStore {
     await this.persist({ reader: { ...this.snapshot.reader, ...patch }, kind: 'reader' });
   }
 
-  /** 内部：合并保存并广播（shortcuts 始终带上当前生效表，避免覆盖） */
+  /** 内部：合并保存并广播（shortcuts 始终带上当前生效表，避免覆盖）。
+   *  并发保护：快速连续修改（如拖动字号滑块）时仅采纳**最后一次**请求的响应，
+   *  防止较旧快照回灌覆盖更新值。 */
+  private saveSeq = 0;
   private async persist(change: {
     app?: AppSettings;
     reader?: ReaderSettings;
     kind: 'app' | 'reader';
   }): Promise<void> {
     if (!this.snapshot) return;
+    const seq = ++this.saveSeq;
     try {
       const updated = await ipc.saveSettings({
         app: change.app ?? this.snapshot.app,
         reader: change.reader ?? this.snapshot.reader,
         shortcuts: this.snapshot.shortcuts.bindings as Record<string, string>,
       });
+      if (seq !== this.saveSeq) return;
       this.snapshot = updated;
       await emitTo('main', 'srt://settings-changed', { kind: change.kind });
     } catch (error) {
