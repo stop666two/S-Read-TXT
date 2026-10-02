@@ -282,3 +282,49 @@ pub fn list_encodings() -> Vec<&'static str> {
         .map(|encoding| encoding.label())
         .collect()
 }
+
+/// 标签视图（标签列表 + 活动标签；供前端重建标签栏）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TabsView {
+    /// 全部标签（按创建顺序）
+    tabs: Vec<TabInfo>,
+    /// 当前活动标签（无标签时为 None）
+    active_tab_id: Option<u64>,
+}
+
+/// 命令：列出全部标签（前端启动同步/恢复时使用）。
+#[tauri::command]
+pub fn list_tabs(state: State<'_, Mutex<AppState>>) -> Result<TabsView, IpcError> {
+    with_context(LogContext::request(), || {
+        let guard = lock_state(&state)?;
+        Ok(TabsView {
+            tabs: guard.tabs_info(),
+            active_tab_id: guard.active_tab(),
+        })
+    })
+}
+
+/// 命令：关闭标签并返回剩余标签视图。
+///
+/// 幂等：关闭不存在的标签不视为错误（返回当前视图，规则：可重试操作幂等）。
+#[tauri::command]
+pub fn close_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabsView, IpcError> {
+    with_context(LogContext::request(), || {
+        let mut guard = lock_state(&state)?;
+        let closed = guard.close(tab_id);
+        let view = TabsView {
+            tabs: guard.tabs_info(),
+            active_tab_id: guard.active_tab(),
+        };
+        if closed {
+            log::info!(
+                target: "sread::ipc",
+                "关闭标签：{}（剩余 {} 个）",
+                tab_id,
+                view.tabs.len()
+            );
+        }
+        Ok(view)
+    })
+}

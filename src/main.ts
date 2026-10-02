@@ -6,6 +6,7 @@ import 'virtual:uno.css';
 // 基础样式与主题令牌（CSS 变量：浅色/深色/护眼）
 import './styles/base.css';
 import App from './App.svelte';
+import { tabs } from './lib/state/tabs.svelte';
 
 // 挂载点由 index.html 提供；缺失视为入口页被破坏，直接抛错（启动自检，fail fast）
 const target = document.getElementById('app');
@@ -15,5 +16,19 @@ if (!target) {
 
 // Svelte 5 函数式挂载；返回实例供将来可能的销毁/热更场景使用
 const app = mount(App, { target });
+
+declare global {
+  interface Window {
+    /** 自动化测试钩子（scripts/smoke.mjs 经 CDP 驱动真实应用；仅暴露最小动作面） */
+    __srt?: {
+      /** 打开文件（与拖拽/对话框相同的 store 路径） */
+      openPath: (path: string) => Promise<void>;
+    };
+  }
+}
+
+window.__srt = {
+  openPath: (path) => tabs.openPath(path),
+};
 
 export default app;

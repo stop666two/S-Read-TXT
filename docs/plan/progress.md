@@ -57,7 +57,7 @@
 |---|---|---|---|
 | 2a | 后端阅读状态：AppState（标签表/去重/上限）+ open_file/get_rows/set_encoding/list_encodings + IpcError + 历史接线 | ✅ 代码完成 | cargo test **106/106**（lib 101 + 集成 5）；0 告警；`scripts/smoke.mjs` 运行冒烟 **9/9** |
 | 2b | 前端布局骨架（菜单/工具栏/标签栏/阅读区/状态栏、四主题）+ 界面稿评审 | 🔎 骨架完成，待用户评审 | 截图 `docs/screenshots/phase2b-{light,dark,eye,light-menu}.png`；svelte-check 0/0；三主题计算色实测（light #FAF9F7 / dark #1E1E1E / eye #F5EFE0） |
-| 2c | 前端阅读接线（虚拟滚动/打开与拖拽/编码切换/空状态/Toast） | ⏳ 待开始 | — |
+| 2c | 前端阅读接线：①打开/拖拽/标签栏/空态/Toast/退出 ②虚拟滚动/编码下拉/百分比 | 🔨 2c-1 完成，2c-2 进行中 | 2c-1：前端单测 9/9、svelte-check 0/0、E2E 冒烟 **14/14**（含「打开→标签→关闭→空态」闭环）；2c-2 见下 |
 
 ### 切片 2a 详情
 

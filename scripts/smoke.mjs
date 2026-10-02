@@ -100,7 +100,10 @@ async function waitForReady(timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const ok = await evalJs("typeof window.__TAURI_INTERNALS__?.invoke === 'function'", 2000);
+      const ok = await evalJs(
+        "typeof window.__TAURI_INTERNALS__?.invoke === 'function' && typeof window.__srt?.openPath === 'function'",
+        2000,
+      );
       if (ok) return;
     } catch {
       // 页面尚未就绪：继续轮询
@@ -163,6 +166,26 @@ async function runScenarios() {
 
   const restored = await invoke('set_encoding', { tabId: opened.tabId, encoding: null });
   check('set_encoding 恢复自动检测', /UTF/i.test(String(restored.encoding)), String(restored.encoding));
+
+  // —— 前端（store → UI）端到端 ——
+  const emptyText = await evalJs("document.querySelector('.empty h1')?.textContent ?? ''");
+  check('空状态显示', emptyText === '未打开任何文件', `空状态="${emptyText}"`);
+
+  await evalJs(`window.__srt.openPath(${JSON.stringify(samplePath)}).then(() => true)`);
+  await delay(300);
+  const tabName = await evalJs("document.querySelector('.tab-bar .tab .name')?.textContent ?? ''");
+  check('标签栏显示文件名', tabName === 'sample-utf8.txt', `name="${tabName}"`);
+  const tabActive = await evalJs(
+    "document.querySelector('.tab-bar .tab')?.classList.contains('active') ?? false",
+  );
+  check('活动标签高亮', tabActive === true, `active=${tabActive}`);
+
+  await evalJs("document.querySelector('.tab-bar .tab .close')?.click(); true");
+  await delay(300);
+  const remainingTabs = await evalJs("document.querySelectorAll('.tab-bar .tab').length");
+  check('关闭标签后标签栏清空', remainingTabs === 0, `tabs=${remainingTabs}`);
+  const emptyBack = await evalJs("document.querySelector('.empty h1')?.textContent ?? ''");
+  check('关闭后回到空状态', emptyBack === '未打开任何文件', `空状态="${emptyBack}"`);
 
   const missing = await invokeCaught('get_rows', { tabId: 999, startRow: 0, count: 1 });
   check(

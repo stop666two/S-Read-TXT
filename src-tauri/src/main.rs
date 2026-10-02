@@ -45,7 +45,9 @@ fn main() {
             commands::open_file,
             commands::get_rows,
             commands::set_encoding,
-            commands::list_encodings
+            commands::list_encodings,
+            commands::list_tabs,
+            commands::close_tab
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
