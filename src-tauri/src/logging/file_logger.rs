@@ -17,7 +17,7 @@ use serde::Serialize;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
-use crate::logging::context::{self, LogContext};
+use crate::logging::context::LogContext;
 
 /// 轮转配置。
 #[derive(Debug, Clone, Copy)]
@@ -166,44 +166,6 @@ fn now_rfc3339() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
-}
-
-/// `log` facade 适配器（经 [`crate::logging::init`] 全局安装）。
-pub struct FacadeLogger(pub FileLogger);
-
-impl log::Log for FacadeLogger {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= log::max_level()
-    }
-
-    fn log(&self, record: &log::Record) {
-        if !self.enabled(record.metadata()) {
-            return;
-        }
-        let level = level_str(record.level());
-        let message = record.args().to_string();
-        let log_context = context::current_context();
-        if let Err(err) = self
-            .0
-            .write_line(level, record.target(), &message, log_context)
-        {
-            // 日志写失败不允许影响业务：退化为标准错误输出
-            eprintln!("[s-read-txt] 日志写入失败：{err}");
-        }
-    }
-
-    fn flush(&self) {}
-}
-
-/// `log::Level` → 小写级别名（RFC 5424 命名）。
-fn level_str(level: log::Level) -> &'static str {
-    match level {
-        log::Level::Error => "error",
-        log::Level::Warn => "warn",
-        log::Level::Info => "info",
-        log::Level::Debug => "debug",
-        log::Level::Trace => "trace",
-    }
 }
 
 #[cfg(test)]

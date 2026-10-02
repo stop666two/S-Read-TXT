@@ -6,12 +6,14 @@
 pub mod context;
 pub mod file_logger;
 
-use std::path::{Path, PathBuf};
-use std::sync::Once;
-
 use crate::settings::model::LogLevel;
+use std::path::{Path, PathBuf};
+use std::sync::{Once, RwLock};
 
-pub use file_logger::{FacadeLogger, FileLogger, RotationConfig};
+pub use file_logger::{FileLogger, RotationConfig};
+
+/// 当前日志输出（可随数据目录切换整体替换；未安装前为 `None`）。
+static CURRENT: RwLock<Option<FileLogger>> = RwLock::new(None);
 
 /// 日志目录：`<数据目录>/logs`。
 pub fn logs_dir(data_dir: &Path) -> PathBuf {
@@ -23,14 +25,15 @@ pub fn logs_dir(data_dir: &Path) -> PathBuf {
 /// 返回：`Ok(())` 即使全局已安装（幂等）；`Err(io::Error)` 表示日志文件无法创建，
 ///       此时应用继续运行（降级为无文件日志）。
 pub fn init(data_dir: &Path, settings_level: LogLevel) -> std::io::Result<()> {
-    static INSTALLED: Once = Once::new();
     let level = resolve_level_with(
         settings_level,
         std::env::var("SRT_LOG_LEVEL").ok().as_deref(),
     );
     let logger = FileLogger::open(&logs_dir(data_dir), RotationConfig::default())?;
+    *current_slot() = Some(logger);
+    static INSTALLED: Once = Once::new();
     INSTALLED.call_once(|| {
-        if let Err(err) = log::set_boxed_logger(Box::new(FacadeLogger(logger))) {
+        if let Err(err) = log::set_boxed_logger(Box::new(FacadeLogger)) {
             // 仅可能发生在“全局 logger 已被安装”（例如测试环境）
             eprintln!("[s-read-txt] 全局日志安装失败（可能已安装）：{err}");
         } else {
@@ -38,6 +41,64 @@ pub fn init(data_dir: &Path, settings_level: LogLevel) -> std::io::Result<()> {
         }
     });
     Ok(())
+}
+
+/// 切换日志输出目录（数据目录不可写、用户选择新目录后调用）。
+///
+/// 约束：即使全局 logger 未安装（测试环境）也允许切换槽位，便于测试与诊断。
+pub fn retarget(data_dir: &Path) -> std::io::Result<()> {
+    let logger = FileLogger::open(&logs_dir(data_dir), RotationConfig::default())?;
+    *current_slot() = Some(logger);
+    Ok(())
+}
+
+/// 取得全局日志槽写锁（中毒时取回内部状态：日志是辅助功能，不因他线程 panic 失效）。
+fn current_slot() -> std::sync::RwLockWriteGuard<'static, Option<FileLogger>> {
+    CURRENT
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// `log` facade 适配器：写入当前日志槽（支持运行期切换目录）。
+pub struct FacadeLogger;
+
+impl log::Log for FacadeLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::max_level()
+    }
+
+    fn log(&self, record: &log::Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        let level = level_str(record.level());
+        let message = record.args().to_string();
+        let log_context = context::current_context();
+        let guard = CURRENT
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some(logger) = guard.as_ref() else {
+            // init 之前（或初始化失败）：静默丢弃，避免启动早期崩溃
+            return;
+        };
+        if let Err(err) = logger.write_line(level, record.target(), &message, log_context) {
+            // 日志写失败不允许影响业务：退化为标准错误输出
+            eprintln!("[s-read-txt] 日志写入失败：{err}");
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+/// `log::Level` → 小写级别名（RFC 5424 命名）。
+fn level_str(level: log::Level) -> &'static str {
+    match level {
+        log::Level::Error => "error",
+        log::Level::Warn => "warn",
+        log::Level::Info => "info",
+        log::Level::Debug => "debug",
+        log::Level::Trace => "trace",
+    }
 }
 
 /// 级别解析（纯函数，便于测试）：
@@ -110,5 +171,13 @@ mod tests {
     fn logs_dir_appends_logs_folder() {
         let base = Path::new("D:\\app\\data");
         assert_eq!(logs_dir(base), base.join("logs"));
+    }
+
+    /// 切换日志输出目录：新目录立即创建 logs/app.log（数据目录不可写引导后的重定向路径）。
+    #[test]
+    fn retarget_creates_log_file_in_new_dir() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        retarget(dir.path()).expect("切换日志目录失败");
+        assert!(dir.path().join("logs").join("app.log").exists());
     }
 }

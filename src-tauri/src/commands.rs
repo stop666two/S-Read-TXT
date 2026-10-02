@@ -8,7 +8,7 @@
 //! 参数命名：Tauri v2 默认把 Rust 下划线参数转换为 camelCase 暴露给前端
 //! （如 `tab_id` → `tabId`）。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 use serde::Serialize;
@@ -21,6 +21,7 @@ use s_read_txt::ipc_error::{
     IpcError, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING, CODE_SESSION_SAVE,
     CODE_TAB_NOT_FOUND,
 };
+use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
 use s_read_txt::session::model::SessionState;
 use s_read_txt::session::store as session_store;
@@ -121,6 +122,44 @@ pub fn data_dir_status() -> DataDirStatus {
                     origin,
                 }
             }
+        }
+    })
+}
+
+/// 命令：设置会话级数据目录（「数据目录不可写」引导流程使用）。
+///
+/// 行为：校验目录可创建且可写 → 设为运行时覆盖（此后设置/历史/会话/日志全部改路）
+///       → 尝试切换日志输出目录（失败不阻塞切换本身）→ 返回新状态。
+/// 说明：仅本次运行有效；重启后重新探测程序目录（符合既定的「会话级」决策）。
+#[tauri::command]
+pub fn set_data_dir(dir: String) -> DataDirStatus {
+    with_context(LogContext::request(), || {
+        let path = PathBuf::from(&dir);
+        match data_dir::probe_writable(&path) {
+            Ok(()) => {
+                paths::set_runtime_override(path.clone());
+                if let Err(err) = logging::retarget(&path) {
+                    // 日志重定向失败不阻塞数据目录切换（应用继续运行）
+                    log::warn!(target: "sread::storage", "日志目录切换失败：{err}");
+                }
+                log::info!(
+                    target: "sread::storage",
+                    "数据目录已切换（会话级）：{}",
+                    path.display()
+                );
+                DataDirStatus {
+                    dir: dir.clone(),
+                    writable: true,
+                    message: None,
+                    origin: DataDirOrigin::RuntimeOverride,
+                }
+            }
+            Err(err) => DataDirStatus {
+                dir,
+                writable: false,
+                message: Some(err.to_string()),
+                origin: DataDirOrigin::RuntimeOverride,
+            },
         }
     })
 }
@@ -640,5 +679,8 @@ pub async fn open_settings(app: tauri::AppHandle, tab: Option<String>) -> Result
 /// 命令：取走设置窗口待打开页签（读取即清空；无待办返回 None）。
 #[tauri::command]
 pub fn take_settings_tab() -> Option<String> {
-    SETTINGS_PENDING_TAB.lock().ok().and_then(|mut guard| guard.take())
+    SETTINGS_PENDING_TAB
+        .lock()
+        .ok()
+        .and_then(|mut guard| guard.take())
 }

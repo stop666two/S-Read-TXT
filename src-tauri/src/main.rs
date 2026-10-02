@@ -84,6 +84,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,
             commands::data_dir_status,
+            commands::set_data_dir,
             commands::get_settings,
             commands::save_settings,
             commands::get_default_shortcuts,
