@@ -116,7 +116,7 @@
 |---|---|---|---|
 | 4a | 编辑命令接线：`toggle_edit`（首次创建编辑文档 + 磁盘基准快照）/ `apply_edits` / `undo_edit` / `redo_edit` / `save_tab` / `save_tab_as` / `reload_tab`；`get_rows` 编辑态供数切换；`EditOp` 反序列化（kind + camelCase）；`EditDoc::percent_at_row`；脏态阻止编码切换；错误码映射（EDIT_LINE_TOO_LONG / INVALID_POSITION / FILE_CONFLICT / ENCODING_UNREPRESENTABLE / NOT_EDITING / EDIT_DIRTY） | ✅ 完成 | lib **148/148**（新增 9：编辑文档生命周期/撤销重做/保存与冲突/另存为重定向/重载丢弃/脏态拦截/超长行拒绝 + 错误映射 2）；`cargo build` 0 告警 |
 | 4b | 前端编辑 UI：切换入口与脏标记、光标/选区（点击/拖选/Shift+方向键/全选）、输入/删除/回车、IME 隐藏锚点、剪切复制粘贴、Ctrl+S 保存流（编码询问/冲突/.bak）、脏关闭三态确认 | ✅ 完成 | 见「切片 4b 详情」；vitest **47/47**、编辑冒烟 **12/12**、对抗冒烟 **40/40**、cargo **170/170**；截图 `docs/screenshots/phase4b-{edit,abuse}.png` |
-| 4c | 查找/替换（大小写、下一个/替换/全部）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟）、**超长行完整分段渲染（维护者确认）** | 🔨 进行中 | 超长行分段：后端 ✅（显示分段 + 映射 + 增量维护 + 快照，cargo 173/173）；前端适配待做；其余子项待做 |
+| 4c | 查找/替换（大小写、下一个/替换/全部）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟）、**超长行完整分段渲染（维护者确认）** | 🔨 进行中 | 超长行分段 ✅ 完成（后端+前端+100MB 验收 9/9）；剩：查找/替换、另存为/重载 UI、IME E2E |
 
 > 扩展点预留（维护者要求）：`textfile::source::DocumentSource` 契约已落地——未来解析器/新格式实现该 trait 并在打开流程分派即可接入（AppState 取行与前端渲染零改动）；编辑契约仅绑定文本引擎，解析类文档默认只读。
 
@@ -140,3 +140,10 @@
 - 契约：`DocumentSource.rows_total/fetch_rows/percent_at_row` 统一为显示行语义（`FileSession` 天然一致）；`RowText` 增加 `logicalRow`/`baseUtf16`（`skip_serializing_if`，只读视图省略）；移除 `EDIT_MAX_ROW_BYTES` 守卫、`UnsupportedLongLine` 错误与 `EDIT_LINE_TOO_LONG` 错误码。
 - 顺带修复真实缺陷：只读 `snap_row_boundary` UTF-8 分支按 `bytes[position-1]` 判定续字节（应为 `bytes[position]`），导致多字节长行在 8KB 边界被切进字符中间（两侧各出替换符）；已修复并加回归测试。
 - 验证：cargo **173/173**（新增：多字节分段与只读逐段一致且拼接无损、长行内编辑/撤销、长行拆分与恢复、只读多字节分块回归）；fmt 通过；0 告警。
+
+### 切片 4c-1 详情（续：前端适配与 100MB 验收）
+
+- 前端：`ipc.ts` RowText +`logicalRow`/`baseUtf16`、EditApplied +`caretRow`/`caretUtf16`；`row-cache` 值改 `CachedRow{text,logicalRow,baseUtf16}`；新增 `edit/longline.ts`（`toLogical`、跨段退格/前删计划 `planBackspace`/`planDeleteForward`、代理对工具）；`EditLayer` 全部操作改经逻辑坐标换算、落点用后端权威 caret；同逻辑行相邻段复制直接拼接；`ReaderView` 传递分段元数据。后端补：`EditApplied` 携带权威光标落点（`advance_caret`），新增测试。
+- **发现并修复 O(n²) 卡死（关键）**：`scan_row` 对无换行超长行每切一个 8KB 块都把 `find_newline` 扫到文件尾才能确认“无换行”——100MB 单行 ≈ 12800 块×平均 50MB ≈ 640GB 扫描量（debug 下界面冻结数分钟，即维护者报告的“卡死”）。修复：有界窗口 `[start, start+8KB+2)` 查找（CRLF 跨窗保持原语义）；新增 16MB 单行线性构建回归测试 + 窗口边界测试。
+- E2E 工具加固：`smoke-longline.mjs` 增加**看门狗**（超时自动退出并打印最后步骤，杜绝无限挂起）、`.bak` 清理、随机端口、独立数据目录、仅按本应用 PID 整树回收。
+- 验收证据（2026-10-02）：cargo **177/177**（157 lib + 15 对抗 + 5 集成）；vitest **56/56**；svelte-check 0/0；smoke-edit **12/12**；smoke-abuse **41/41**（L 段更新为“超长行可编辑”新语义）；**smoke-longline 100MB 单行 9/9**（rows=12800 精确、中部渲染、文档末编辑、保存 +1 字节尾 'aX'）；截图 `docs/screenshots/phase4c-longline.png`。

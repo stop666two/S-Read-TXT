@@ -119,6 +119,10 @@ pub struct EditApplied {
     pub rows_total: u64,
     /// 当前总字节数（不含 BOM）
     pub byte_len: u64,
+    /// 应用后的光标显示行（段号；后端换算，避免长行分段在前端的近似误差）
+    pub caret_row: u64,
+    /// 应用后的光标段内 UTF-16 偏移
+    pub caret_utf16: u64,
 }
 
 /// 超长逻辑行的显示分段表（与只读模式的行内 8KB 分块语义一致）。
@@ -911,7 +915,7 @@ impl EditDoc {
     /// 错误：`EditError`（行/字符越界等）。批次为原子操作：任一操作解析失败则整批不应用。
     pub fn apply_edits(&mut self, ops: &[EditOp]) -> Result<EditApplied, EditError> {
         if ops.is_empty() {
-            return Ok(self.applied(0));
+            return Ok(self.applied(0, (0, 0)));
         }
         // 1) 解析所有操作（相对编辑前状态）：全局字节区间 + 替换文本 + 受影响行
         let mut resolved: Vec<(u64, u64, Vec<u8>, u64)> = Vec::with_capacity(ops.len());
@@ -1009,7 +1013,24 @@ impl EditDoc {
         self.undo_cost += before.cost_bytes;
         self.undo_stack.push(before);
         self.trim_undo();
-        Ok(self.applied(touched))
+        // 光标落点：以批次最后一个操作为准（本应用单操作批次 = 精确；
+        // 多操作批次按最后操作坐标，调用方需自行权衡）。
+        let caret = match ops.last() {
+            None => (touched, 0),
+            Some(EditOp::Insert { row, utf16, text }) => advance_caret(*row, *utf16, text),
+            Some(EditOp::Delete {
+                start_row,
+                start_utf16,
+                ..
+            }) => (*start_row, *start_utf16),
+            Some(EditOp::Replace {
+                start_row,
+                start_utf16,
+                text,
+                ..
+            }) => advance_caret(*start_row, *start_utf16, text),
+        };
+        Ok(self.applied(touched, caret))
     }
 
     /// 撤销一步；无可撤销时返回 `None`。
@@ -1020,7 +1041,7 @@ impl EditDoc {
         let for_redo = self.swap_state(step);
         self.redo_stack.push(for_redo);
         self.rebuild_trees();
-        Some(self.applied(touched))
+        Some(self.applied(touched, (touched, 0)))
     }
 
     /// 重做一步；无可重做时返回 `None`。
@@ -1031,7 +1052,7 @@ impl EditDoc {
         self.undo_cost += for_undo.cost_bytes;
         self.undo_stack.push(for_undo);
         self.rebuild_trees();
-        Some(self.applied(touched))
+        Some(self.applied(touched, (touched, 0)))
     }
 
     /// 片段列表公开只读访问（保存链使用）。
@@ -1050,15 +1071,21 @@ impl EditDoc {
     }
 
     /// 构造对外的编辑结果（行号已换算为显示行）。
-    fn applied(&self, touched_row: u64) -> EditApplied {
+    ///
+    /// `caret` 为应用后的逻辑坐标 `(逻辑行, 行内 UTF-16)`，换算为显示段坐标；
+    /// 行号越界时收敛到末行（保守防御，正常流程不会触发）。
+    fn applied(&self, touched_row: u64, caret: (u64, u64)) -> EditApplied {
         let last_row = self.rows_total().saturating_sub(1);
         let touched_seg = self.seg_of_row_utf16(touched_row.min(last_row), 0).0;
+        let (caret_seg, caret_utf16) = self.seg_of_row_utf16(caret.0.min(last_row), caret.1);
         EditApplied {
             state_id: self.state_id,
             dirty: self.is_dirty(),
             touched_row: touched_seg,
             rows_total: self.display_rows_total(),
             byte_len: self.byte_len(),
+            caret_row: caret_seg,
+            caret_utf16,
         }
     }
 
@@ -1371,6 +1398,19 @@ fn detect_bom_len(bytes: &[u8], encoding: FileEncoding) -> u64 {
     }
 }
 
+/// 计算插入/替换后光标的逻辑坐标（行号 + 行内 UTF-16）。
+///
+/// 语义：坐标基于「应用前」的起始位置；无换行时同行为 `utf16 + 文本长度`，
+/// 有换行时落到最后一个换行之后的新行，列 = 末行文本的 UTF-16 长度。
+fn advance_caret(row: u64, utf16: u64, text: &str) -> (u64, u64) {
+    let newlines = text.bytes().filter(|byte| *byte == b'\n').count() as u64;
+    if newlines == 0 {
+        return (row, utf16 + text.encode_utf16().count() as u64);
+    }
+    let tail = text.rsplit('\n').next().unwrap_or_default();
+    (row + newlines, tail.encode_utf16().count() as u64)
+}
+
 /// 统计 UTF-8 字节中的换行单元数（插入文本的行数贡献；用于显示分段维护）。
 fn count_newlines(bytes: &[u8]) -> u64 {
     let len = bytes.len() as u64;
@@ -1521,6 +1561,57 @@ mod tests {
         let (row, base, _) = doc.seg_to_row_utf16(seg).expect("段应存在");
         assert_eq!(row, 0);
         assert_eq!(base + local, 5);
+    }
+
+    /// 光标落点字段：普通行与超长行（显示段坐标）均精确。
+    #[test]
+    fn applied_caret_tracks_edits() {
+        let dir = tempfile::tempdir().expect("临时目录失败");
+        let path = dir.path().join("caret.txt");
+        std::fs::write(&path, "abc\ndef").expect("写文件失败");
+        let mut doc = EditDoc::open(&path, None, 100).expect("打开失败");
+        // 普通行插入：光标 = 插入末尾
+        let applied = doc
+            .apply_edits(&[EditOp::Insert {
+                row: 1,
+                utf16: 1,
+                text: "XY".to_string(),
+            }])
+            .expect("插入失败");
+        assert_eq!((applied.caret_row, applied.caret_utf16), (1, 3));
+        // 删除：光标 = 删除区间起点
+        let applied = doc
+            .apply_edits(&[EditOp::Delete {
+                start_row: 0,
+                start_utf16: 1,
+                end_row: 0,
+                end_utf16: 2,
+            }])
+            .expect("删除失败");
+        assert_eq!((applied.caret_row, applied.caret_utf16), (0, 1));
+        // 超长行：20 000 字节单行（ASCII：1 字节 = 1 UTF-16 单元）在 8192 字节
+        // 段边界插入 → 光标落在第 2 段内部
+        let long = "a".repeat(20_000);
+        let path2 = dir.path().join("long-caret.txt");
+        std::fs::write(&path2, long.as_bytes()).expect("写文件失败");
+        let mut doc2 = EditDoc::open(&path2, None, 100).expect("打开失败");
+        let applied = doc2
+            .apply_edits(&[EditOp::Insert {
+                row: 0,
+                utf16: 8192,
+                text: "ab".to_string(),
+            }])
+            .expect("插入失败");
+        assert_eq!((applied.caret_row, applied.caret_utf16), (1, 2));
+        // 长行中插入换行：光标落到新逻辑行的段起点
+        let applied = doc2
+            .apply_edits(&[EditOp::Insert {
+                row: 0,
+                utf16: 8192,
+                text: "\n".to_string(),
+            }])
+            .expect("插入失败");
+        assert_eq!((applied.caret_row, applied.caret_utf16), (1, 0));
     }
 
     /// 长行内编辑：分段表随编辑更新，撤销完整恢复。

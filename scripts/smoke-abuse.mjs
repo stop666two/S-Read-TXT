@@ -377,21 +377,51 @@ async function main() {
     }, 8000);
     check('K1 5000 字大粘贴保存', k1 === true);
 
-    // ---- L. 超长行文件：拒绝进入编辑但可阅读 ----
+    // ---- L. 超长行文件：可编辑（编辑态按 8KB 显示分段） ----
     check('L1 打开超长行文件（可阅读）', await openAndWait(files.longline, 'x'.repeat(8192)), '首行应为 8KB 分块');
     await click('[aria-label="切换编辑模式"]');
     const l2 = await waitForValue(async () => {
       const tab = await activeTab();
-      return tab && tab.editing === false ? tab : null;
+      return tab && tab.editing === true ? tab : null;
     }, 4000);
-    const l3 = await waitForValue(async () => {
-      const text = await evalJs(
-        `[...document.querySelectorAll('.toast .text')].map((n) => n.textContent).join('|')`,
-      );
-      return text.includes('超长行') ? text : null;
-    }, 4000);
-    check('L2 超长行拒绝编辑（保持只读）', l2 !== null && l2.editing === false);
-    check('L3 显示超长行提示', l3 !== null, l3 ?? '(无提示)');
+    check('L2 超长行可进入编辑', l2 !== null, JSON.stringify(l2 ?? {}));
+    await client.send('Input.insertText', { text: 'Z' });
+    const l3dirty = await waitForValue(async () => {
+      const tab = await activeTab();
+      return tab?.dirty === true ? true : null;
+    }, 6000);
+    const l3row = await evalJs(`document.querySelector('.row')?.textContent ?? ''`);
+    check(
+      'L3 段首输入生效且分段长度不变',
+      l3dirty === true && typeof l3row === 'string' && l3row.slice(0, 3) === 'Zxx' && l3row.length === 8192,
+      `dirty=${l3dirty} head=${typeof l3row === 'string' ? l3row.slice(0, 3) : '(无)'} len=${typeof l3row === 'string' ? l3row.length : '-'}`,
+    );
+    await evalJs(
+      `(window.__keylog = [], window.__keylogHandler = (e) => window.__keylog.push(e.key), document.addEventListener('keydown', window.__keylogHandler, true), true)`,
+    );
+    await client.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'z',
+      code: 'KeyZ',
+      windowsVirtualKeyCode: 90,
+      nativeVirtualKeyCode: 90,
+      modifiers: 2,
+    });
+    await client.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'z',
+      code: 'KeyZ',
+      windowsVirtualKeyCode: 90,
+      nativeVirtualKeyCode: 90,
+      modifiers: 2,
+    });
+    const l4 = await waitForValue(async () => {
+      const row = await evalJs(`document.querySelector('.row')?.textContent ?? ''`);
+      const tab = await activeTab();
+      return tab?.dirty === false && typeof row === 'string' && row.slice(0, 2) === 'xx' ? true : null;
+    }, 6000);
+    await evalJs(`(document.removeEventListener('keydown', window.__keylogHandler, true), true)`);
+    check('L4 撤销还原长行编辑', l4 === true, `dirty 已清除且首段还原（l4=${l4}）`);
 
     // ---- M. 脏标签关闭守卫（norm 标签仍在脏态：K 已保存，先再改脏） ----
     // 切回 norm 标签（点击其标签元素），改脏

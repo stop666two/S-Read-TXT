@@ -57,7 +57,7 @@
     void version;
     const rows: { row: number; text: string }[] = [];
     for (let row = startRow; row < endRow; row += 1) {
-      rows.push({ row, text: cache.get(row) ?? '' });
+      rows.push({ row, text: cache.get(row)?.text ?? '' });
     }
     return rows;
   });
@@ -93,7 +93,13 @@
         (payload) => {
           inflight.delete(key);
           if (tab.tabId !== tabId) return;
-          for (const row of payload.rows) cache.set(row.row, row.text);
+          for (const row of payload.rows) {
+            cache.set(row.row, {
+              text: row.text,
+              logicalRow: row.logicalRow ?? row.row,
+              baseUtf16: row.baseUtf16 ?? 0,
+            });
+          }
           version += 1;
         },
         (error: unknown) => {
@@ -121,15 +127,19 @@
   /** 确保单行已加载（编辑层光标定位/复制使用；返回加载后的文本）。 */
   async function ensureRow(row: number): Promise<string | undefined> {
     const cached = cache.get(row);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) return cached.text;
     try {
       const payload = await ipc.getRows(tab.tabId, row, 1);
-      const text = payload.rows[0]?.text;
-      if (text !== undefined) {
-        cache.set(row, text);
+      const item = payload.rows[0];
+      if (item !== undefined) {
+        cache.set(row, {
+          text: item.text,
+          logicalRow: item.logicalRow ?? row,
+          baseUtf16: item.baseUtf16 ?? 0,
+        });
         version += 1;
       }
-      return text;
+      return item?.text;
     } catch (error) {
       if (import.meta.env.DEV) console.error('[reader] 单行取行失败', error);
       toasts.error(describeIpcError(toIpcError(error)));
@@ -286,7 +296,13 @@
         rowsTotal={tab.rowsTotal}
         revision={version}
         rowNode={rowNodeOf}
-        rowText={(row) => cache.get(row)}
+        rowText={(row) => cache.get(row)?.text}
+        rowMeta={(row) => {
+          const cached = cache.get(row);
+          return cached
+            ? { logicalRow: cached.logicalRow, baseUtf16: cached.baseUtf16 }
+            : undefined;
+        }}
         ensureRow={(row) => ensureRow(row)}
         getContainer={() => container}
         onApplied={handleEditApplied}

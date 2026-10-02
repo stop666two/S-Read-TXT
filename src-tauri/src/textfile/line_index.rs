@@ -175,7 +175,11 @@ impl RowIndex {
 pub(crate) fn scan_row(bytes: &[u8], encoding: FileEncoding, start: u64) -> (u64, Option<u64>) {
     let len = bytes.len() as u64;
     debug_assert!(start <= len, "行起点越界");
-    match find_newline(bytes, encoding, start) {
+    // 有界扫描：换行只影响「本行是否为超长块」的判定，因此仅需在
+    // [start, start + MAX_ROW_BYTES + 2) 窗口内查找。无界查找会让无换行
+    // 超长行退化为 O(n²)（每个 8KB 块都扫到文件尾，100MB 单行可达数百 GB 扫描量）。
+    let window_end = (start + MAX_ROW_BYTES + 2).min(len);
+    match find_newline_bounded(bytes, encoding, start, window_end) {
         Some((newline_start, newline_end)) => {
             if newline_start - start > MAX_ROW_BYTES {
                 let end = snap_row_boundary(bytes, encoding, start, start + MAX_ROW_BYTES);
@@ -202,16 +206,29 @@ pub(crate) fn scan_row(bytes: &[u8], encoding: FileEncoding, start: u64) -> (u64
 /// 可见性：`pub(crate)` —— 编辑引擎（`textfile::editing`）复用同一换行语义，
 /// 保证读/编辑两条路径的换行行为一致。
 pub(crate) fn find_newline(bytes: &[u8], encoding: FileEncoding, from: u64) -> Option<(u64, u64)> {
+    find_newline_bounded(bytes, encoding, from, bytes.len() as u64)
+}
+
+/// 受限窗口版：仅在 `[from, to)` 范围内查找换行**起点**（CRLF 的第二字节允许越窗读取）。
+fn find_newline_bounded(
+    bytes: &[u8],
+    encoding: FileEncoding,
+    from: u64,
+    to: u64,
+) -> Option<(u64, u64)> {
+    if from >= to {
+        return None;
+    }
     match encoding {
-        FileEncoding::Utf16Le => find_newline_utf16(bytes, from, true),
-        FileEncoding::Utf16Be => find_newline_utf16(bytes, from, false),
-        _ => find_newline_bytes(bytes, from),
+        FileEncoding::Utf16Le => find_newline_utf16(bytes, from, true, to),
+        FileEncoding::Utf16Be => find_newline_utf16(bytes, from, false, to),
+        _ => find_newline_bytes(bytes, from, to),
     }
 }
 
 /// 单字节/传统多字节编码：`memchr2` 扫 `\n`/`\r`（`\r\n` 视为一个换行）。
-fn find_newline_bytes(bytes: &[u8], from: u64) -> Option<(u64, u64)> {
-    let offset = memchr2(b'\n', b'\r', &bytes[from as usize..])?;
+fn find_newline_bytes(bytes: &[u8], from: u64, to: u64) -> Option<(u64, u64)> {
+    let offset = memchr2(b'\n', b'\r', &bytes[from as usize..to as usize])?;
     let position = from as usize + offset;
     if bytes[position] == b'\r' && bytes.get(position + 1) == Some(&b'\n') {
         Some((position as u64, position as u64 + 2))
@@ -221,10 +238,11 @@ fn find_newline_bytes(bytes: &[u8], from: u64) -> Option<(u64, u64)> {
 }
 
 /// UTF-16：按双字节对扫描 `0x000A`/`0x000D`（`0x000D 0x000A` 视为一个换行）。
-fn find_newline_utf16(bytes: &[u8], from: u64, little_endian: bool) -> Option<(u64, u64)> {
+fn find_newline_utf16(bytes: &[u8], from: u64, little_endian: bool, to: u64) -> Option<(u64, u64)> {
     debug_assert_eq!(from % 2, 0, "UTF-16 行起点必须双字节对齐");
+    let limit = (to as usize).min(bytes.len());
     let mut position = from as usize;
-    while position + 1 < bytes.len() {
+    while position + 1 < limit {
         let unit = read_utf16_unit(bytes, position, little_endian);
         if unit == 0x000A || unit == 0x000D {
             let mut end = position as u64 + 2;
@@ -349,6 +367,43 @@ mod tests {
 
     fn index_of(bytes: &[u8]) -> RowIndex {
         RowIndex::build(bytes, FileEncoding::Utf8)
+    }
+
+    /// 16MB 单行：构建必须线性完成（防 O(n²) 回归；旧实现每个 8KB 块都扫到文件尾）。
+    #[test]
+    fn huge_single_line_build_is_linear() {
+        let bytes = vec![b'a'; 16 * 1024 * 1024];
+        let started = std::time::Instant::now();
+        let index = RowIndex::build(&bytes, FileEncoding::Utf8);
+        let elapsed = started.elapsed();
+        assert_eq!(index.rows_total(), 2048);
+        assert_eq!(index.row_start(&bytes, 2047), 2047 * 8192);
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "16MB 单行构建耗时 {elapsed:?}，疑似 O(n²) 回归"
+        );
+    }
+
+    /// 换行恰好落在 8KB 上限处：保持「行模式」（换行点不会被窗口边界误判为超长块）。
+    #[test]
+    fn newline_at_cap_boundary_keeps_row_semantics() {
+        let mut bytes = vec![b'a'; 8192];
+        bytes.extend_from_slice(b"\r\n");
+        bytes.extend_from_slice(b"tail");
+        let index = index_of(&bytes);
+        assert_eq!(index.rows_total(), 2);
+        assert_eq!(index.row_start(&bytes, 1), 8194);
+    }
+
+    /// 换行在上限之后 1 字节：先按超长块切分，下一轮仍能正确识别该换行。
+    #[test]
+    fn newline_beyond_cap_is_chunked_then_found() {
+        let mut bytes = vec![b'a'; 8193];
+        bytes.extend_from_slice(b"\nrest");
+        let index = index_of(&bytes);
+        assert_eq!(index.rows_total(), 3);
+        assert_eq!(index.row_start(&bytes, 1), 8192);
+        assert_eq!(index.row_start(&bytes, 2), 8194);
     }
 
     /// 行文本（测试辅助，UTF-8 宽容解码）。

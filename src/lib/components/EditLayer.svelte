@@ -23,14 +23,8 @@
     type Selection,
   } from '../edit/caret';
   import { caretMemory } from '../edit/caret-memory';
-  import {
-    backspaceOp,
-    deleteForwardOp,
-    deleteOp,
-    insertOp,
-    replaceOp,
-    selectionText,
-  } from '../edit/ops';
+  import { planBackspace, planDeleteForward, type SegMeta } from '../edit/longline';
+  import { deleteOp, deleteRangeOp, insertOp, replaceOp } from '../edit/ops';
   import { toasts } from '../state/toasts.svelte';
 
   interface Props {
@@ -44,6 +38,8 @@
     rowNode: (row: number) => HTMLElement | undefined;
     /** 行文本查询（可能未加载） */
     rowText: (row: number) => string | undefined;
+    /** 行分段元数据查询（编辑态超长行：逻辑行号与段基 UTF-16；普通行可缺省） */
+    rowMeta: (row: number) => { logicalRow: number; baseUtf16: number } | undefined;
     /** 确保行文本已加载（返回加载后的文本） */
     ensureRow: (row: number) => Promise<string | undefined>;
     /** 滚动容器查询 */
@@ -51,7 +47,7 @@
     /** 编辑结果回报（父组件失效缓存、刷新并同步标签信息） */
     onApplied: (result: EditApplied) => void;
   }
-  let { tabId, rowsTotal, revision, rowNode, rowText, ensureRow, getContainer, onApplied }: Props =
+  let { tabId, rowsTotal, revision, rowNode, rowText, rowMeta, ensureRow, getContainer, onApplied }: Props =
     $props();
 
   /** 叠加层盒子（相对 .page 的像素坐标） */
@@ -66,6 +62,8 @@
   const SCROLL_MARGIN = 48;
   /** 复制行数上限（v1 保护；超大选区提示分段复制） */
   const COPY_MAX_ROWS = 50_000;
+  /** 复制字符上限（防单行长行复制出超长字符串卡顿） */
+  const COPY_MAX_CHARS = 5_000_000;
 
   // svelte-ignore state_referenced_locally
   // （仅取初值：挂载时从跨标签记忆恢复一次，之后不再依赖 tabId 初值）
@@ -221,11 +219,31 @@
     return { anchor, head };
   }
 
-  /** 下发操作并在完成后落定光标、刷新。 */
-  async function applyResult(apply: () => Promise<EditApplied>, next: CaretPos): Promise<void> {
+  /** 显示行的分段元数据（文本 + 逻辑行号 + 段基偏移）。 */
+  function segOf(row: number): SegMeta | undefined {
+    const text = rowText(row);
+    if (text === undefined) return undefined;
+    const meta = rowMeta(row);
+    return { logicalRow: meta?.logicalRow ?? row, baseUtf16: meta?.baseUtf16 ?? 0, text };
+  }
+
+  /** 显示坐标 → 逻辑坐标（普通行恒等；分段行叠加段基偏移）。 */
+  function logicalOf(pos: CaretPos): CaretPos {
+    const meta = rowMeta(pos.row);
+    return { row: meta?.logicalRow ?? pos.row, utf16: (meta?.baseUtf16 ?? 0) + pos.utf16 };
+  }
+
+  /** 选区两端 → 逻辑坐标。 */
+  function logicalSelection(sel: Selection): Selection {
+    return { anchor: logicalOf(sel.anchor), head: logicalOf(sel.head) };
+  }
+
+  /** 下发操作并在完成后落定光标（后端权威落点）、刷新。 */
+  async function applyResult(apply: () => Promise<EditApplied>): Promise<void> {
     try {
       const result = await apply();
       goalUtf16 = null;
+      const next = { row: result.caretRow, utf16: result.caretUtf16 };
       const clamped = clampPos(next, result.rowsTotal, (row) => rowText(row)?.length ?? next.utf16);
       onApplied(result);
       setSelection(collapsed(clamped));
@@ -245,56 +263,65 @@
     if (text.length === 0) return;
     if (!isCollapsed(selection)) {
       const resolved = await resolveSelection();
-      const { start } = orderedSelection(resolved);
-      await applyResult(() => ipc.applyEdits(tabId, [replaceOp(resolved, text)]), start);
+      await applyResult(() => ipc.applyEdits(tabId, [replaceOp(logicalSelection(resolved), text)]));
       return;
     }
     const pos = await resolveLoadedPos(selection.head);
-    await applyResult(() => ipc.applyEdits(tabId, [insertOp(pos, text)]), advancePos(pos, text));
-  }
-
-  /** 插入后的光标位置（文本含换行时落到末段行）。 */
-  function advancePos(pos: CaretPos, text: string): CaretPos {
-    const lines = text.split('\n');
-    if (lines.length === 1) return { row: pos.row, utf16: pos.utf16 + text.length };
-    return { row: pos.row + lines.length - 1, utf16: lines[lines.length - 1].length };
+    await applyResult(() => ipc.applyEdits(tabId, [insertOp(logicalOf(pos), text)]));
   }
 
   /** 退格（选区删除或前一个字符/合并上一行）。 */
   async function doBackspace(): Promise<void> {
     if (!isCollapsed(selection)) {
       const resolved = await resolveSelection();
-      const { start } = orderedSelection(resolved);
-      await applyResult(() => ipc.applyEdits(tabId, [deleteOp(resolved)]), start);
+      await applyResult(() => ipc.applyEdits(tabId, [deleteOp(logicalSelection(resolved))]));
       return;
     }
     const pos = await resolveLoadedPos(selection.head);
-    const current = rowText(pos.row) ?? '';
-    let prev: string | undefined;
+    const cur = segOf(pos.row);
+    if (!cur) return;
+    let prev: SegMeta | null = null;
     if (pos.utf16 === 0 && pos.row > 0) {
-      prev = rowText(pos.row - 1) ?? (await ensureRow(pos.row - 1)) ?? undefined;
+      const text = rowText(pos.row - 1) ?? (await ensureRow(pos.row - 1));
+      const meta = rowMeta(pos.row - 1);
+      if (text !== undefined) {
+        prev = {
+          logicalRow: meta?.logicalRow ?? pos.row - 1,
+          baseUtf16: meta?.baseUtf16 ?? 0,
+          text,
+        };
+      }
     }
-    const op = backspaceOp(pos, current, prev);
-    if (!op) return;
-    await applyResult(() => ipc.applyEdits(tabId, [op]), {
-      row: op.startRow,
-      utf16: op.startUtf16,
-    });
+    const range = planBackspace(cur, pos.utf16, prev);
+    if (!range) return;
+    await applyResult(() => ipc.applyEdits(tabId, [deleteRangeOp(range)]));
   }
 
   /** 前向删除（选区删除或后一个字符/合并下一行）。 */
   async function doDeleteForward(): Promise<void> {
     if (!isCollapsed(selection)) {
       const resolved = await resolveSelection();
-      const { start } = orderedSelection(resolved);
-      await applyResult(() => ipc.applyEdits(tabId, [deleteOp(resolved)]), start);
+      await applyResult(() => ipc.applyEdits(tabId, [deleteOp(logicalSelection(resolved))]));
       return;
     }
     const pos = await resolveLoadedPos(selection.head);
-    const current = rowText(pos.row) ?? '';
-    const op = deleteForwardOp(pos, current, pos.row + 1 < rowsTotal);
-    if (!op) return;
-    await applyResult(() => ipc.applyEdits(tabId, [op]), pos);
+    const cur = segOf(pos.row);
+    if (!cur) return;
+    let next: SegMeta | null = null;
+    if (pos.utf16 >= cur.text.length && pos.row + 1 < rowsTotal) {
+      const text = rowText(pos.row + 1) ?? (await ensureRow(pos.row + 1));
+      const meta = rowMeta(pos.row + 1);
+      if (text !== undefined) {
+        next = {
+          logicalRow: meta?.logicalRow ?? pos.row + 1,
+          baseUtf16: meta?.baseUtf16 ?? 0,
+          text,
+        };
+      }
+    }
+    const range = planDeleteForward(cur, pos.utf16, next);
+    if (!range) return;
+    await applyResult(() => ipc.applyEdits(tabId, [deleteRangeOp(range)]));
   }
 
   /** 撤销/重做（结果落定到受影响行首）。 */
@@ -305,7 +332,13 @@
       goalUtf16 = null;
       onApplied(result);
       setSelection(
-        collapsed(clampPos({ row: result.touchedRow, utf16: 0 }, result.rowsTotal, () => 0)),
+        collapsed(
+          clampPos(
+            { row: result.caretRow, utf16: result.caretUtf16 },
+            result.rowsTotal,
+            (row) => rowText(row)?.length ?? 0,
+          ),
+        ),
       );
       await tick();
       refreshOverlay();
@@ -317,21 +350,33 @@
     }
   }
 
-  /** 收集选区文本（缺行时按需加载；超上限提示分段复制）。 */
+  /** 收集选区文本（缺行时按需加载；超上限提示分段复制）。
+   *  分段行按逻辑行拼接：同一逻辑行内相邻段直接相接，不插入换行。 */
   async function gatherSelectedText(): Promise<string | null> {
     const { start, end } = orderedSelection(selection);
     if (end.row - start.row + 1 > COPY_MAX_ROWS) {
       toasts.error('选区过大，请分段复制');
       return null;
     }
-    const texts: string[] = [];
+    let out = '';
+    let prevLogical: number | null = null;
     const lastRow = Math.min(end.row, rowsTotal - 1);
     for (let row = start.row; row <= lastRow; row += 1) {
       const text = rowText(row) ?? (await ensureRow(row));
       if (text === undefined) return null;
-      texts.push(text);
+      const meta = rowMeta(row);
+      const logicalRow = meta?.logicalRow ?? row;
+      const from = row === start.row ? Math.min(start.utf16, text.length) : 0;
+      const to = row === end.row ? Math.min(end.utf16, text.length) : text.length;
+      if (prevLogical !== null && logicalRow !== prevLogical) out += '\n';
+      out += text.slice(from, to);
+      prevLogical = logicalRow;
+      if (out.length > COPY_MAX_CHARS) {
+        toasts.error('选区过大，请分段复制');
+        return null;
+      }
     }
-    return selectionText(selection, rowsTotal, (row) => texts[row - start.row]);
+    return out;
   }
 
   /** 复制/剪切选区（写系统剪贴板）。 */
@@ -347,8 +392,7 @@
     }
     if (cut) {
       const resolved = await resolveSelection();
-      const { start } = orderedSelection(resolved);
-      await applyResult(() => ipc.applyEdits(tabId, [deleteOp(resolved)]), start);
+      await applyResult(() => ipc.applyEdits(tabId, [deleteOp(logicalSelection(resolved))]));
     }
   }
 

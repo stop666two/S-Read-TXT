@@ -14,6 +14,10 @@ export interface AppInfo {
 export interface RowText {
   row: number;
   text: string;
+  /** 逻辑行号（编辑态超长行分段时存在；普通行与 row 相同） */
+  logicalRow?: number;
+  /** 段首逻辑行内 UTF-16 偏移（编辑态超长行分段时存在；普通行为 0 可省略） */
+  baseUtf16?: number;
 }
 
 /** 标签信息（与 Rust app_state::TabInfo 对齐）。 */
@@ -66,6 +70,10 @@ export interface EditApplied {
   touchedRow: number;
   rowsTotal: number;
   byteLen: number;
+  /** 应用后的光标显示行（后端换算，长行分段场景权威落点） */
+  caretRow: number;
+  /** 应用后的光标段内 UTF-16 偏移 */
+  caretUtf16: number;
 }
 
 /** 保存结果（与 Rust commands::SaveTabResult 对齐）。 */
