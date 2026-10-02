@@ -25,6 +25,7 @@
     type Selection,
   } from '../edit/caret';
   import { caretMemory } from '../edit/caret-memory';
+  import { focusEditorProxy } from '../edit/focus';
   import { planBackspace, planDeleteForward, type SegMeta } from '../edit/longline';
   import { deleteOp, deleteRangeOp, insertOp, replaceOp } from '../edit/ops';
   import { toasts } from '../state/toasts.svelte';
@@ -492,6 +493,8 @@
         return;
       }
       applyOutcome(outcome.applied);
+      // 替换会改变文档：把键盘焦点交还编辑器（否则 Ctrl+Z 等编辑按键落在查找条上无效）
+      focusEditorProxy();
       if (outcome.next) {
         selectHit(outcome.next);
         void ensureRow(outcome.next.startRow);
@@ -513,6 +516,8 @@
         return;
       }
       if (outcome.applied) applyOutcome(outcome.applied);
+      // 同上：全部替换后焦点归还编辑器，保证 Ctrl+Z 立即可用
+      focusEditorProxy();
       toasts.show(`已全部替换 ${outcome.replaced} 处`);
     } catch (error) {
       const payload = toIpcError(error);
