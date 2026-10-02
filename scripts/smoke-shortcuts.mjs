@@ -111,6 +111,17 @@ async function main() {
       evalJs(
         `(() => { const el = document.querySelector('.reader'); return el ? el.scrollHeight - el.clientHeight : 0; })()`,
       );
+    /** 应用内模态弹窗是否可见 */
+    const dialogVisible = () =>
+      evalJs(`!!document.querySelector('[role="dialog"],[role="alertdialog"]')`);
+    /** 点击模态弹窗中指定文案的按钮 */
+    const clickDialogButton = (label) =>
+      evalJs(
+        `(() => { const dlg = document.querySelector('[role="dialog"],[role="alertdialog"]'); const btn = dlg && [...dlg.querySelectorAll('button')].find((b) => b.textContent.trim() === '${label}'); btn?.click(); return !!btn; })()`,
+      );
+    /** 最新 Toast 文本（无则空串） */
+    const toastText = () =>
+      evalJs(`document.querySelector('.toast:last-of-type .text')?.textContent?.trim() ?? ''`);
 
     // K1 打开三个文件
     currentStep = 'K1 打开三个文件';
@@ -154,6 +165,10 @@ async function main() {
     await press('PageDown', 'PageDown', 34);
     const afterDown = await scrollTop();
     check('K5a PgDn 向下翻页', afterDown > before, `${before}→${afterDown}`);
+    await press('PageUp', 'PageUp', 33);
+    await delay(300);
+    const afterUp = await scrollTop();
+    check('K5a2 PgUp 向上翻页', afterUp < afterDown, `${afterDown}→${afterUp}`);
     await press('End', 'End', 35);
     await delay(400);
     const afterEnd = await scrollTop();
@@ -202,6 +217,82 @@ async function main() {
     const dialogClosed = dialogShown ? await waitDialog(false) : false;
     check('K8b 对话框已关闭', dialogClosed === true);
     await delay(300);
+
+    // K9 历史面板动作：绑定的待实现动作应给出明确提示
+    currentStep = 'K9 历史面板提示';
+    await press('h', 'KeyH', 72, 10); // Ctrl+Shift+H
+    await waitForValue(async () => ((await toastText()).includes('历史记录') ? true : null), 5000);
+    check('K9 Ctrl+Shift+H 提示历史面板待提供', (await toastText()).includes('历史记录'), await toastText());
+
+    // K10 无标签安全：全部关闭后各快捷键不得崩溃
+    currentStep = 'K10 无标签安全';
+    await press('w', 'KeyW', 87, 2);
+    await press('w', 'KeyW', 87, 2);
+    await delay(450);
+    info = await tabsInfo();
+    check('K10a 全部标签已关闭', info.count === 0, `count=${info.count}`);
+    await press('w', 'KeyW', 87, 2);
+    await press('e', 'KeyE', 69, 2);
+    await press('1', 'Digit1', 49, 2);
+    await press('9', 'Digit9', 57, 2);
+    await press('PageDown', 'PageDown', 34);
+    await delay(400);
+    const alive = await evalJs(
+      `(async () => { const v = await window.__TAURI_INTERNALS__.invoke('list_tabs'); return v.tabs.length === 0; })()`,
+    );
+    check('K10b 无标签时按键无副作用且应用存活', alive === true);
+
+    // K11 编辑态保存调用与模态弹窗挂起
+    currentStep = 'K11 保存弹窗与挂起';
+    await evalJs(`window.__srt.openPath(${JSON.stringify(mainFile)})`);
+    await delay(450);
+    await press('e', 'KeyE', 69, 2);
+    await waitForValue(async () => ((await activeTab())?.editing === true ? true : null), 5000);
+    // 后端 editing 先于前端渲染：等编辑层挂载并显式聚焦输入代理（避免输入落空）
+    await waitForValue(
+      async () => ((await evalJs(`!!document.querySelector('textarea.input-proxy')`)) ? true : null),
+      5000,
+    );
+    await evalJs(`(document.querySelector('textarea.input-proxy')?.focus(), true)`);
+    await client.send('Input.insertText', { text: 'X' });
+    await waitForValue(async () => ((await activeTab())?.dirty === true ? true : null), 5000);
+    check('K11a 输入后进入脏态', (await activeTab())?.dirty === true);
+    await press('s', 'KeyS', 83, 2);
+    await waitForValue(async () => ((await dialogVisible()) ? true : null), 5000);
+    check('K11b Ctrl+S 弹出保存（编码询问）弹窗', (await dialogVisible()) === true);
+    await clickDialogButton('取消');
+    await delay(400);
+    check('K11c 取消保存后弹窗关闭且仍为脏态', !(await dialogVisible()) && (await activeTab())?.dirty === true);
+
+    // K12 另存为原生对话框
+    currentStep = 'K12 另存为对话框';
+    await press('s', 'KeyS', 83, 10); // Ctrl+Shift+S
+    const saveAsShown = await waitDialog(true);
+    check('K12a Ctrl+Shift+S 弹出另存为对话框', saveAsShown === true);
+    if (saveAsShown) dialogOp('close');
+    const saveAsClosed = saveAsShown ? await waitDialog(false) : false;
+    check('K12b 另存为对话框已关闭', saveAsClosed === true);
+
+    // K13 模态挂起：脏标签 Ctrl+W → 三态弹窗；弹窗打开时快捷键全部挂起
+    currentStep = 'K13 模态挂起与三态关闭';
+    await press('w', 'KeyW', 87, 2);
+    const unsavedShown = await waitForValue(async () => ((await dialogVisible()) ? true : null), 5000);
+    check('K13a 脏标签 Ctrl+W 弹出三态弹窗', unsavedShown === true);
+    await press('w', 'KeyW', 87, 2);
+    await press('1', 'Digit1', 49, 2);
+    await delay(400);
+    check(
+      'K13b 弹窗打开时快捷键挂起（未关闭/未切换）',
+      (await dialogVisible()) === true && (await tabsInfo()).count === 1,
+    );
+    await clickDialogButton('取消');
+    await delay(400);
+    check('K13c 取消后标签保留且仍脏', (await tabsInfo()).count === 1 && (await activeTab())?.dirty === true);
+    await press('w', 'KeyW', 87, 2);
+    await waitForValue(async () => ((await dialogVisible()) ? true : null), 5000);
+    await clickDialogButton('不保存');
+    const closedAll = await waitForValue(async () => ((await tabsInfo()).count === 0 ? 0 : null), 6000);
+    check('K13d 不保存后标签关闭', closedAll === 0);
 
     // 汇总
     const failed = checks.filter((item) => !item.passed);
