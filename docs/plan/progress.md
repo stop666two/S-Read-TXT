@@ -303,10 +303,17 @@
 - 全量盘点：工具栏 8 键 / 标题栏三键 / 标签关闭 / 查找条（`.*`、`Aa`、`×`）/ 历史面板（关闭、单条删除、清空）/ Toast 关闭 —— 仅**历史面板「关闭」缺失**；已补齐 `title`，查找条关闭提示补注 Esc。
 - 顺带修复测试基建：`smoke-buttons` C8b 链条偶发失败根因 = **CDP 目标出现 ≠ Svelte 已挂载**（高负载时关闭按钮尚未渲染，`?.click()` 静默点空 → 设置窗口残留 → C8b/D12 连锁失败）；加固为先轮询关闭按钮存在的再点击；单跑 **30/30**。
 
-### 安装范围与启动按需提权（维护者要求，2026-10-02）
+### 安装范围与启动按需提权（维护者要求，2026-10-02）【启动权限部分已于同日修订为一次性授权助手，见文末「启动权限修订」】
 - **安装器**：`bundle.windows.nsis.installMode: "both"` → 生成模板含 `INSTALLMODE "both"` + `MULTIUSER_EXECUTIONLEVEL Highest` + 多用户选择页（官方简体中文：「为本机所有用户安装 / 只为我自己安装」）；**选「所有用户」才请求 UAC**（MultiUser 宏按选择动态提权）；产物仍 1.87 MiB。
 - **启动按需提权**（新增 `src-tauri/src/elevation.rs`；`windows-sys =0.61.2` 精确锁定，features：Foundation/Security/System_Registry/System_Threading/UI_Shell/UI_WindowsAndMessaging）：判据 = 数据目录可写探测（唯一需要权限的操作即写 `data/`）；不可写+非管理员+未尝试 → `ShellExecuteExW("runas")` 重启（子进程继承环境含 `SRT_DATA_DIR`）；防循环 `SRT_ELEVATION_ATTEMPTED`；逃生阀 `SRT_NO_ELEVATION`；已提权仍不可写 → 回落引导；用户取消 → 引导。决策表 5 项单测 → cargo **219 库单测（239 全量）**。
 - **集成实测**：不可写目录 + `SRT_NO_ELEVATION=1` → 应用存活、`data_dir_status.writable=false`、数据目录引导弹窗出现（决策链与回落正确）；可写场景零打扰（全量套件回归）。真实 UAC 路径无法自动化（安全桌面不可脚本交互）→ 由维护者在「所有用户」安装后人工验收。
 - **测试基建修复**：`smoke-datadir` 显式 `SRT_NO_ELEVATION=1`（不可写场景不再触发 UAC——此前 verify-all 链中该套件失败即此因）；`measure-startup` 支持 `SRT_MEASURE_EXTRA_ARGS`（启动参数 A/B）。
 - **冷启动复测**（release，5 次 × 2 组）：默认参数组 可见 median 621ms / 内容就绪 median 758ms；仅 `--in-process-gpu` 组 615ms / 733ms —— 参数组对启动无实义影响（差异在噪声内）；首跑离群（可见 1077 / 就绪 1225ms）= 新构建后杀软扫描 + 全新 WebView2 配置目录，属环境性（稳定态全新 profile 实测 716ms）。结论：中位数较阶段 9 前（就绪 886ms）**反而更快**；离群值原因已写入 known-issues。
 - **CI/CD 更新**：CI 卫生作业新增编码与换行自检；CI/Release 的 Rust 作业新增 `cargo fmt --check`；Release 描述「安装说明」重写为 7 条（系统要求 / 安装范围二选一 / 架构 / 未签名 / WebView2 / **启动权限行为** / 离线与数据位置）。
+
+### 启动权限修订：整体提权 → 一次性授权助手（2026-10-02，用户上报的 Program Files 启动故障）
+- **故障现象**：按机器安装到 `D:\Program Files\S-Read-TXT` 后首次启动报「Microsoft Edge 无法读取和写入其数据目录（`data\webview\EBWebView`）」；日志仅有「启动」行（无「主窗口已显示」）；目录 ACL 仅 `Users:(RX)`；用户手动「给权限」无效。
+- **根因**：整体提权实例设置 `WEBVIEW2_USER_DATA_FOLDER` 后，普通权限的 WebView2/Edge 子进程写不进 `Program Files`（提权与子进程权限模型冲突）；WebView2 初始化失败又被 `main.rs` 的 `.expect()` 静默吞掉（`windows_subsystem` 无控制台）→ 无界面、无提示。
+- **修订方案（维护者选定「运行时一次性提权 + 仅当前用户」）**：`elevation.rs` 重写为**授权助手**——`--prepare-data-dir <路径> --grant-sid <SID>` 只创建目录并用 `icacls` 授予当前用户修改权限后立即退出（绝不进入 Tauri/WebView2）；应用本体始终以普通权限运行；已提权启动则就地幂等授权；启动失败补「日志 + 原生错误框」；移除 `SRT_ELEVATION_ATTEMPTED`（不再需要）；`SRT_NO_ELEVATION=1` 语义＝跳过提权初始化。
+- **验证**：单测 7 项（计划表 / 参数解析含顺序无关与缺参拒绝 / ACL 真实往返回归）+ 真实 exe 集成测试 2 项（助手建目录并授权；缺参退出码 2）→ cargo **243/243**；`smoke-datadir` **15/15**（新增 D5：只读 ACL 预置 → 助手模式修复 → 当前用户可写）；代码提交 `8dfd846`、测试提交 `3da8298`，文档随本次提交。
+- **文档同步**：README（权限行为表与补充说明、环境变量表）、known-issues #3、configuration.md、设计 D36、CHANGELOG、Release 安装说明第 6 条、本台账。
