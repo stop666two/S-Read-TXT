@@ -6,6 +6,7 @@ import 'virtual:uno.css';
 // 基础样式与主题令牌（CSS 变量：浅色/深色/护眼）
 import './styles/base.css';
 import App from './App.svelte';
+import { dataDirStore } from './lib/state/data-dir.svelte';
 import { tabs } from './lib/state/tabs.svelte';
 
 // 挂载点由 index.html 提供；缺失视为入口页被破坏，直接抛错（启动自检，fail fast）
@@ -23,12 +24,17 @@ declare global {
     __srt?: {
       /** 打开文件（与拖拽/对话框相同的 store 路径） */
       openPath: (path: string) => Promise<void>;
+      /** 数据目录不可写引导：等价于用户在弹窗中选择目录后的应用动作（E2E 用） */
+      setDataDir: (dir: string) => Promise<void>;
     };
   }
 }
 
 window.__srt = {
   openPath: (path) => tabs.openPath(path),
+  setDataDir: async (dir) => {
+    await dataDirStore.apply(dir);
+  },
 };
 
 export default app;

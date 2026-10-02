@@ -7,7 +7,19 @@ import { invoke } from '@tauri-apps/api/core';
 export interface AppInfo {
   version: string;
   dataDir: string;
-  dataDirOrigin: 'portable' | 'envOverride';
+  dataDirOrigin: 'portable' | 'envOverride' | 'runtimeOverride';
+}
+
+/** 数据目录状态（data_dir_status / set_data_dir 返回体；与 Rust DataDirStatus 对齐）。 */
+export interface DataDirStatus {
+  /** 数据目录绝对路径 */
+  dir: string;
+  /** 是否可写（false 时 message 给出原因） */
+  writable: boolean;
+  /** 不可写原因（可写时为 null/缺省） */
+  message?: string | null;
+  /** 目录来源：便携 / 环境变量覆盖 / 会话级运行时覆盖 */
+  origin: 'portable' | 'envOverride' | 'runtimeOverride';
 }
 
 /** 单项文本行（与 Rust textfile::window::RowText 对齐）。 */
@@ -235,6 +247,10 @@ export interface SettingsSaveRequest {
 export const ipc = {
   /** 应用信息（版本 / 数据目录）。 */
   getAppInfo: () => invoke<AppInfo>('get_app_info'),
+  /** 数据目录可写性状态（启动引导的数据源）。 */
+  dataDirStatus: () => invoke<DataDirStatus>('data_dir_status'),
+  /** 设置会话级数据目录（不可写引导；所有后续读写改路至新目录）。 */
+  setDataDir: (dir: string) => invoke<DataDirStatus>('set_data_dir', { dir }),
   /** 打开文件（重复打开由后端复用标签）。 */
   openFile: (path: string) => invoke<TabInfo>('open_file', { path }),
   /** 取文本窗口（count 上限 2048）。 */

@@ -8,9 +8,10 @@
   import { getCurrentWebview } from '@tauri-apps/api/webview';
   import { listen } from '@tauri-apps/api/event';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { save } from '@tauri-apps/plugin-dialog';
+  import { open, save } from '@tauri-apps/plugin-dialog';
 
   import ConfirmDialog from './lib/components/ConfirmDialog.svelte';
+  import DataDirDialog from './lib/components/DataDirDialog.svelte';
   import DropOverlay from './lib/components/DropOverlay.svelte';
   import EmptyState from './lib/components/EmptyState.svelte';
   import MenuBar from './lib/components/MenuBar.svelte';
@@ -29,6 +30,7 @@
   import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type SessionState } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
   import { applyWindowState, saveSessionNow } from './lib/session';
+  import { dataDirStore } from './lib/state/data-dir.svelte';
   import { tabs } from './lib/state/tabs.svelte';
   import { toasts } from './lib/state/toasts.svelte';
   import { decideShortcut, isEditorContext, modalOpen } from './lib/shortcuts/engine';
@@ -50,6 +52,8 @@
   let appSettings = $state<AppSettings | null>(null);
   /** 阅读排版配置（主题 + 排版；变更实时应用） */
   let readerSettings = $state<ReaderSettings | null>(null);
+  /** 数据目录不可写状态（共享 store；非空时展示引导弹窗） */
+  const dataDirIssue = $derived(dataDirStore.issue);
 
   /** 编辑动作信号（菜单 → 编辑层；seq 递增区分重复动作） */
   let editorAction = $state<EditorAction | null>(null);
@@ -59,6 +63,32 @@
   function dispatchEditorAction(type: EditActionType): void {
     editorActionSeq += 1;
     editorAction = { type, seq: editorActionSeq };
+  }
+
+  /** 「数据目录不可写」→ 选择可写目录（系统目录选择器；仅本次运行有效）。 */
+  async function chooseDataDir(): Promise<void> {
+    try {
+      const picked = await open({
+        directory: true,
+        multiple: false,
+        title: '选择可写的数据目录（本次运行有效）',
+      });
+      if (typeof picked !== 'string') return;
+      const status = await dataDirStore.apply(picked);
+      if (status.writable) {
+        toasts.show(`数据目录已切换：${status.dir}`);
+      } else {
+        toasts.error(status.message ?? '所选目录仍不可写，请重试');
+      }
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 「数据目录不可写」→ 仅本次只读运行（不保存历史/设置/会话）。 */
+  function skipDataDir(): void {
+    dataDirStore.skip();
+    toasts.show('本次运行不会保存历史、设置与会话数据', 'warn');
   }
 
   /** 当前活动标签 */
@@ -690,6 +720,8 @@
       },
       (error: unknown) => toasts.error(describeIpcError(toIpcError(error))),
     );
+    // 数据目录可写性探测（不可写 → 弹引导：选择可写目录 / 仅本次只读运行）
+    void dataDirStore.check();
 
     // 窗口关闭拦截（X 按钮/系统关闭）：统一走退出流程——
     // 保存会话 → 脏标签三态确认 → 关闭（避免 X 直关时丢失最后滚动位置）
@@ -859,9 +891,17 @@
     {version}
   />
   <Toast />
-  {#if onboardingOpen}
-    <Onboarding onClose={(dontShowAgain) => void closeOnboarding(dontShowAgain)} />
-  {/if}
+{#if onboardingOpen}
+<Onboarding onClose={(dontShowAgain) => void closeOnboarding(dontShowAgain)} />
+{/if}
+{#if dataDirIssue}
+<DataDirDialog
+  dir={dataDirIssue.dir}
+  message={dataDirIssue.message}
+  onChoose={chooseDataDir}
+  onSkip={skipDataDir}
+/>
+{/if}
   <DropOverlay visible={dragging} />
   <SaveDialog
     open={saveRequest !== null}
