@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Runtime data (created by the app at startup)
+*.db
+*.db-wal
+*.db-shm
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Temp
+*.tmp
+*.bak
+.tmp-scripts/
+test-out.txt
+
+# Environment (keep .env.example as the only committed template)
+.env*
+!.env.example
+
+# Archives and backups (large binaries must not be committed)
+*.bundle
+*.zip
+*.7z
+
+# AI / Agent config files (sensitive development rules)
+AGENTS.md
+AGENTS.txt
+AGENT.md
+AGENT.txt
+agent-readme.md
+RULES.md
+.agents/
+.reasonix/
+
+# Audit / Diagnosis / Review reports
+*审计报告*.md
+*审计报告*.txt
+DIAGNOSIS*.md
+DIAGNOSIS*.txt
+*audit*.md
+*audit*.txt
+*review-report*.md
+
+# 浏览器测试产物
+.playwright-mcp/
+
+# Nested cloned third-party repository
+system_prompts_leaks/
+
+# Rust / Tauri 构建产物
+src-tauri/target/
+src-tauri/gen/
+
+# 应用运行时数据（便携目录：设置/历史/会话/日志）
+data/

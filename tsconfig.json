@@ -1,0 +1,45 @@
+{
+  // TypeScript 配置：Svelte 5 + Vite 8 严格模式（项目规则要求严格类型，禁止滥用 any）
+  "compilerOptions": {
+    // 编译目标：ES2022。WebView2(chromium 105+) 完整支持，无需降级
+    "target": "ES2022",
+    // 模块系统：ESNext（Vite 由浏览器原生 ESM 承载）
+    "module": "ESNext",
+    // 模块解析：bundler。适配 Vite 的无扩展名导入与 package exports
+    "moduleResolution": "bundler",
+    // 允许 import JSON（Vitest/工具配置可能需要）
+    "resolveJsonModule": true,
+    // 单文件转译语义：每个文件独立编译（与 Vite/esbuild 一致，避免跨文件常量折叠问题）
+    "isolatedModules": true,
+    // 类型导入必须显式标注 `import type`，产出更干净的运行时依赖
+    "verbatimModuleSyntax": true,
+    // 所有文件视为模块（防止意外全局污染）
+    "moduleDetection": "force",
+    // 类字段使用 define 语义（与 Svelte 5 编译器输出兼容）
+    "useDefineForClassFields": true,
+    // 内置类型库：ES2022 运行时 + 浏览器 DOM（WebView2 环境）
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    // 跳过第三方库类型检查，加速 svelte-check（我们只对自身代码严格）
+    "skipLibCheck": true,
+    // 仅做类型检查，不产出 JS（构建由 Vite 完成）
+    "noEmit": true,
+    // 严格模式全家桶：null 安全 + 隐式 any 禁止（项目规则“类型安全”）
+    "strict": true,
+    // 未使用局部变量报错（保持代码整洁）
+    "noUnusedLocals": true,
+    // 未使用函数参数报错（允许以 _ 前缀显式忽略）
+    "noUnusedParameters": true,
+    // switch 分支穿透报错（防经典语言陷阱）
+    "noFallthroughCasesInSwitch": true
+  },
+  // 类型检查范围：前端源码 + 构建/测试配置文件（Rust 侧由 cargo 检查）
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.svelte",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "uno.config.ts"
+  ],
+  // 排除：依赖、构建产物与 Rust 工程
+  "exclude": ["node_modules", "dist", "src-tauri"]
+}

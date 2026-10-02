@@ -1,0 +1,50 @@
+[package]
+name = "s-read-txt"
+version = "0.0.1-beta"
+description = "S-Read-TXT — 极简 Windows TXT 阅读器（可切换编辑）"
+authors = ["stop666two"]
+edition = "2021"
+license = "MIT"
+# Rust 最低版本：Tauri 2 要求 ≥1.77.2；本机开发使用 1.96
+rust-version = "1.77.2"
+
+[dependencies]
+# Tauri 框架（精确锁定；禁用范围符是项目规则）
+tauri = { version = "=2.12.1", features = [] }
+# 原生文件/目录对话框（打开文件、选择数据目录、消息框）
+tauri-plugin-dialog = "=2.8.1"
+# 序列化/反序列化：IPC 载荷、配置、历史、会话
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+# 内存映射读取：超大文件按需分页，禁止整读文件
+memmap2 = "=0.9.11"
+# 高速字节搜索：换行扫描（构建稀疏行索引）
+memchr = "=2.8.3"
+# 编码解码：WHATWG 全量编码族（UTF-8/16、GB18030、Big5、Shift_JIS、EUC-KR、1252 等）
+encoding_rs = "=0.8.42"
+# 编码自动检测：BOM 缺失时的启发式检测（GB18030 友好）
+chardetng = "=1.0.0"
+# 错误类型派生：统一错误模型
+thiserror = "=2.0.21"
+# UTC 时间与 RFC3339：历史时间戳、日志时间戳
+time = { version = "=0.3.55", features = ["formatting", "parsing"] }
+# 日志门面：本项目自实现轻量 JSON 行日志写入（无第三方日志后端依赖）
+log = "=0.4.34"
+
+[build-dependencies]
+# Tauri 构建期：校验配置、生成权限 schema 与资源
+tauri-build = { version = "=2.7.1", features = [] }
+
+[dev-dependencies]
+# 单元测试：临时目录（原子写、数据目录回退等场景）
+tempfile = "=3.27.0"
+
+[profile.release]
+# 体积优先：满足安装包 <10MB 红线（配合 LTO + strip）
+opt-level = "s"
+lto = true
+codegen-units = 1
+# 无 unwind 表：减小体积；panic 即进程终止（桌面应用可接受）
+panic = "abort"
+# 去除符号表
+strip = true

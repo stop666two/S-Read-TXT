@@ -1,0 +1,39 @@
+#!/bin/sh
+# S-Read-TXT pre-commit 钩子
+# 规则来源：AGENTS.md（禁止提交 AGENTS.md 变体；禁止提交运行时数据；禁止 >1MB 文件）
+# 启用方式：git config core.hooksPath scripts/git-hooks（仓库内版本化，克隆后执行一次）
+
+set -u
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+fail=0
+
+# 1) 拦截 AGENTS.md 及其变体（大小写不敏感、任意目录层级、含 agent-readme.md）
+if printf '%s\n' "$staged" | grep -qiE '(^|/)(agents?(-|\.)?(md|txt)|agent-readme\.md)$'; then
+  echo "[pre-commit] 拒绝：AGENTS.md 及其变体禁止提交" >&2
+  fail=1
+fi
+
+# 2) 拦截 data/ 路径（便携运行时数据：设置/历史/会话/日志）
+if printf '%s\n' "$staged" | grep -qE '(^|/)data/'; then
+  echo "[pre-commit] 拒绝：data/ 运行时数据禁止提交" >&2
+  fail=1
+fi
+
+# 3) 拦截超过 1MB 的文件（项目规则：单文件 >1MB 不得入库）
+while IFS= read -r f; do
+  if [ -f "$f" ]; then
+    size=$(wc -c < "$f" 2>/dev/null || echo 0)
+    if [ "$size" -gt 1048576 ]; then
+      echo "[pre-commit] 拒绝：文件超过 1MB：$f（$size 字节）" >&2
+      fail=1
+    fi
+  fi
+done <<EOF
+$staged
+EOF
+
+[ "$fail" -eq 0 ] || exit 1
+exit 0

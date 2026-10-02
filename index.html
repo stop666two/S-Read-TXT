@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- S-Read-TXT 前端入口页：仅承载挂载点与脚本，全部 UI 由 Svelte 渲染 -->
+<html lang="zh-CN">
+  <head>
+    <!-- 编码：UTF-8（RFC 3629），与全项目编码约定一致 -->
+    <meta charset="UTF-8" />
+    <!-- 桌面 WebView 固定视口，无需缩放 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 标题由前端在打开文件后动态更新（“文件名 — S-Read-TXT”） -->
+    <title>S-Read-TXT</title>
+  </head>
+  <body>
+    <!-- Svelte 5 挂载点 -->
+    <div id="app"></div>
+    <!-- 应用入口（ESM） -->
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

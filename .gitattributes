@@ -1,0 +1,9 @@
+# 全仓库默认：文本文件自动识别，统一检出为 LF（项目约定 UTF-8 无 BOM + LF）
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换，避免损坏
+*.png binary
+*.ico binary
+*.icns binary
+*.exe binary
+*.dll binary
