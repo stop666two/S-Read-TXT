@@ -8,9 +8,9 @@
 // 退出码：0 = 全部通过；1 = 存在失败。
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const args = process.argv.slice(2);
@@ -66,21 +66,25 @@ async function waitTarget(timeoutMs = 15000) {
 let msgId = 0;
 const pending = new Map();
 let ws;
-function evalJs(expression, timeoutMs = 10000) {
+// 通用 CDP 调用（按消息 id 匹配应答；返回原始 result）
+function sendCdp(method, params = {}, timeoutMs = 10000) {
   const id = ++msgId;
   return new Promise((resolvePromise, reject) => {
     pending.set(id, { resolve: resolvePromise, reject });
-    ws.send(
-      JSON.stringify({
-        id,
-        method: 'Runtime.evaluate',
-        params: { expression, awaitPromise: true, returnByValue: true },
-      }),
-    );
+    ws.send(JSON.stringify({ id, method, params }));
     setTimeout(() => {
-      if (pending.delete(id)) reject(new Error('CDP 求值超时'));
+      if (pending.delete(id)) reject(new Error('CDP 请求超时'));
     }, timeoutMs);
   });
+}
+
+// 在页面执行表达式（awaitPromise + returnByValue），返回 JSON 值
+function evalJs(expression, timeoutMs = 10000) {
+  return sendCdp(
+    'Runtime.evaluate',
+    { expression, awaitPromise: true, returnByValue: true },
+    timeoutMs,
+  ).then((result) => result?.result?.value);
 }
 
 // 通过 Tauri 内部 API 调用 IPC 命令（页面上下文，与前端同路径）
@@ -130,7 +134,7 @@ async function runScenarios() {
               '页面异常',
           ),
         );
-      else res(msg.result?.result?.value);
+      else res(msg.result);
     }
   });
   await new Promise((res) => ws.addEventListener('open', res));
@@ -186,6 +190,41 @@ async function runScenarios() {
   check('关闭标签后标签栏清空', remainingTabs === 0, `tabs=${remainingTabs}`);
   const emptyBack = await evalJs("document.querySelector('.empty h1')?.textContent ?? ''");
   check('关闭后回到空状态', emptyBack === '未打开任何文件', `空状态="${emptyBack}"`);
+
+  // —— 虚拟滚动（2 万行大文件）——
+  const bigPath = join(sampleDir, 'sample-big.txt');
+  const bigLines = [];
+  for (let index = 0; index < 20000; index += 1) {
+    bigLines.push(`第 ${index} 行：虚拟滚动测试文本内容，用于验证仅渲染可视行。`);
+  }
+  writeFileSync(bigPath, bigLines.join('\n'), 'utf8');
+
+  await evalJs(`window.__srt.openPath(${JSON.stringify(bigPath)}).then(() => true)`);
+  await delay(600);
+  const rowCount = await evalJs("document.querySelectorAll('.reader .row').length");
+  check('虚拟滚动仅渲染可视行', rowCount > 0 && rowCount < 200, `渲染 ${rowCount} 行`);
+  const firstText = await evalJs("document.querySelector('.reader .row')?.textContent ?? ''");
+  check('首屏文本正确', firstText.includes('第 0 行'), firstText.slice(0, 24));
+
+  await evalJs(
+    "(() => { const el = document.querySelector('.reader'); el.scrollTop = el.scrollHeight / 2; return true; })()",
+  );
+  await delay(900);
+  const midText = await evalJs("document.querySelector('.reader .row')?.textContent ?? ''");
+  check('滚动后窗口更新', !midText.includes('第 0 行'), midText.slice(0, 24));
+  const statusText = await evalJs(
+    "(document.querySelector('.status-bar')?.textContent ?? '').replace(/\\s+/g, ' ')",
+  );
+  check('状态栏百分比更新', /阅读 (4\d|5\d|6\d)%/.test(statusText), statusText.trim().slice(0, 64));
+
+  const shotArg = args.indexOf('--screenshot');
+  if (shotArg >= 0) {
+    const out = resolve(args[shotArg + 1] ?? 'docs/screenshots/smoke.png');
+    const shot = await sendCdp('Page.captureScreenshot', { format: 'png' });
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, Buffer.from(shot.data, 'base64'));
+    console.log(`截图已保存：${out}`);
+  }
 
   const missing = await invokeCaught('get_rows', { tabId: 999, startRow: 0, count: 1 });
   check(

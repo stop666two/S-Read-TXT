@@ -1,7 +1,6 @@
 <!--
   App.svelte — 根组件：应用外壳与全局接线。
-  阶段 2c：打开文件（对话框/拖拽）、标签栏、空状态、Toast、退出已接线；
-  阅读区真实内容（虚拟滚动/编码切换）在 2c-2 完成。
+  阶段 2c：打开（对话框/拖拽）、标签、空状态、Toast、退出、虚拟阅读、编码切换、进度上报。
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -28,8 +27,10 @@
   let dragging = $state(false);
   /** 应用版本（无文件时状态栏展示） */
   let version = $state('');
-  /** 阅读百分比（2c-2 由阅读区回报；先占位） */
+  /** 阅读百分比（由阅读区回报） */
   let readPercent = $state(0);
+  /** 支持的编码列表（后端提供） */
+  let encodings = $state<string[]>([]);
 
   /** 当前活动标签 */
   const active = $derived(tabs.active);
@@ -42,6 +43,19 @@
   /** 打开文件（对话框；菜单/工具栏/空状态共用） */
   function openFile(): void {
     void tabs.openViaDialog();
+  }
+
+  /** 切换活动标签编码（null = 自动检测）；成功后刷新标签信息，失败走 Toast。 */
+  async function changeEncoding(label: string | null): Promise<void> {
+    const tab = active;
+    if (!tab) return;
+    try {
+      tabs.update(await ipc.setEncoding(tab.tabId, label));
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[app] 编码切换失败', payload);
+      toasts.error(describeIpcError(payload));
+    }
   }
 
   /** 退出应用（关闭窗口即退出；未保存拦截在编辑阶段接入） */
@@ -68,6 +82,13 @@
     void ipc.getAppInfo().then(
       (info) => {
         version = `v${info.version}`;
+      },
+      (error: unknown) => toasts.error(describeIpcError(toIpcError(error))),
+    );
+    // 编码列表（工具栏编码下拉；失败同样显式提示）
+    void ipc.listEncodings().then(
+      (list) => {
+        encodings = list;
       },
       (error: unknown) => toasts.error(describeIpcError(toIpcError(error))),
     );
@@ -102,7 +123,9 @@
   <ToolBar
     {themeChoice}
     onThemeChange={setTheme}
-    encodingLabel={active?.encoding ?? '—'}
+    {encodings}
+    encodingOverride={active?.encodingOverride ?? null}
+    onEncodingChange={(label) => void changeEncoding(label)}
     onOpenFile={openFile}
   />
   <TabBar
@@ -112,7 +135,7 @@
     onClose={(tabId) => void tabs.close(tabId)}
   />
   {#if active}
-    <ReaderView />
+    <ReaderView tab={active} onPercent={(percent) => (readPercent = percent)} />
   {:else}
     <EmptyState onOpen={openFile} />
   {/if}

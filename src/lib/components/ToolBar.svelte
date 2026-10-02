@@ -1,7 +1,6 @@
 <script lang="ts">
-  // 工具栏：打开 / 历史 / 编码 / 主题 / 设置（图标按钮 + 悬停提示）。
-  // 阶段 2b：仅主题按钮接线（循环切换）；其余按钮在阶段 2c/6/8 接线。
-  // 编码按钮显示当前编码文本（阶段 2c 改为下拉切换）。
+  // 工具栏：打开 / 历史 / 编码（下拉切换）/ 主题（循环）/ 设置。
+  // 编码下拉选项：自动检测 + 后端提供的编码列表；选择后由上层调用 IPC 并更新标签。
   import Icon from './Icon.svelte';
   import type { ThemeChoice } from '../types';
 
@@ -10,9 +9,13 @@
     themeChoice: ThemeChoice;
     /** 主题切换回调 */
     onThemeChange: (theme: ThemeChoice) => void;
-    /** 当前编码显示文本（阶段 2c 接入真实标签） */
-    encodingLabel?: string;
-    /** 打开文件回调（阶段 2c 接线） */
+    /** 支持的编码列表（后端提供；空数组时下拉只显示自动检测） */
+    encodings: string[];
+    /** 当前手动编码（null = 自动检测） */
+    encodingOverride: string | null;
+    /** 编码切换（null = 自动检测） */
+    onEncodingChange: (label: string | null) => void;
+    /** 打开文件回调 */
     onOpenFile?: () => void;
     /** 历史面板回调（阶段 6 接线） */
     onHistory?: () => void;
@@ -22,11 +25,16 @@
   let {
     themeChoice,
     onThemeChange,
-    encodingLabel = 'UTF-8',
+    encodings,
+    encodingOverride,
+    onEncodingChange,
     onOpenFile,
     onHistory,
     onSettings,
   }: Props = $props();
+
+  /** 编码下拉开合 */
+  let encodingOpen = $state(false);
 
   /** 主题循环顺序（含跟随系统） */
   const themeCycle: ThemeChoice[] = ['light', 'dark', 'eye', 'system'];
@@ -43,7 +51,21 @@
     const index = themeCycle.indexOf(themeChoice);
     onThemeChange(themeCycle[(index + 1) % themeCycle.length]);
   }
+
+  /** 选择编码并收起下拉 */
+  function pickEncoding(label: string | null): void {
+    encodingOpen = false;
+    onEncodingChange(label);
+  }
 </script>
+
+<svelte:window
+  onclick={(event) => {
+    // 点击编码下拉之外区域时收起
+    const target = event.target as HTMLElement | null;
+    if (!target?.closest('.encoding-wrap')) encodingOpen = false;
+  }}
+/>
 
 <div class="toolbar">
   <button class="icon-btn" title="打开文件（Ctrl+O）" aria-label="打开文件" onclick={() => onOpenFile?.()}>
@@ -53,9 +75,38 @@
     <Icon name="history" />
   </button>
   <div class="sep"></div>
-  <button class="text-btn" title="切换文件编码">编码：{encodingLabel}</button>
+  <div class="encoding-wrap">
+    <button
+      class="text-btn"
+      title="切换文件编码"
+      aria-haspopup="menu"
+      aria-expanded={encodingOpen}
+      onclick={() => (encodingOpen = !encodingOpen)}
+    >
+      编码：{encodingOverride ?? '自动'}
+    </button>
+    {#if encodingOpen}
+      <div class="dropdown" role="menu">
+        <button class="item" onclick={() => pickEncoding(null)}>
+          <span class="radio" class:on={encodingOverride === null}></span>
+          <span>自动检测</span>
+        </button>
+        {#each encodings as label (label)}
+          <button class="item" onclick={() => pickEncoding(label)}>
+            <span class="radio" class:on={encodingOverride === label}></span>
+            <span>{label}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
   <div class="sep"></div>
-  <button class="icon-btn" title={`主题：${themeNames[themeChoice]}（点击循环切换）`} aria-label="切换主题" onclick={cycleTheme}>
+  <button
+    class="icon-btn"
+    title={`主题：${themeNames[themeChoice]}（点击循环切换）`}
+    aria-label="切换主题"
+    onclick={cycleTheme}
+  >
     <Icon name="palette" />
   </button>
   <button class="icon-btn" title="设置" aria-label="设置" onclick={() => onSettings?.()}>
@@ -113,5 +164,54 @@
     height: 18px;
     margin: 0 4px;
     background: var(--line);
+  }
+
+  .encoding-wrap {
+    position: relative;
+  }
+
+  .dropdown {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    z-index: 30;
+    min-width: 160px;
+    padding: 4px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 28px;
+    padding: 0 8px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: 12.5px;
+    text-align: left;
+    cursor: default;
+  }
+
+  .item:hover {
+    background: var(--hover);
+  }
+
+  .radio {
+    width: 12px;
+    height: 12px;
+    border: 1px solid var(--muted);
+    border-radius: 50%;
+    box-sizing: border-box;
+  }
+
+  .radio.on {
+    border: 4px solid var(--accent);
   }
 </style>

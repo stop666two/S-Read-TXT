@@ -9,6 +9,7 @@
 - 工程初始化：Tauri v2 + Svelte 5 脚手架、便携数据目录保护（`.gitignore`/pre-commit 钩子）、MIT 许可证、设计文档与实施计划
 - 构建与验证工具链：编码自检（UTF-8 无 BOM / LF）、图标生成、CDP 冒烟与截图脚本
 - Rust 核心模块与 IPC（阶段 1）：便携存储（原子写/JSON 容错）、三类配置（settings/reader/shortcuts）、日志（JSON 行 + 5MB×3 轮转 + 请求链路上下文）、历史（JSONL 去重/剪枝）、会话（窗口 + 标签锚点）、文本读取引擎（mmap + 编码检测 + 稀疏行索引 + 按需解码，禁止整读）；对应命令 get_app_info / data_dir_status / get_settings / save_settings / get_history / remove_history / clear_history / get_session / save_session
+- 阅读界面（阶段 2）：打开文件（对话框多选 / 拖拽到窗口）、多标签打开/切换/关闭（重复打开复用标签、数量上限）、编码自动检测与手动切换（8 种编码，工具栏下拉）、虚拟滚动阅读（仅渲染可视行 + 实测行高缓存 + 滚动锚定，2 万行文件渲染 53 行）、状态栏（文件名 / 阅读百分比 / 大小 / 编码）、四主题（浅色/深色/护眼/跟随系统）、空状态与 Toast 提示、退出；新增命令 open_file / get_rows / set_encoding / list_encodings / list_tabs / close_tab
 
 ### 修复
 
