@@ -1765,6 +1765,117 @@ mod tests {
         (dir, doc)
     }
 
+    /// 多语言：日文行中插入、撤销还原。
+    #[test]
+    fn japanese_insert_and_undo() {
+        let (_dir, mut doc) = open_doc("日本語テキスト".as_bytes(), None);
+        doc.apply_edits(&[EditOp::Insert {
+            row: 0,
+            utf16: 3,
+            text: "の編集".into(),
+        }])
+        .expect("插入失败");
+        assert_eq!(doc.row_text(0).as_deref(), Some("日本語の編集テキスト"));
+        doc.undo().expect("撤销失败");
+        assert_eq!(doc.row_text(0).as_deref(), Some("日本語テキスト"));
+        assert!(!doc.is_dirty());
+    }
+
+    /// 多语言：西里尔字母删除区间。
+    #[test]
+    fn cyrillic_delete_range() {
+        let (_dir, mut doc) = open_doc("Привет мир".as_bytes(), None);
+        doc.apply_edits(&[EditOp::Delete {
+            start_row: 0,
+            start_utf16: 7,
+            end_row: 0,
+            end_utf16: 10,
+        }])
+        .expect("删除失败");
+        assert_eq!(doc.row_text(0).as_deref(), Some("Привет "));
+    }
+
+    /// 多语言：ZWJ 家庭 emoji 整段删除/撤销不损坏文本。
+    #[test]
+    fn emoji_zwj_sequence_edit_is_safe() {
+        let (_dir, mut doc) = open_doc("A👨‍👩‍👧‍👦B".as_bytes(), None);
+        // ZWJ 家庭序列 = 4 个代理对(8 单元) + 3 个 ZWJ(3 单元) = 11 个 UTF-16 单元
+        doc.apply_edits(&[EditOp::Delete {
+            start_row: 0,
+            start_utf16: 1,
+            end_row: 0,
+            end_utf16: 12,
+        }])
+        .expect("删除失败");
+        assert_eq!(doc.row_text(0).as_deref(), Some("AB"));
+        doc.undo().expect("撤销失败");
+        assert_eq!(doc.row_text(0).as_deref(), Some("A👨‍👩‍👧‍👦B"));
+    }
+
+    /// 多语言：组合附加符插入后保存 UTF-8 往返一致。
+    #[test]
+    fn combining_mark_insert_roundtrip() {
+        use crate::textfile::editing::save::{save_doc, SaveOptions};
+        let (dir, mut doc) = open_doc("eX".as_bytes(), None);
+        doc.apply_edits(&[EditOp::Insert {
+            row: 0,
+            utf16: 1,
+            text: "\u{0301}".into(),
+        }])
+        .expect("插入失败");
+        assert_eq!(doc.row_text(0).as_deref(), Some("e\u{0301}X"));
+        let path = dir.path().join("edit.txt");
+        save_doc(
+            &mut doc,
+            &path,
+            &SaveOptions {
+                target_encoding: FileEncoding::Utf8,
+                make_backup: false,
+                force: true,
+                expected: None,
+            },
+        )
+        .expect("保存失败");
+        let saved = std::fs::read(&path).expect("读回失败");
+        assert_eq!(String::from_utf8(saved).expect("非 UTF-8"), "e\u{0301}X");
+    }
+
+    /// 多语言：Shift_JIS 文档编辑后按原编码保存，字节解码回一致。
+    #[test]
+    fn shift_jis_edit_save_roundtrip() {
+        use crate::textfile::editing::save::{save_doc, SaveOptions};
+        let bytes = encoding_rs::SHIFT_JIS
+            .encode("こんにちは、世界。日本語のテスト。")
+            .0
+            .into_owned();
+        let (dir, mut doc) = open_doc(&bytes, Some(FileEncoding::ShiftJis));
+        doc.apply_edits(&[EditOp::Insert {
+            row: 0,
+            utf16: 5,
+            text: "東京".into(),
+        }])
+        .expect("插入失败");
+        let path = dir.path().join("edit.txt");
+        let outcome = save_doc(
+            &mut doc,
+            &path,
+            &SaveOptions {
+                target_encoding: FileEncoding::ShiftJis,
+                make_backup: false,
+                force: true,
+                expected: None,
+            },
+        )
+        .expect("保存失败");
+        assert_eq!(outcome.encoding, FileEncoding::ShiftJis);
+        let saved = std::fs::read(&path).expect("读回失败");
+        assert_eq!(
+            encoding_rs::SHIFT_JIS.decode(&saved).0,
+            "こんにちは東京、世界。日本語のテスト。"
+        );
+        assert!(!doc.is_dirty());
+    }
+
     /// 基础插入 + 撤销 + 重做 + 脏标记。
     #[test]
     fn insert_undo_redo_cycle() {

@@ -537,6 +537,30 @@ mod tests {
         assert_eq!(find(&doc, "café", false, None), Some(hit(0, 0, 0, 4)));
     }
 
+    /// 西里尔字母大小写不敏感折叠（简单折叠覆盖非拉丁字母）。
+    #[test]
+    fn cyrillic_case_insensitive_fold() {
+        let (_dir, doc) = open_doc("Москва\nмосква".as_bytes(), None);
+        assert_eq!(find(&doc, "москва", true, None), Some(hit(1, 0, 1, 6)));
+        assert_eq!(find(&doc, "МОСКВА", false, None), Some(hit(0, 0, 0, 6)));
+        assert_eq!(
+            find(&doc, "москва", false, Some((0, 6))),
+            Some(hit(1, 0, 1, 6))
+        );
+    }
+
+    /// 日文与韩文查询（含跨行坐标）。
+    #[test]
+    fn japanese_korean_queries() {
+        let (_dir, doc) = open_doc("日本語のテキストです\n한국어 텍스트입니다".as_bytes(), None);
+        assert_eq!(find(&doc, "テキスト", true, None), Some(hit(0, 4, 0, 8)));
+        assert_eq!(find(&doc, "한국어", true, None), Some(hit(1, 0, 1, 3)));
+        assert_eq!(
+            find(&doc, "です\n한국어", true, None),
+            Some(hit(0, 8, 1, 3))
+        );
+    }
+
     #[test]
     fn multiline_query_across_rows() {
         let (_dir, doc) = open_doc(b"aa\nbb\naa\nbb", None);

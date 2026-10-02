@@ -283,4 +283,39 @@ mod tests {
         assert_eq!(map_detected_name("UTF-16LE"), FileEncoding::Utf16Le);
         assert_eq!(map_detected_name("windows-1251"), FileEncoding::Windows1252);
     }
+
+    /// EUC-KR 采样检测。
+    #[test]
+    fn euc_kr_is_detected() {
+        let text = "이것은 한국어 인코딩 감지를 위한 테스트 문장입니다. ".repeat(30);
+        let bytes = encode_legacy(&text, FileEncoding::EucKr);
+        assert_eq!(detect(&bytes), FileEncoding::EucKr);
+    }
+
+    /// 多语言解码往返：每种语言按其代表性编码写入后解码回原文本。
+    #[test]
+    fn multilingual_decode_roundtrips() {
+        let cases: &[(&str, FileEncoding)] = &[
+            (
+                "English text with punctuation, 12345.",
+                FileEncoding::Windows1252,
+            ),
+            ("café naïve résumé — déjà vu", FileEncoding::Windows1252),
+            (
+                "日本語のテキスト、カタカナ、ひらがな。",
+                FileEncoding::ShiftJis,
+            ),
+            ("한국어 텍스트와 문장 부호.", FileEncoding::EucKr),
+            ("繁體中文與標點符號。", FileEncoding::Big5),
+            ("Русский текст, кириллица.", FileEncoding::Utf8),
+            ("نص عربي مع علامات الترقيم.", FileEncoding::Utf8),
+            ("טקסט עברי לדוגמה.", FileEncoding::Utf8),
+            ("Emoji: 👨‍👩‍👧‍👦 🎌 ✨", FileEncoding::Utf8),
+        ];
+        for (text, encoding) in cases {
+            let bytes = encode_legacy(text, *encoding);
+            let decoded = decode_range(&bytes, *encoding);
+            assert_eq!(&decoded, text, "往返不一致：{encoding:?} {text}");
+        }
+    }
 }

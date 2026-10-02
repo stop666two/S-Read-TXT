@@ -195,6 +195,25 @@ mod tests {
         assert_eq!(rows[3].text, "第四行");
     }
 
+    /// 多语言：日文（Shift_JIS）与韩文（EUC-KR）自动检测、取行正确。
+    #[test]
+    fn multilingual_auto_detection_and_rows() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let japanese = "これは日本語の文字コード判定を確認するテスト文章です。".repeat(20);
+        let jp_bytes = encoding_rs::SHIFT_JIS.encode(&japanese).0.into_owned();
+        let jp_path = write_file(dir.path(), "jp.txt", &jp_bytes);
+        let session = FileSession::open(&jp_path, None, 100).expect("打开日文失败");
+        assert_eq!(session.encoding(), FileEncoding::ShiftJis);
+        assert_eq!(session.rows(0, 1)[0].text, japanese);
+
+        let korean = "이것은 한국어 인코딩 감지를 위한 테스트 문장입니다. ".repeat(20);
+        let kr_bytes = encoding_rs::EUC_KR.encode(&korean).0.into_owned();
+        let kr_path = write_file(dir.path(), "kr.txt", &kr_bytes);
+        let session = FileSession::open(&kr_path, None, 100).expect("打开韩文失败");
+        assert_eq!(session.encoding(), FileEncoding::EucKr);
+        assert_eq!(session.rows(0, 1)[0].text, korean);
+    }
+
     /// GB18030 自动检测 + 取行。
     #[test]
     fn gb18030_auto_detection_and_fetch() {
