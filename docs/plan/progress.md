@@ -225,3 +225,13 @@
 - **本切片修复的两个真实缺陷**：①滚动记忆只在切换标签时写入 → 滚动后直接退出恢复不到位置；改为滚动 rAF 内实时记录。②冷启动恢复早于首屏渲染时容器尚无足量可滚动高度，`scrollTop` 被钳到 0；新增 `applyInitialScroll` 逐帧重试至赋值生效（约 2s 上限）。
 - E2E `scripts/smoke-session.mjs` **11/11**：建现场（两标签 / b 滚动 1500 / a 编码覆盖 GB18030 / 窗口移动 100,100,900×600）→ X 关闭 → 重启核对（标签/活动/编码覆盖/几何 ±3/±45/滚动 1498）→ 删除文件后缺失跳过。
 - 已知怪癖（记录）：无边框窗口经 `GetWindowRect` 读取含不可见缩放边框（宽约 16px、高约 31px），E2E 几何断言容差：位置 ±3、尺寸 ±45。
+
+### 6d 数据目录不可写引导（本切片）
+- 后端：`storage/paths.rs` 三级优先级 `resolve_data_dir_core(runtime, env, exe)`（运行时覆盖 > `SRT_DATA_DIR` > 便携目录）+ `DataDirOrigin::RuntimeOverride`；`logging` 重构为「全局可替换日志槽」（`CURRENT: RwLock<Option<FileLogger>>`，`FacadeLogger` 变空结构读取当前槽）+ `retarget(data_dir)`；命令 `set_data_dir(dir)`（探测→设覆盖→日志重定向→返回状态）；main.rs 注册。
+- 前端：`DataDirDialog.svelte`（路径/原因展示 + 选择可写目录（推荐）/ 仅本次只读运行）；共享状态 `src/lib/state/data-dir.svelte.ts`（`dataDirStore`：check/apply/skip；**App 与自动化钩子走同一 apply 路径**）；App 启动探测 + `plugin-dialog` 目录选择器 + Toast 反馈。
+- E2E `scripts/smoke-datadir.mjs` **12/12**：`SRT_DATA_DIR` 指向一个「文件」模拟不可写 → D1 弹窗（路径 + os error 183）；D2 切换可写目录（`writable=true`、`origin=runtimeOverride`、弹窗消失）；D3 `history.jsonl` 与 `logs/app.log` 实落新目录、原路径未被误建；D4 重启再弹窗（会话级语义）→ 「仅本次只读运行」后应用可用。
+- 行为说明：WebView2 用户数据目录仅在启动时重定向（启动不可写则跳过）；引导切换的会话级目录只影响应用数据文件，WebView 缓存本次仍用系统默认位置（不违反“不写入程序目录之外”的本意：程序目录不可写时无便携位置可选，且已在弹窗中告知）。
+
+### 6e E2E 扩展（本切片）
+- `smoke-settings.mjs` 修正与增强：默认页签已改为「常规」→ 快捷键操作前显式切换页签（S1/S9/reopenSettings）；**首启引导模态会挂起全局快捷键** → 按真实用户路径勾选「不再显示」并关闭（S8/S9/S11/S12 恢复）；`openPath` 改 fire-and-forget 防 WebView2 `Promise was collected`；S13 改为真实断言（常规页签字段 / 快捷键行数 / **字号修改实时应用到主窗口**）→ **27/27**。
+- `verify-all.mjs` 新增两步：`E2E 会话恢复（smoke-session）`、`E2E 数据目录引导（smoke-datadir）`；报告仍落盘 `docs/verify/latest.md`。

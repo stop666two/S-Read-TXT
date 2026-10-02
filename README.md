@@ -74,7 +74,7 @@ npm run tauri build
 
 ## 数据与隐私
 
-- 强制便携模式：所有数据存放于**程序目录** `data/`（`settings.json`、`reader.json`、`shortcuts.json`、`session.json`、`history.jsonl`、`logs/`），不写入系统其他位置
+- 强制便携模式：所有数据存放于**程序目录** `data/`（`settings.json`、`reader.json`、`shortcuts.json`、`session.json`、`history.jsonl`、`logs/`），不写入系统其他位置；程序目录不可写时启动会引导选择可写目录（**仅本次运行有效**）或仅本次只读运行
 - 如果程序目录不可写：启动时弹窗引导选择可写目录（仅本次会话生效）
 - 完全离线：无遥测、无错误上报、无更新检测、无任何网络请求
 - 数据不加密；日志不含敏感内容
