@@ -808,7 +808,7 @@ pub async fn open_settings(app: tauri::AppHandle, tab: Option<String>) -> Result
         tauri::WebviewUrl::App("settings.html".into()),
     )
     .title("设置 - S-Read-TXT")
-        .inner_size(800.0, 620.0)
+    .inner_size(800.0, 620.0)
     .resizable(false)
     .maximizable(false)
     .decorations(false)
