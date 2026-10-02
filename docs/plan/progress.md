@@ -24,8 +24,8 @@
 
 | 切片 | 内容 | 状态 | 证据 |
 |---|---|---|---|
-| 1.1 | storage：便携目录解析 + 可写性探测 | ✅ 代码完成 | `cargo test` 8/8 通过（2026-10-02） |
-| 1.2 | atomic：原子写入（临时文件 + rename） | ⏳ 待开始 | — |
+| 1.1 | storage：便携目录解析 + 可写性探测 | ✅ 已提交 `334e8ad` | `cargo test` 8/8；`data_dir_status` 命令接线 |
+| 1.2 | atomic + json_io：原子写 / JSON 容错读写 | ✅ 代码完成 | 单测 10 项；累计 18/18（原子替换/无残留/损坏检测/无 BOM/pretty） |
 | 1.3 | settings/reader/shortcuts：配置模型 + 原子读写 | ⏳ 待开始 | — |
 | 1.4 | logging：JSON 行日志 + 轮转 + 级别开关 | ⏳ 待开始 | — |
 | 1.5 | history：JSONL 追加/去重/剪枝 | ⏳ 待开始 | — |
