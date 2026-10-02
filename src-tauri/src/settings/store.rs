@@ -17,7 +17,7 @@ use crate::settings::defaults;
 use crate::settings::model::AppSettings;
 use crate::settings::reader::ReaderSettings;
 use crate::settings::shortcuts::ShortcutSettings;
-use crate::settings::SettingsSnapshot;
+use crate::settings::{SettingsSaveRequest, SettingsSnapshot};
 use crate::storage::json_io;
 
 /// 主配置文件名
@@ -89,6 +89,22 @@ pub fn save_shortcuts(dir: &Path, settings: &ShortcutSettings) -> io::Result<()>
     let mut copy = settings.clone();
     normalize_shortcuts(&mut copy);
     json_io::write_json_atomic(&shortcuts_path(dir), &copy)
+}
+
+/// 保存聚合快照（`save_settings` 命令入口）：
+/// 主配置/阅读配置直接落盘；快捷键按「覆盖项」落盘（与默认相同的项不写，
+/// 因此恢复默认 = 提交默认表 → 覆盖表清空）。
+pub fn save_snapshot(dir: &Path, request: &SettingsSaveRequest) -> io::Result<()> {
+    save_app_settings(dir, &request.app)?;
+    save_reader_settings(dir, &request.reader)?;
+    save_shortcuts(
+        dir,
+        &ShortcutSettings {
+            schema_version: defaults::SCHEMA_VERSION,
+            bindings: to_overrides(&request.shortcuts),
+        },
+    )?;
+    Ok(())
 }
 
 /// 合并生效绑定：默认表为底，覆盖表覆盖（未知动作再防御性过滤一次）。
@@ -376,5 +392,30 @@ mod tests {
         assert!(!raw.contains("Ctrl+O"), "默认项不应落盘：{raw}");
         let loaded = load_shortcuts(dir.path());
         assert_eq!(loaded.bindings.len(), 1);
+    }
+
+    /// 聚合保存：快捷键只落盘覆盖项；回读快照与提交的生效配置一致。
+    #[test]
+    fn save_snapshot_roundtrip_stores_only_overrides() {
+        let dir = data_dir();
+        let mut effective = defaults::default_bindings();
+        effective.insert("openFile".to_string(), "Alt+O".to_string());
+        let mut app = AppSettings::default();
+        app.max_tabs = 25;
+        let mut reader = ReaderSettings::default();
+        reader.theme = crate::settings::reader::Theme::Dark;
+        let request = crate::settings::SettingsSaveRequest {
+            app: app.clone(),
+            reader: reader.clone(),
+            shortcuts: effective.clone(),
+        };
+        save_snapshot(dir.path(), &request).expect("保存失败");
+        let raw = std::fs::read_to_string(shortcuts_path(dir.path())).expect("读取失败");
+        assert!(raw.contains("Alt+O"), "覆盖项应落盘：{raw}");
+        assert!(!raw.contains("Ctrl+W"), "默认项不应落盘：{raw}");
+        let snapshot = load_snapshot(dir.path());
+        assert_eq!(snapshot.app.max_tabs, 25);
+        assert_eq!(snapshot.reader.theme, crate::settings::reader::Theme::Dark);
+        assert_eq!(snapshot.shortcuts.bindings, effective);
     }
 }

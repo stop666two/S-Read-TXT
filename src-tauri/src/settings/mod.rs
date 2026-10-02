@@ -7,7 +7,7 @@
 //! - `defaults`：默认值与取值范围（与 `docs/configuration.md` 同步）
 //! - `store`：载入/保存/归一/自愈备份，以及快捷键生效表合并
 //!
-//! IPC 聚合快照见 [`SettingsSnapshot`]（不落盘）。
+//! IPC 载荷见 [`SettingsSnapshot`]（返回）与 [`SettingsSaveRequest`]（保存入参）。
 
 pub mod defaults;
 pub mod model;
@@ -15,7 +15,9 @@ pub mod reader;
 pub mod shortcuts;
 pub mod store;
 
-use serde::Serialize;
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
 
 use crate::settings::model::AppSettings;
 use crate::settings::reader::ReaderSettings;
@@ -31,4 +33,19 @@ pub struct SettingsSnapshot {
     pub reader: ReaderSettings,
     /// 快捷键（bindings = 默认 + 覆盖后的生效值）
     pub shortcuts: ShortcutSettings,
+}
+
+/// IPC 保存请求（`save_settings` 入参；前端提交编辑后的完整配置）。
+///
+/// `shortcuts` 传「生效绑定」全表；后端只落盘与默认不同的覆盖项
+/// （恢复默认 = 提交默认表 → 覆盖表清空）。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsSaveRequest {
+    /// 主配置
+    pub app: AppSettings,
+    /// 阅读排版配置
+    pub reader: ReaderSettings,
+    /// 生效快捷键绑定表（动作 id → 组合键）
+    pub shortcuts: BTreeMap<String, String>,
 }

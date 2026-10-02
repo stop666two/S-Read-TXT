@@ -1,6 +1,6 @@
 // S-Read-TXT 主进程入口（src-tauri/src/main.rs）
 // 阶段 1：storage（便携数据目录）+ settings（三类配置）+ logging（文件日志）接入；
-// 命令清单按设计文档 §6 分阶段扩充。
+// 每个 IPC 命令携带请求链路上下文（req id），日志可串联同一次调用。
 
 // 发布构建隐藏 Windows 控制台窗口；调试构建保留控制台以便查看日志
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -9,9 +9,10 @@ mod logging;
 mod settings;
 mod storage;
 
+use logging::context::{with_context, LogContext};
 use serde::Serialize;
 use settings::store as settings_store;
-use settings::SettingsSnapshot;
+use settings::{SettingsSaveRequest, SettingsSnapshot};
 use storage::data_dir;
 use storage::paths::{self, DataDirOrigin};
 
@@ -44,12 +45,14 @@ struct DataDirStatus {
 /// 命令：返回应用版本与数据目录（关于页数据源；亦用于 IPC 冒烟自检）。
 #[tauri::command]
 fn get_app_info() -> AppInfo {
-    let (dir, origin) = paths::resolve_data_dir();
-    AppInfo {
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        data_dir: dir.to_string_lossy().into_owned(),
-        data_dir_origin: origin,
-    }
+    with_context(LogContext::request(), || {
+        let (dir, origin) = paths::resolve_data_dir();
+        AppInfo {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            data_dir: dir.to_string_lossy().into_owned(),
+            data_dir_origin: origin,
+        }
+    })
 }
 
 /// 命令：探测数据目录可写性（启动自检与「目录不可写」引导流程的数据源）。
@@ -58,22 +61,32 @@ fn get_app_info() -> AppInfo {
 ///       字段决定进入正常流程还是引导选择目录流程。
 #[tauri::command]
 fn data_dir_status() -> DataDirStatus {
-    let (dir, origin) = paths::resolve_data_dir();
-    let dir_text = dir.to_string_lossy().into_owned();
-    match data_dir::probe_writable(&dir) {
-        Ok(()) => DataDirStatus {
-            dir: dir_text,
-            writable: true,
-            message: None,
-            origin,
-        },
-        Err(err) => DataDirStatus {
-            dir: dir_text,
-            writable: false,
-            message: Some(err.to_string()),
-            origin,
-        },
-    }
+    with_context(LogContext::request(), || {
+        let (dir, origin) = paths::resolve_data_dir();
+        let dir_text = dir.to_string_lossy().into_owned();
+        match data_dir::probe_writable(&dir) {
+            Ok(()) => DataDirStatus {
+                dir: dir_text,
+                writable: true,
+                message: None,
+                origin,
+            },
+            Err(err) => {
+                // 重要事件：不可写会导致数据无法持久化，进入日志便于排查
+                log::warn!(
+                    target: "sread::storage",
+                    "数据目录不可写：{}（{err}）",
+                    dir_text
+                );
+                DataDirStatus {
+                    dir: dir_text,
+                    writable: false,
+                    message: Some(err.to_string()),
+                    origin,
+                }
+            }
+        }
+    })
 }
 
 /// 命令：读取全部配置（聚合快照；快捷键字段为「生效绑定」= 默认 + 覆盖）。
@@ -82,8 +95,26 @@ fn data_dir_status() -> DataDirStatus {
 ///       `<文件名>.corrupt-<纳秒>` 后回默认值（见 `settings::store`）。
 #[tauri::command]
 fn get_settings() -> SettingsSnapshot {
-    let (dir, _origin) = paths::resolve_data_dir();
-    settings_store::load_snapshot(&dir)
+    with_context(LogContext::request(), || {
+        log::debug!(target: "sread::ipc", "读取配置快照");
+        let (dir, _origin) = paths::resolve_data_dir();
+        settings_store::load_snapshot(&dir)
+    })
+}
+
+/// 命令：保存全部配置并返回保存后的快照（前端以返回值刷新状态）。
+///
+/// 入参 `shortcuts` 为生效绑定全表；后端只落盘与默认不同的覆盖项。
+/// 返回：Ok(保存后的快照)；Err(中文错误文案)。
+#[tauri::command]
+fn save_settings(request: SettingsSaveRequest) -> Result<SettingsSnapshot, String> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        settings_store::save_snapshot(&dir, &request)
+            .map_err(|err| format!("保存配置失败：{err}"))?;
+        log::info!(target: "sread::ipc", "配置已保存");
+        Ok(settings_store::load_snapshot(&dir))
+    })
 }
 
 fn main() {
@@ -107,7 +138,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_app_info,
             data_dir_status,
-            get_settings
+            get_settings,
+            save_settings
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
