@@ -7,7 +7,7 @@
 // 说明：文件生成于系统临时目录（非仓库）；每次运行使用独立数据目录；结束整树回收。
 
 import { spawn, spawnSync } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -53,12 +53,31 @@ function readTail(path, bytes) {
   }
 }
 
+/** 带重试的删除：应用进程退出后文件句柄释放/杀软扫描可能短暂锁定，直接删会静默失败。 */
+async function removeWithRetry(path, options, attempts = 12) {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      rmSync(path, options);
+    } catch {
+      // 忽略并重试
+    }
+    if (!existsSync(path)) return;
+    await delay(250);
+  }
+}
+
 async function main() {
   if (!existsSync(exePath)) {
     console.error(`可执行文件不存在：${exePath}（先运行 npm run tauri build -- --debug --no-bundle）`);
     process.exit(2);
   }
   mkdirSync(workDir, { recursive: true });
+  // 自愈：清掉历史遗留的运行数据目录
+  for (const entry of readdirSync(workDir)) {
+    if (entry.startsWith('data-')) {
+      rmSync(join(workDir, entry), { recursive: true, force: true });
+    }
+  }
   rmSync(testFile, { force: true });
   rmSync(`${testFile}.bak`, { force: true });
   const totalBytes = sizeMb * 1024 * 1024;
@@ -221,13 +240,10 @@ async function main() {
       // 仅回收本应用进程树（/T 连带其 WebView2 子进程）；严禁按 msedgewebview2 名称杀进程
       spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
     }
-    try {
-      rmSync(runDataDir, { recursive: true, force: true });
-      rmSync(testFile, { force: true });
-      rmSync(`${testFile}.bak`, { force: true });
-    } catch {
-      // 临时目录清理失败不影响测试结论
-    }
+    // 带重试清理：taskkill 后句柄释放有延迟，直接删会静默失败留下大文件
+    await removeWithRetry(runDataDir, { recursive: true, force: true });
+    await removeWithRetry(testFile, { force: true });
+    await removeWithRetry(`${testFile}.bak`, { force: true });
   }
 
   const failed = checks.filter((item) => !item.passed);
