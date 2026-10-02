@@ -2,6 +2,8 @@
   // 阅读视图：虚拟滚动（仅渲染可视行 + 实测高度缓存 + 滚动锚定）+ 按窗取行。
   // 进度口径：状态栏百分比 = 顶部定位行的累计高度 / 内容总高度（视觉进度）。
   // 标签/编码切换：重建高度与缓存、按记忆行号恢复滚动位置（阶段 8 会话持久化同口径）。
+  import { untrack } from 'svelte';
+
   import EditLayer from './EditLayer.svelte';
   import type { EditorAction } from '../edit/actions';
   import { describeIpcError, ipc, toIpcError, type EditApplied, type TabInfo } from '../ipc';
@@ -267,10 +269,14 @@
 
   // 排版变更（字体/字号/行高/限宽/边距）：行高模型失效并重排；
   // 滚动位置由 measureRendered 的锚定机制保持（不会跳回顶部）。
+  // 关键：version 的自增必须在 untrack 内——`version += 1` 同时读取并写入该 $state，
+  // 若参与依赖收集会让本 effect 自触发形成死循环（实测每帧数千次，渲染管线被持续冲刷）。
   $effect(() => {
     void layoutKey;
-    heights.clear();
-    version += 1;
+    untrack(() => {
+      heights.clear();
+      version += 1;
+    });
   });
 
   /** 应用初始滚动位置（会话恢复/切回长文档）。
