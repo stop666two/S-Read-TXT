@@ -289,9 +289,44 @@ async function main() {
       `seq=${themeSeq.join(',')} system=${systemTheme}`,
     );
 
-    currentStep = 'C8 工具栏设置按钮（灰态断言）';
-    const settingsDisabled = await isDisabled('[aria-label="设置"]');
-    check('C8 工具栏「设置」未实现 → 按要求为灰态', settingsDisabled === true);
+    currentStep = 'C8 工具栏设置按钮（打开设置窗口）';
+    await click('[aria-label="设置"]');
+    const settingsWs = await waitForValue(async () => {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/json`);
+        const targets = await response.json();
+        const target = targets.find(
+          (item) => item.type === 'page' && (item.url ?? '').includes('settings.html'),
+        );
+        return target?.webSocketDebuggerUrl ?? null;
+      } catch {
+        return null;
+      }
+    }, 8000);
+    check('C8a 工具栏「设置」→ 打开独立设置窗口', typeof settingsWs === 'string' && settingsWs.length > 0);
+    if (settingsWs) {
+      // 关闭设置窗口（点击标题栏关闭按钮：fire-and-forget，不能等待窗口销毁后的响应）
+      const settingsClient = await createClient(settingsWs);
+      await settingsClient.send('Runtime.evaluate', {
+        expression: `document.querySelector('.title-bar button[aria-label="关闭"]')?.click() ?? true`,
+        returnByValue: true,
+      });
+      settingsClient.close();
+      await delay(700);
+    }
+    const settingsClosed = await waitForValue(async () => {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/json`);
+        const targets = await response.json();
+        const still = targets.some(
+          (item) => item.type === 'page' && (item.url ?? '').includes('settings.html'),
+        );
+        return still ? null : true;
+      } catch {
+        return null;
+      }
+    }, 5000);
+    check('C8b 设置窗口已关闭', settingsClosed === true);
 
     // ---- D. 菜单栏 ----
     currentStep = 'D1 菜单标题开合';

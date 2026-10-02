@@ -23,13 +23,18 @@ export async function waitForValue(fn, timeoutMs = 4000, interval = 150) {
   }
 }
 
-/** 轮询查找页面型 CDP 目标（返回 WebSocket URL）。 */
-export async function findTarget(port) {
+/** 轮询查找页面型 CDP 目标（返回 WebSocket URL）。
+ *  `urlIncludes`：可选 URL 子串过滤（多窗口场景，如设置窗口 'settings.html'）。 */
+export async function findTarget(port, urlIncludes = null) {
   for (let attempt = 0; attempt < 180; attempt += 1) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/json`);
       const targets = await response.json();
-      const page = targets.find((target) => target.type === 'page');
+      const page = targets.find(
+        (target) =>
+          target.type === 'page' &&
+          (!urlIncludes || (target.url ?? '').includes(urlIncludes)),
+      );
       if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
     } catch {
       // 应用尚未就绪，继续轮询
