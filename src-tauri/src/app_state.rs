@@ -18,6 +18,10 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::settings::model::AppSettings;
+use crate::textfile::editing::edit_doc::{EditApplied, EditDoc, EditError, EditOp};
+use crate::textfile::editing::save::{
+    save_doc, snapshot_of, DiskSnapshot, SaveError, SaveOptions, SaveOutcome,
+};
 use crate::textfile::encoding::FileEncoding;
 use crate::textfile::session::{FileSession, TextFileError};
 use crate::textfile::window::RowText;
@@ -40,6 +44,21 @@ pub enum AppStateError {
     /// 底层文本文件错误（透传）
     #[error(transparent)]
     TextFile(#[from] TextFileError),
+    /// 编辑引擎错误（透传）
+    #[error(transparent)]
+    Edit(#[from] EditError),
+    /// 保存链错误（透传）
+    #[error(transparent)]
+    Save(#[from] SaveError),
+    /// 底层 IO 错误（磁盘快照 / 文件操作）
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    /// 标签未创建编辑文档
+    #[error("标签 {0} 没有可用的编辑文档")]
+    NotEditing(u64),
+    /// 存在未保存修改，破坏性操作被阻止
+    #[error("标签 {0} 有未保存的修改")]
+    DirtyEdit(u64),
 }
 
 /// 标签的对外描述（IPC 载荷；不暴露 mmap 等内部状态）。
@@ -56,6 +75,10 @@ pub struct TabInfo {
     pub encoding: String,
     /// 手动编码（`None` = 自动检测）
     pub encoding_override: Option<String>,
+    /// 是否处于编辑模式（UI 开关；编辑文档首次进入时创建并保留）
+    pub editing: bool,
+    /// 是否有未保存修改（编辑文档存在且脏）
+    pub dirty: bool,
     /// 总显示行数
     pub rows_total: u64,
     /// 文件总字节数
@@ -81,7 +104,14 @@ pub struct RowsPayload {
 /// 单个标签的运行时状态（内部）。
 struct Tab {
     id: u64,
+    /// 只读会话（磁盘视图；编辑文档存在时由其供数）
     session: FileSession,
+    /// 编辑文档（首次进入编辑模式时创建；保留到保存/重载/关闭）
+    edit: Option<EditDoc>,
+    /// 是否处于编辑模式（UI 开关；与编辑文档是否存在解耦）
+    editing: bool,
+    /// 打开/上次保存时的磁盘快照（外部修改冲突检测基准）
+    edit_baseline: Option<DiskSnapshot>,
 }
 
 /// 应用运行状态。
@@ -133,7 +163,13 @@ impl AppState {
         let session = FileSession::open(&canonical, None, settings.max_file_size_mb)?;
         let id = self.next_tab_id;
         self.next_tab_id += 1;
-        let tab = Tab { id, session };
+        let tab = Tab {
+            id,
+            session,
+            edit: None,
+            editing: false,
+            edit_baseline: None,
+        };
         let info = tab_info(&tab);
         self.tabs.insert(id, tab);
         self.active_tab = Some(id);
@@ -141,6 +177,8 @@ impl AppState {
     }
 
     /// 取文本窗口（`count` 受 [`MAX_ROWS_PER_FETCH`] 限制）。
+    ///
+    /// 供数来源：存在编辑文档时用编辑文档（含未保存修改），否则用只读会话。
     pub fn rows(
         &self,
         tab_id: u64,
@@ -149,21 +187,38 @@ impl AppState {
     ) -> Result<RowsPayload, AppStateError> {
         let tab = self.tab(tab_id)?;
         let count = count.min(MAX_ROWS_PER_FETCH) as usize;
-        let rows = tab.session.rows(start_row, count);
-        let percent_row = rows
-            .first()
-            .map(|row| row.row)
-            .unwrap_or_else(|| start_row.min(tab.session.rows_total().saturating_sub(1)));
+        let (rows, rows_total, start_percent) = if let Some(doc) = &tab.edit {
+            let rows = doc.fetch_rows(start_row, count);
+            let percent_row = rows
+                .first()
+                .map(|row| row.row)
+                .unwrap_or_else(|| start_row.min(doc.rows_total().saturating_sub(1)));
+            (rows, doc.rows_total(), doc.percent_at_row(percent_row))
+        } else {
+            let rows = tab.session.rows(start_row, count);
+            let percent_row = rows
+                .first()
+                .map(|row| row.row)
+                .unwrap_or_else(|| start_row.min(tab.session.rows_total().saturating_sub(1)));
+            (
+                rows,
+                tab.session.rows_total(),
+                tab.session.percent_at_row(percent_row),
+            )
+        };
         Ok(RowsPayload {
             tab_id,
             start_row,
-            rows_total: tab.session.rows_total(),
-            start_percent: tab.session.percent_at_row(percent_row),
+            rows_total,
+            start_percent,
             rows,
         })
     }
 
     /// 切换标签编码（`None` 恢复自动检测），重建索引后返回最新标签信息。
+    ///
+    /// 编辑联动：存在未保存修改时拒绝（切换会作废编辑文档）；干净时
+    /// 一并丢弃编辑文档（编码变化使旧解码失效），下次进入编辑时重建。
     pub fn set_encoding(
         &mut self,
         tab_id: u64,
@@ -173,8 +228,177 @@ impl AppState {
             .tabs
             .get_mut(&tab_id)
             .ok_or(AppStateError::TabNotFound(tab_id))?;
+        if tab.edit.as_ref().is_some_and(|doc| doc.is_dirty()) {
+            return Err(AppStateError::DirtyEdit(tab_id));
+        }
+        tab.edit = None;
+        tab.editing = false;
+        tab.edit_baseline = None;
         tab.session.set_encoding(encoding);
         Ok(tab_info(tab))
+    }
+
+    // ---- 编辑模式（阶段 4a：编辑能力接线；UI 交互在阶段 4b） ----
+
+    /// 切换编辑模式：首次进入时创建编辑文档并记录磁盘基准快照。
+    ///
+    /// 语义：
+    /// - 编辑文档创建后保留（脏态跨模式持续），`rows()` 改由编辑文档供数；
+    /// - 关闭编辑模式仅切换 `editing` 标志，不影响未保存修改；
+    /// - 单行超 64KB 的文件在进入时被拒绝（`EditError::UnsupportedLongLine`）。
+    pub fn toggle_edit(
+        &mut self,
+        tab_id: u64,
+        settings: &AppSettings,
+    ) -> Result<TabInfo, AppStateError> {
+        let tab = self
+            .tabs
+            .get_mut(&tab_id)
+            .ok_or(AppStateError::TabNotFound(tab_id))?;
+        if tab.edit.is_none() {
+            let doc = EditDoc::open(
+                tab.session.path(),
+                tab.session.encoding_override(),
+                settings.max_file_size_mb,
+            )?;
+            tab.edit_baseline = snapshot_of(doc.path())?;
+            tab.edit = Some(doc);
+            tab.editing = true;
+        } else {
+            tab.editing = !tab.editing;
+        }
+        Ok(tab_info(tab))
+    }
+
+    /// 应用编辑批次（插入/删除/替换；批次原子 = 单个撤销步）。
+    pub fn apply_edit_ops(
+        &mut self,
+        tab_id: u64,
+        ops: &[EditOp],
+    ) -> Result<EditApplied, AppStateError> {
+        let doc = self.edit_doc_mut(tab_id)?;
+        Ok(doc.apply_edits(ops)?)
+    }
+
+    /// 撤销一步（无可撤销内容时返回 `None`）。
+    pub fn undo_edit(&mut self, tab_id: u64) -> Result<Option<EditApplied>, AppStateError> {
+        let doc = self.edit_doc_mut(tab_id)?;
+        Ok(doc.undo())
+    }
+
+    /// 重做一步（无可重做内容时返回 `None`）。
+    pub fn redo_edit(&mut self, tab_id: u64) -> Result<Option<EditApplied>, AppStateError> {
+        let doc = self.edit_doc_mut(tab_id)?;
+        Ok(doc.redo())
+    }
+
+    /// 保存编辑文档到原路径。
+    ///
+    /// 参数：`target_encoding` = 编码询问结果（`None` = 保持当前文档编码）；
+    ///       `make_backup` = 是否写 `.bak`（设置 + 首存判定，由命令层传入）；
+    ///       `force` = 冲突时强制覆盖。
+    /// 成功后将冲突基准刷新为保存后的磁盘快照。
+    pub fn save_edit(
+        &mut self,
+        tab_id: u64,
+        target_encoding: Option<FileEncoding>,
+        make_backup: bool,
+        force: bool,
+    ) -> Result<SaveOutcome, AppStateError> {
+        let tab = self
+            .tabs
+            .get_mut(&tab_id)
+            .ok_or(AppStateError::TabNotFound(tab_id))?;
+        let doc = tab.edit.as_mut().ok_or(AppStateError::NotEditing(tab_id))?;
+        let options = SaveOptions {
+            target_encoding: target_encoding.unwrap_or_else(|| doc.encoding()),
+            make_backup,
+            force,
+            expected: tab.edit_baseline,
+        };
+        let path = doc.path().to_path_buf();
+        let outcome = save_doc(doc, &path, &options)?;
+        tab.edit_baseline = snapshot_of(&path)?;
+        Ok(outcome)
+    }
+
+    /// 另存为：内容写入 `new_path` 后把标签重定向到新文件（会话与编辑文档重建，
+    /// 编码显式设为实际保存编码），脏态清零；语义与编辑器一致——后续保存/阅读
+    /// 都针对新路径。
+    ///
+    /// 边界：新内容若因用户输入产生超长行而无法重开编辑文档，则退出编辑模式
+    /// （保存已成功，数据不丢失）。
+    pub fn save_edit_as(
+        &mut self,
+        tab_id: u64,
+        new_path: &Path,
+        target_encoding: Option<FileEncoding>,
+        make_backup: bool,
+        settings: &AppSettings,
+    ) -> Result<SaveOutcome, AppStateError> {
+        let tab = self
+            .tabs
+            .get_mut(&tab_id)
+            .ok_or(AppStateError::TabNotFound(tab_id))?;
+        let doc = tab.edit.as_mut().ok_or(AppStateError::NotEditing(tab_id))?;
+        let saved_encoding = target_encoding.unwrap_or_else(|| doc.encoding());
+        let options = SaveOptions {
+            target_encoding: saved_encoding,
+            make_backup,
+            force: false,   // 目标覆盖确认由系统保存对话框负责
+            expected: None, // 另存为不做「外部修改」冲突检测
+        };
+        let outcome = save_doc(doc, new_path, &options)?;
+
+        // 重定向标签到新路径
+        let canonical = canonicalize_lossy(new_path);
+        let session =
+            FileSession::open(&canonical, Some(saved_encoding), settings.max_file_size_mb)?;
+        let reopened =
+            match EditDoc::open(&canonical, Some(saved_encoding), settings.max_file_size_mb) {
+                Ok(doc) => Some(doc),
+                Err(err) => {
+                    log::warn!(
+                        target: "sread::edit",
+                        "另存为后重开编辑文档失败（退出编辑模式）：{err}"
+                    );
+                    None
+                }
+            };
+        tab.edit_baseline = snapshot_of(&canonical)?;
+        tab.editing = reopened.is_some();
+        tab.edit = reopened;
+        tab.session = session;
+        Ok(outcome)
+    }
+
+    /// 从磁盘重载标签（丢弃编辑文档与未保存修改；脏态确认由命令层/前端完成）。
+    pub fn reload_tab(
+        &mut self,
+        tab_id: u64,
+        settings: &AppSettings,
+    ) -> Result<TabInfo, AppStateError> {
+        let tab = self
+            .tabs
+            .get_mut(&tab_id)
+            .ok_or(AppStateError::TabNotFound(tab_id))?;
+        let path = tab.session.path().to_path_buf();
+        let override_encoding = tab.session.encoding_override();
+        tab.session = FileSession::open(&path, override_encoding, settings.max_file_size_mb)?;
+        tab.edit = None;
+        tab.editing = false;
+        tab.edit_baseline = None;
+        Ok(tab_info(tab))
+    }
+
+    /// 内部：取编辑文档（未创建时报 `NotEditing`）。
+    fn edit_doc_mut(&mut self, tab_id: u64) -> Result<&mut EditDoc, AppStateError> {
+        self.tabs
+            .get_mut(&tab_id)
+            .ok_or(AppStateError::TabNotFound(tab_id))?
+            .edit
+            .as_mut()
+            .ok_or(AppStateError::NotEditing(tab_id))
     }
 
     /// 关闭标签；若关闭的是活动标签，则活动标签回落为剩余最后一个。
@@ -222,6 +446,8 @@ fn tab_info(tab: &Tab) -> TabInfo {
         encoding_override: session
             .encoding_override()
             .map(|encoding| encoding.label().to_string()),
+        editing: tab.editing,
+        dirty: tab.edit.as_ref().is_some_and(|doc| doc.is_dirty()),
         rows_total: session.rows_total(),
         byte_len: session.byte_len(),
     }
@@ -348,5 +574,259 @@ mod tests {
         assert_eq!(state.active_tab(), None);
         assert!(state.tabs_info().is_empty());
         assert!(!state.close(info.tab_id), "重复关闭应返回 false");
+    }
+
+    /// 进入编辑：创建编辑文档并由其供数；切回只读保留未保存修改。
+    #[test]
+    fn toggle_edit_creates_doc_and_serves_rows() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "a.txt", "abc\ndef\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+
+        let toggled = state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        assert!(toggled.editing);
+        assert!(!toggled.dirty);
+
+        state
+            .apply_edit_ops(
+                info.tab_id,
+                &[EditOp::Insert {
+                    row: 0,
+                    utf16: 1,
+                    text: "X".to_string(),
+                }],
+            )
+            .expect("插入失败");
+        let info_after = state.tab_info(info.tab_id).expect("标签缺失");
+        assert!(info_after.dirty);
+        assert!(info_after.editing, "编辑操作不改变模式标志");
+        assert_eq!(
+            state.rows(info.tab_id, 0, 10).expect("取行失败").rows[0].text,
+            "aXbc"
+        );
+
+        // 切回只读：编辑文档保留（脏态持续），供数仍来自编辑文档
+        let off = state.toggle_edit(info.tab_id, &settings).expect("退出编辑失败");
+        assert!(!off.editing);
+        assert!(off.dirty);
+        assert_eq!(
+            state.rows(info.tab_id, 0, 1).expect("取行失败").rows[0].text,
+            "aXbc"
+        );
+    }
+
+    /// 撤销/重做经状态层生效；栈耗尽返回 None。
+    #[test]
+    fn undo_redo_via_state() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "a.txt", "abc\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        state
+            .apply_edit_ops(
+                info.tab_id,
+                &[EditOp::Insert {
+                    row: 0,
+                    utf16: 0,
+                    text: "Z".to_string(),
+                }],
+            )
+            .expect("插入失败");
+
+        assert!(state.undo_edit(info.tab_id).expect("撤销失败").is_some());
+        assert_eq!(
+            state.rows(info.tab_id, 0, 1).expect("取行失败").rows[0].text,
+            "abc"
+        );
+        assert!(state.redo_edit(info.tab_id).expect("重做失败").is_some());
+        assert_eq!(
+            state.rows(info.tab_id, 0, 1).expect("取行失败").rows[0].text,
+            "Zabc"
+        );
+        assert!(state.undo_edit(info.tab_id).expect("撤销失败").is_some());
+        assert!(state.undo_edit(info.tab_id).expect("撤销失败").is_none());
+    }
+
+    /// 保存：写盘、脏态清零；外部修改后报冲突；force 覆盖成功。
+    #[test]
+    fn save_edit_and_conflict() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "a.txt", "abc");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        state
+            .apply_edit_ops(
+                info.tab_id,
+                &[EditOp::Insert {
+                    row: 0,
+                    utf16: 0,
+                    text: "Z".to_string(),
+                }],
+            )
+            .expect("插入失败");
+
+        let outcome = state
+            .save_edit(info.tab_id, None, false, false)
+            .expect("保存失败");
+        assert_eq!(outcome.bytes_written, 4);
+        assert!(!state.tab_info(info.tab_id).expect("标签缺失").dirty);
+        assert_eq!(std::fs::read(&path).expect("读回失败"), b"Zabc");
+
+        // 再次编辑 + 外部修改（临时文件 + rename 模拟：in-place 写会被 mmap 拒绝）
+        state
+            .apply_edit_ops(
+                info.tab_id,
+                &[EditOp::Insert {
+                    row: 0,
+                    utf16: 0,
+                    text: "Y".to_string(),
+                }],
+            )
+            .expect("插入失败");
+        let external = dir.path().join("external.tmp");
+        std::fs::write(&external, b"external").expect("外部写失败");
+        std::fs::rename(&external, &path).expect("外部替换失败");
+
+        let conflict = state.save_edit(info.tab_id, None, false, false);
+        assert!(matches!(
+            conflict,
+            Err(AppStateError::Save(SaveError::Conflict))
+        ));
+        state
+            .save_edit(info.tab_id, None, false, true)
+            .expect("强制保存失败");
+        assert_eq!(std::fs::read(&path).expect("读回失败"), b"YZabc");
+    }
+
+    /// 另存为：标签重定向到新路径并保持可编辑（脏态清零）。
+    #[test]
+    fn save_as_redirects_tab() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "a.txt", "abc");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        state
+            .apply_edit_ops(
+                info.tab_id,
+                &[EditOp::Insert {
+                    row: 0,
+                    utf16: 0,
+                    text: "Z".to_string(),
+                }],
+            )
+            .expect("插入失败");
+
+        let new_path = dir.path().join("b.txt");
+        let outcome = state
+            .save_edit_as(
+                info.tab_id,
+                &new_path,
+                Some(FileEncoding::Utf8),
+                false,
+                &settings,
+            )
+            .expect("另存为失败");
+        assert_eq!(outcome.encoding.label(), "UTF-8");
+        let info_after = state.tab_info(info.tab_id).expect("标签缺失");
+        assert!(info_after.path.ends_with("b.txt"));
+        assert!(info_after.editing, "另存为后保持编辑模式");
+        assert!(!info_after.dirty);
+        assert_eq!(std::fs::read(&new_path).expect("读回失败"), b"Zabc");
+        assert_eq!(
+            state.rows(info.tab_id, 0, 1).expect("取行失败").rows[0].text,
+            "Zabc"
+        );
+        // 后续编辑针对新文档
+        state
+            .apply_edit_ops(
+                info.tab_id,
+                &[EditOp::Insert {
+                    row: 0,
+                    utf16: 0,
+                    text: "!".to_string(),
+                }],
+            )
+            .expect("再次编辑失败");
+        assert!(state.tab_info(info.tab_id).expect("标签缺失").dirty);
+    }
+
+    /// 重载：丢弃未保存修改并回到磁盘内容。
+    #[test]
+    fn reload_discards_edits() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "a.txt", "abc");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        state
+            .apply_edit_ops(
+                info.tab_id,
+                &[EditOp::Insert {
+                    row: 0,
+                    utf16: 0,
+                    text: "Z".to_string(),
+                }],
+            )
+            .expect("插入失败");
+
+        let info_after = state.reload_tab(info.tab_id, &settings).expect("重载失败");
+        assert!(!info_after.editing);
+        assert!(!info_after.dirty);
+        assert_eq!(
+            state.rows(info.tab_id, 0, 1).expect("取行失败").rows[0].text,
+            "abc"
+        );
+    }
+
+    /// 脏态阻止编码切换。
+    #[test]
+    fn set_encoding_blocked_when_dirty() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "a.txt", "中文\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        state.toggle_edit(info.tab_id, &settings).expect("进入编辑失败");
+        state
+            .apply_edit_ops(
+                info.tab_id,
+                &[EditOp::Insert {
+                    row: 0,
+                    utf16: 0,
+                    text: "X".to_string(),
+                }],
+            )
+            .expect("插入失败");
+        assert!(matches!(
+            state.set_encoding(info.tab_id, Some(FileEncoding::Gb18030)),
+            Err(AppStateError::DirtyEdit(_))
+        ));
+    }
+
+    /// 单行超 64KB 拒绝进入编辑（读取不受影响）。
+    #[test]
+    fn toggle_edit_rejects_long_line() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let long_line = "x".repeat(70 * 1024);
+        let path = write_file(dir.path(), "long.txt", &long_line);
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        assert!(matches!(
+            state.toggle_edit(info.tab_id, &settings),
+            Err(AppStateError::Edit(EditError::UnsupportedLongLine { .. }))
+        ));
+        // 读取仍可用（读模式对超长行做 8KB 显示分块）
+        let payload = state.rows(info.tab_id, 0, 1).expect("取行失败");
+        assert!(!payload.rows[0].text.is_empty());
     }
 }

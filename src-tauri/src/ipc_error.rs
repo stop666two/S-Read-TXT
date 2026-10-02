@@ -9,6 +9,8 @@
 use serde::Serialize;
 
 use crate::app_state::AppStateError;
+use crate::textfile::editing::edit_doc::EditError;
+use crate::textfile::editing::save::SaveError;
 use crate::textfile::session::TextFileError;
 
 /// 文件不存在或不可访问
@@ -29,6 +31,18 @@ pub const CODE_CONFIG_SAVE: &str = "CONFIG_SAVE";
 pub const CODE_HISTORY_SAVE: &str = "HISTORY_SAVE";
 /// 会话保存失败
 pub const CODE_SESSION_SAVE: &str = "SESSION_SAVE";
+/// 存在超长行，无法进入编辑
+pub const CODE_EDIT_LINE_TOO_LONG: &str = "EDIT_LINE_TOO_LONG";
+/// 编辑位置无效/越界
+pub const CODE_INVALID_POSITION: &str = "INVALID_POSITION";
+/// 文件被外部修改（保存冲突）
+pub const CODE_FILE_CONFLICT: &str = "FILE_CONFLICT";
+/// 目标编码无法表示某字符
+pub const CODE_ENCODING_UNREPRESENTABLE: &str = "ENCODING_UNREPRESENTABLE";
+/// 标签未创建编辑文档
+pub const CODE_NOT_EDITING: &str = "NOT_EDITING";
+/// 存在未保存修改，操作被阻止
+pub const CODE_EDIT_DIRTY: &str = "EDIT_DIRTY";
 /// 内部错误（锁中毒等）
 pub const CODE_INTERNAL: &str = "INTERNAL";
 
@@ -79,6 +93,42 @@ impl From<TextFileError> for IpcError {
     }
 }
 
+impl From<EditError> for IpcError {
+    fn from(err: EditError) -> Self {
+        match err {
+            EditError::File(err) => err.into(),
+            EditError::UnsupportedLongLine { bytes } => Self::new(
+                CODE_EDIT_LINE_TOO_LONG,
+                format!("该文件包含超长行（{bytes} 字节），暂不支持编辑"),
+            ),
+            EditError::RowOutOfRange { row } => {
+                Self::new(CODE_INVALID_POSITION, format!("行号越界：{row}"))
+            }
+            EditError::Utf16OutOfRange { row, utf16 } => Self::new(
+                CODE_INVALID_POSITION,
+                format!("字符位置越界：行 {row} 偏移 {utf16}"),
+            ),
+            EditError::InvalidPosition => Self::new(CODE_INVALID_POSITION, "内部位置无效"),
+        }
+    }
+}
+
+impl From<SaveError> for IpcError {
+    fn from(err: SaveError) -> Self {
+        match err {
+            SaveError::Conflict => Self::new(
+                CODE_FILE_CONFLICT,
+                "文件已在外部被修改，请选择覆盖或另存为",
+            ),
+            SaveError::Unrepresentable { ch } => Self::new(
+                CODE_ENCODING_UNREPRESENTABLE,
+                format!("当前编码无法表示字符「{ch}」，可改用 UTF-8 保存"),
+            ),
+            SaveError::Io(err) => Self::new(CODE_IO, format!("保存文件失败：{err}")),
+        }
+    }
+}
+
 impl From<AppStateError> for IpcError {
     fn from(err: AppStateError) -> Self {
         match err {
@@ -90,6 +140,17 @@ impl From<AppStateError> for IpcError {
                 format!("标签数量已达上限（{limit} 个），请先关闭部分标签"),
             ),
             AppStateError::TextFile(err) => err.into(),
+            AppStateError::Edit(err) => err.into(),
+            AppStateError::Save(err) => err.into(),
+            AppStateError::Io(err) => Self::new(CODE_IO, format!("文件操作失败：{err}")),
+            AppStateError::NotEditing(tab_id) => Self::new(
+                CODE_NOT_EDITING,
+                format!("标签 {tab_id} 没有可用的编辑文档"),
+            ),
+            AppStateError::DirtyEdit(tab_id) => Self::new(
+                CODE_EDIT_DIRTY,
+                format!("标签 {tab_id} 有未保存的修改，请先保存或放弃修改"),
+            ),
         }
     }
 }
@@ -130,5 +191,27 @@ mod tests {
         let passthrough: IpcError =
             AppStateError::TextFile(TextFileError::NotFound(PathBuf::from("D:/y.txt"))).into();
         assert_eq!(passthrough.code, CODE_FILE_NOT_FOUND);
+    }
+
+    /// 编辑类错误映射（超长行 / 位置越界 / 脏态阻止）。
+    #[test]
+    fn edit_errors_map() {
+        let long_line: IpcError = EditError::UnsupportedLongLine { bytes: 70000 }.into();
+        assert_eq!(long_line.code, CODE_EDIT_LINE_TOO_LONG);
+        assert!(long_line.message.contains("70000"));
+        let position: IpcError = EditError::RowOutOfRange { row: 99 }.into();
+        assert_eq!(position.code, CODE_INVALID_POSITION);
+        let dirty: IpcError = AppStateError::DirtyEdit(3).into();
+        assert_eq!(dirty.code, CODE_EDIT_DIRTY);
+    }
+
+    /// 保存类错误映射（冲突 / 不可表示字符）。
+    #[test]
+    fn save_errors_map() {
+        let conflict: IpcError = SaveError::Conflict.into();
+        assert_eq!(conflict.code, CODE_FILE_CONFLICT);
+        let unmappable: IpcError = SaveError::Unrepresentable { ch: '𠀀' }.into();
+        assert_eq!(unmappable.code, CODE_ENCODING_UNREPRESENTABLE);
+        assert!(unmappable.message.contains('𠀀'));
     }
 }

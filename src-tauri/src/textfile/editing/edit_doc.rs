@@ -65,7 +65,11 @@ pub enum EditError {
 /// 批量约定（IPC 层与前端遵守）：
 /// - 同一批次内不出现重叠或同位置的多个操作（前端合并相邻按键）；
 /// - 应用顺序由引擎统一按位置降序处理，保证前序操作不移动后序位置。
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// IPC 序列化：外部标签为 `kind`（`insert` / `delete` / `replace`），
+/// 字段为 camelCase（如 `startRow`），与前端 TypeScript 类型一一对应。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum EditOp {
     /// 在 `(row, utf16)` 处插入文本（UTF-8 存入新增缓冲）
     Insert {
@@ -284,6 +288,23 @@ impl EditDoc {
     /// 文档总字节数（不含 BOM；与保存后的文件大小相差 `bom_len`）。
     pub fn byte_len(&self) -> u64 {
         self.byte_tree.total()
+    }
+
+    /// 行首对应的阅读百分比（与只读路径语义一致：行首字节偏移 / 总字节数）。
+    ///
+    /// 参数：`row` 行号（越界时按末行处理）。
+    /// 返回：0.0–1.0 的百分比；空文档返回 0.0。
+    pub fn percent_at_row(&self, row: u64) -> f64 {
+        let total = self.byte_len();
+        if total == 0 {
+            return 0.0;
+        }
+        let last_row = self.rows_total().saturating_sub(1);
+        let offset = self
+            .row_start_pos(row.min(last_row))
+            .map(|pos| self.global_offset(pos))
+            .unwrap_or(0);
+        (offset as f64 / total as f64).min(1.0)
     }
 
     /// 取 `[start_row, start_row + count)` 的行文本（跨片段拼接、按片段源解码）。

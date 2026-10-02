@@ -19,6 +19,7 @@ use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
     IpcError, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING, CODE_SESSION_SAVE,
+    CODE_TAB_NOT_FOUND,
 };
 use s_read_txt::logging::context::{with_context, LogContext};
 use s_read_txt::session::model::SessionState;
@@ -27,6 +28,7 @@ use s_read_txt::settings::store as settings_store;
 use s_read_txt::settings::{SettingsSaveRequest, SettingsSnapshot};
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::paths::{self, DataDirOrigin};
+use s_read_txt::textfile::editing::edit_doc::{EditApplied, EditOp};
 use s_read_txt::textfile::encoding::FileEncoding;
 use s_read_txt::time_util;
 
@@ -63,6 +65,16 @@ fn lock_state<'a>(
     state
         .lock()
         .map_err(|_| IpcError::internal("应用状态锁已被污染（前序线程 panic）"))
+}
+
+/// 解析可选编码标签：`None` = 保持当前/自动；未知标签报错。
+fn parse_encoding_opt(encoding: Option<String>) -> Result<Option<FileEncoding>, IpcError> {
+    match encoding {
+        Some(label) => FileEncoding::from_label(&label)
+            .map(Some)
+            .ok_or_else(|| IpcError::new(CODE_INVALID_ENCODING, format!("未知编码：{label}"))),
+        None => Ok(None),
+    }
 }
 
 /// 命令：返回应用版本与数据目录（关于页数据源；亦用于 IPC 冒烟自检）。
@@ -257,12 +269,7 @@ pub fn set_encoding(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<TabInfo, IpcError> {
     with_context(LogContext::request(), || {
-        let parsed = match encoding {
-            Some(label) => Some(FileEncoding::from_label(&label).ok_or_else(|| {
-                IpcError::new(CODE_INVALID_ENCODING, format!("未知编码：{label}"))
-            })?),
-            None => None,
-        };
+        let parsed = parse_encoding_opt(encoding)?;
         let info = lock_state(&state)?.set_encoding(tab_id, parsed)?;
         log::info!(
             target: "sread::ipc",
@@ -326,5 +333,177 @@ pub fn close_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabsV
             );
         }
         Ok(view)
+    })
+}
+
+/// 保存结果（IPC 载荷）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveTabResult {
+    /// 实际写入字节数（含 BOM）
+    bytes_written: u64,
+    /// `.bak` 路径（未写时为 None）
+    backup_path: Option<String>,
+    /// 实际保存编码（标签名）
+    encoding: String,
+    /// 保存后的标签信息（脏态/行数等以返回值刷新）
+    tab: TabInfo,
+}
+
+/// 命令：切换编辑模式（首次进入创建编辑文档；单行超 64KB 拒绝）。
+#[tauri::command]
+pub fn toggle_edit(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabInfo, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let settings = settings_store::load_app_settings(&dir);
+        let info = lock_state(&state)?.toggle_edit(tab_id, &settings)?;
+        log::info!(
+            target: "sread::ipc",
+            "编辑模式：标签 {} → {}",
+            tab_id,
+            if info.editing { "开" } else { "关" }
+        );
+        Ok(info)
+    })
+}
+
+/// 命令：应用编辑批次（插入/删除/替换；批次 = 单个撤销步）。
+#[tauri::command]
+pub fn apply_edits(
+    tab_id: u64,
+    ops: Vec<EditOp>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<EditApplied, IpcError> {
+    with_context(LogContext::request(), || {
+        lock_state(&state)?
+            .apply_edit_ops(tab_id, &ops)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：撤销一步（无可撤销内容时返回 null）。
+#[tauri::command]
+pub fn undo_edit(
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Option<EditApplied>, IpcError> {
+    with_context(LogContext::request(), || {
+        lock_state(&state)?.undo_edit(tab_id).map_err(IpcError::from)
+    })
+}
+
+/// 命令：重做一步（无可重做内容时返回 null）。
+#[tauri::command]
+pub fn redo_edit(
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Option<EditApplied>, IpcError> {
+    with_context(LogContext::request(), || {
+        lock_state(&state)?.redo_edit(tab_id).map_err(IpcError::from)
+    })
+}
+
+/// 命令：保存标签（编码询问流结果传入；`force` = 冲突时覆盖）。
+#[tauri::command]
+pub fn save_tab(
+    tab_id: u64,
+    target_encoding: Option<String>,
+    make_backup: bool,
+    force: bool,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<SaveTabResult, IpcError> {
+    with_context(LogContext::request(), || {
+        let encoding = parse_encoding_opt(target_encoding)?;
+        let mut guard = lock_state(&state)?;
+        let outcome = guard.save_edit(tab_id, encoding, make_backup, force)?;
+        let tab = guard
+            .tab_info(tab_id)
+            .ok_or_else(|| IpcError::new(CODE_TAB_NOT_FOUND, format!("标签不存在：{tab_id}")))?;
+        log::info!(
+            target: "sread::ipc",
+            "保存：标签 {} → {}（{} 字节{}）",
+            tab_id,
+            tab.encoding,
+            outcome.bytes_written,
+            if outcome.backup_path.is_some() {
+                "，已写 .bak"
+            } else {
+                ""
+            }
+        );
+        Ok(SaveTabResult {
+            bytes_written: outcome.bytes_written,
+            backup_path: outcome
+                .backup_path
+                .map(|path| path.to_string_lossy().into_owned()),
+            encoding: outcome.encoding.label().to_string(),
+            tab,
+        })
+    })
+}
+
+/// 命令：另存为（成功后标签重定向到新路径；新路径写入历史）。
+#[tauri::command]
+pub fn save_tab_as(
+    tab_id: u64,
+    new_path: String,
+    target_encoding: Option<String>,
+    make_backup: bool,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<SaveTabResult, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let settings = settings_store::load_app_settings(&dir);
+        let encoding = parse_encoding_opt(target_encoding)?;
+        let (result, entry) = {
+            let mut guard = lock_state(&state)?;
+            let outcome =
+                guard.save_edit_as(tab_id, Path::new(&new_path), encoding, make_backup, &settings)?;
+            let tab = guard.tab_info(tab_id).ok_or_else(|| {
+                IpcError::new(CODE_TAB_NOT_FOUND, format!("标签不存在：{tab_id}"))
+            })?;
+            let entry = HistoryEntry {
+                path: tab.path.clone(),
+                name: tab.name.clone(),
+                size: tab.byte_len,
+                encoding: tab.encoding.clone(),
+                opened_at: time_util::now_rfc3339(),
+                last_row: 0,
+                last_percent: 0.0,
+            };
+            let result = SaveTabResult {
+                bytes_written: outcome.bytes_written,
+                backup_path: outcome
+                    .backup_path
+                    .map(|path| path.to_string_lossy().into_owned()),
+                encoding: outcome.encoding.label().to_string(),
+                tab,
+            };
+            (result, entry)
+        };
+        // 历史为辅助功能：写失败不影响保存结果（锁外做 IO）
+        if let Err(err) = history_store::append(&dir, &entry) {
+            log::warn!(target: "sread::history", "历史写入失败：{err}");
+        }
+        log::info!(
+            target: "sread::ipc",
+            "另存为：标签 {} → {}（{} 字节）",
+            tab_id,
+            entry.path,
+            result.bytes_written
+        );
+        Ok(result)
+    })
+}
+
+/// 命令：从磁盘重载（丢弃未保存修改；脏态确认由前端完成）。
+#[tauri::command]
+pub fn reload_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabInfo, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let settings = settings_store::load_app_settings(&dir);
+        let info = lock_state(&state)?.reload_tab(tab_id, &settings)?;
+        log::info!(target: "sread::ipc", "重载：标签 {}", tab_id);
+        Ok(info)
     })
 }

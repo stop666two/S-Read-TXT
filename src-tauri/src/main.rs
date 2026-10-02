@@ -47,7 +47,14 @@ fn main() {
             commands::set_encoding,
             commands::list_encodings,
             commands::list_tabs,
-            commands::close_tab
+            commands::close_tab,
+            commands::toggle_edit,
+            commands::apply_edits,
+            commands::undo_edit,
+            commands::redo_edit,
+            commands::save_tab,
+            commands::save_tab_as,
+            commands::reload_tab
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
