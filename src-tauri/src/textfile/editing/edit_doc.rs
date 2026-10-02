@@ -16,12 +16,14 @@
 
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
 use crate::textfile::editing::fenwick::Fenwick;
 use crate::textfile::editing::piece::{
-    count_units, newline_width, starts_with_lf, Piece, PieceMeta, PieceSource,
+    count_units, ends_with_cr, newline_width, starts_with_lf, Piece, PieceMeta, PieceSource,
 };
-use crate::textfile::editing::EDIT_MAX_ROW_BYTES;
-use crate::textfile::encoding::{decode_range, detect, FileEncoding};
+use crate::textfile::editing::{EDIT_MAX_ROW_BYTES, UNDO_MAX_BYTES, UNDO_MAX_STEPS};
+use crate::textfile::encoding::{detect, FileEncoding};
 use crate::textfile::line_index::find_newline;
 use crate::textfile::mmap::MappedFile;
 use crate::textfile::session::TextFileError;
@@ -56,6 +58,83 @@ pub enum EditError {
     /// 内部位置解析失败（防御性，正常流程不可达）
     #[error("内部位置无效")]
     InvalidPosition,
+}
+
+/// 编辑操作（位置坐标为「应用前」的文档状态）。
+///
+/// 批量约定（IPC 层与前端遵守）：
+/// - 同一批次内不出现重叠或同位置的多个操作（前端合并相邻按键）；
+/// - 应用顺序由引擎统一按位置降序处理，保证前序操作不移动后序位置。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditOp {
+    /// 在 `(row, utf16)` 处插入文本（UTF-8 存入新增缓冲）
+    Insert {
+        /// 行号
+        row: u64,
+        /// 行内 UTF-16 偏移（与 JS 字符串索引一致）
+        utf16: u64,
+        /// 插入文本
+        text: String,
+    },
+    /// 删除 `[start, end)` 区间
+    Delete {
+        /// 起始行
+        start_row: u64,
+        /// 起始行内 UTF-16 偏移
+        start_utf16: u64,
+        /// 结束行
+        end_row: u64,
+        /// 结束行内 UTF-16 偏移
+        end_utf16: u64,
+    },
+    /// 将 `[start, end)` 区间替换为文本
+    Replace {
+        /// 起始行
+        start_row: u64,
+        /// 起始行内 UTF-16 偏移
+        start_utf16: u64,
+        /// 结束行
+        end_row: u64,
+        /// 结束行内 UTF-16 偏移
+        end_utf16: u64,
+        /// 替换文本
+        text: String,
+    },
+}
+
+/// 一次编辑应用（或撤销/重做）后的结果（供前端局部刷新与状态栏）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditApplied {
+    /// 状态版本号（每次变更都会变化，前端据此判断刷新）
+    pub state_id: u64,
+    /// 是否有未保存修改
+    pub dirty: bool,
+    /// 首个受影响行（应用前坐标；前端从该行起重取可视窗）
+    pub touched_row: u64,
+    /// 当前总行数
+    pub rows_total: u64,
+    /// 当前总字节数（不含 BOM）
+    pub byte_len: u64,
+}
+
+/// 撤销/重做步骤：某个状态的完整片段列表快照（交换式撤销/重做）。
+///
+/// 设计取舍：片段列表经合并后通常在数十项量级，快照开销远小于逐字节
+/// 复制被删除内容；且原文/新增缓冲都不可变，快照天然包含全部可恢复信息。
+struct UndoStep {
+    /// 该状态的片段列表
+    pieces: Vec<Piece>,
+    /// 对应的片段元数据
+    metas: Vec<PieceMeta>,
+    /// 该状态的结尾换行标记
+    trailing_newline: bool,
+    /// 该状态的状态版本号
+    state_id: u64,
+    /// 触发该状态变更的首个行号（撤销/重做时通知前端）
+    touched_row: u64,
+    /// 该步骤计入撤销预算的字节数（新增 + 删除 + 快照开销）
+    cost_bytes: u64,
 }
 
 /// 文档位置：片段下标 + 片段内偏移。
@@ -95,6 +174,18 @@ pub struct EditDoc {
     line_tree: Fenwick,
     /// 文档是否以换行单元结尾（行数换算用）
     trailing_newline: bool,
+    /// 状态版本号（每次变更递增；前端刷新依据）
+    state_id: u64,
+    /// 状态版本号分配器（单调，不回收）
+    next_state_id: u64,
+    /// 最近一次保存对应的状态版本号（`None` = 从未保存）
+    saved_state_id: Option<u64>,
+    /// 撤销栈（快照）
+    undo_stack: Vec<UndoStep>,
+    /// 重做栈（快照）
+    redo_stack: Vec<UndoStep>,
+    /// 撤销栈当前预算占用（字节）
+    undo_cost: u64,
 }
 
 impl EditDoc {
@@ -157,6 +248,12 @@ impl EditDoc {
             byte_tree: Fenwick::build_from(&[]),
             line_tree: Fenwick::build_from(&[]),
             trailing_newline: false,
+            state_id: 1,
+            next_state_id: 2,
+            saved_state_id: Some(1),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            undo_cost: 0,
         };
         doc.rebuild_trees();
         doc.trailing_newline = doc.doc_ends_with_newline();
@@ -256,15 +353,22 @@ impl EditDoc {
 
     /// 解码片段局部范围（`[from, to)` 为片段内偏移）并追加到输出。
     fn append_decoded(&self, piece: &Piece, from: u64, to: u64, out: &mut String) {
+        out.push_str(&self.decode_slice(piece, from, to));
+    }
+
+    /// 解码片段局部范围（不做 BOM 剥离：BOM 不属于任何片段，
+    /// 且中段伪 BOM 序列不应被误剥离）。
+    fn decode_slice(&self, piece: &Piece, from: u64, to: u64) -> String {
         let start = (piece.off + from) as usize;
         let end = (piece.off + to) as usize;
         match piece.source {
-            PieceSource::Original => {
-                out.push_str(&decode_range(&self.original.bytes()[start..end], self.encoding))
-            }
-            // 新增片段是 UTF-8；不用 decode_range 以避免把用户文本的前导
-            // U+FEFF 当作 BOM 误剥离
-            PieceSource::Added => out.push_str(&String::from_utf8_lossy(&self.added[start..end])),
+            PieceSource::Original => self
+                .encoding
+                .encoding()
+                .decode_without_bom_handling(&self.original.bytes()[start..end])
+                .0
+                .into_owned(),
+            PieceSource::Added => String::from_utf8_lossy(&self.added[start..end]).into_owned(),
         }
     }
 
@@ -329,15 +433,30 @@ impl EditDoc {
             local,
             self.prev_cr(piece_index),
         );
+        // 跨片 `\r`+`\n`：单元在片段末尾以 `\r` 结束时，若下一片段以 `\n` 开头，
+        // 该 `\n` 属于同一换行单元——行起点（单元终点）必须越过它
+        let mut end_pos = DocPos {
+            piece: piece_index,
+            off: end_off,
+        };
+        if end_off == piece.len && ends_with_cr(bytes, self.encoding_for(&piece), 0, piece.len) {
+            if let Some(next) = self.pieces.get(piece_index + 1) {
+                let next_bytes = self.piece_bytes(next);
+                let next_encoding = self.encoding_for(next);
+                if starts_with_lf(next_bytes, next_encoding, 0, next.len) {
+                    end_pos = DocPos {
+                        piece: piece_index + 1,
+                        off: newline_width(next_encoding),
+                    };
+                }
+            }
+        }
         Ok((
             DocPos {
                 piece: piece_index,
                 off: start_off,
             },
-            self.normalize_pos(DocPos {
-                piece: piece_index,
-                off: end_off,
-            }),
+            self.normalize_pos(end_pos),
         ))
     }
 
@@ -392,6 +511,409 @@ impl EditDoc {
         let unit_counts: Vec<u64> = self.metas.iter().map(|meta| meta.units).collect();
         self.byte_tree = Fenwick::build_from(&byte_lens);
         self.line_tree = Fenwick::build_from(&unit_counts);
+    }
+
+    // ---- 编辑应用与撤销/重做（阶段 3b）----
+
+    /// 当前状态版本号（单调递增；前端刷新依据）。
+    pub fn state_id(&self) -> u64 {
+        self.state_id
+    }
+
+    /// 是否有未保存修改（与 `mark_saved` 配对）。
+    pub fn is_dirty(&self) -> bool {
+        self.saved_state_id != Some(self.state_id)
+    }
+
+    /// 标记「当前状态已保存」（保存链调用）。
+    pub fn mark_saved(&mut self) {
+        self.saved_state_id = Some(self.state_id);
+    }
+
+    /// 应用一批编辑操作（一个批次 = 一个撤销步骤）。
+    ///
+    /// 返回：`EditApplied`（新状态版本 / 是否脏 / 首个受影响行 / 总行数 / 总字节数）。
+    /// 错误：`EditError`（行/字符越界等）。批次为原子操作：任一操作解析失败则整批不应用。
+    pub fn apply_edits(&mut self, ops: &[EditOp]) -> Result<EditApplied, EditError> {
+        if ops.is_empty() {
+            return Ok(self.applied(0));
+        }
+        // 1) 解析所有操作（相对编辑前状态）：全局字节区间 + 替换文本 + 受影响行
+        let mut resolved: Vec<(u64, u64, Vec<u8>, u64)> = Vec::with_capacity(ops.len());
+        for op in ops {
+            let (start, end, text, touched_row) = match op {
+                EditOp::Insert { row, utf16, text } => {
+                    let pos = self.resolve_pos(*row, *utf16)?;
+                    let global = self.global_offset(pos);
+                    (global, global, text.clone().into_bytes(), *row)
+                }
+                EditOp::Delete {
+                    start_row,
+                    start_utf16,
+                    end_row,
+                    end_utf16,
+                } => {
+                    let a = self.global_offset(self.resolve_pos(*start_row, *start_utf16)?);
+                    let b = self.global_offset(self.resolve_pos(*end_row, *end_utf16)?);
+                    if b < a {
+                        return Err(EditError::InvalidPosition);
+                    }
+                    (a, b, Vec::new(), *start_row)
+                }
+                EditOp::Replace {
+                    start_row,
+                    start_utf16,
+                    end_row,
+                    end_utf16,
+                    text,
+                } => {
+                    let a = self.global_offset(self.resolve_pos(*start_row, *start_utf16)?);
+                    let b = self.global_offset(self.resolve_pos(*end_row, *end_utf16)?);
+                    if b < a {
+                        return Err(EditError::InvalidPosition);
+                    }
+                    (a, b, text.clone().into_bytes(), *start_row)
+                }
+            };
+            resolved.push((start, end, text, touched_row));
+        }
+        let touched = resolved.iter().map(|item| item.3).min().unwrap_or(0);
+        // 2) 快照当前状态（撤销步骤）
+        let mut before = self.take_snapshot(touched);
+        // 3) 按位置降序应用（后面的编辑不影响前面位置）
+        let mut cost = 0u64;
+        resolved.sort_by(|left, right| right.0.cmp(&left.0));
+        for (start, end, text, _) in &resolved {
+            cost += text.len() as u64 + (end - start);
+            self.apply_range(*start, *end, text);
+        }
+        // 4) 合并、重建、版本推进、裁剪撤销预算
+        self.coalesce();
+        self.rebuild_trees();
+        self.trailing_newline = self.doc_ends_with_newline();
+        self.state_id = self.next_state_id;
+        self.next_state_id += 1;
+        self.redo_stack.clear();
+        let snapshot_cost = (before.pieces.len() as u64)
+            * ((std::mem::size_of::<Piece>() + std::mem::size_of::<PieceMeta>()) as u64);
+        before.cost_bytes = cost + snapshot_cost;
+        self.undo_cost += before.cost_bytes;
+        self.undo_stack.push(before);
+        self.trim_undo();
+        Ok(self.applied(touched))
+    }
+
+    /// 撤销一步；无可撤销时返回 `None`。
+    pub fn undo(&mut self) -> Option<EditApplied> {
+        let step = self.undo_stack.pop()?;
+        let touched = step.touched_row;
+        self.undo_cost = self.undo_cost.saturating_sub(step.cost_bytes);
+        let for_redo = self.swap_state(step);
+        self.redo_stack.push(for_redo);
+        self.rebuild_trees();
+        Some(self.applied(touched))
+    }
+
+    /// 重做一步；无可重做时返回 `None`。
+    pub fn redo(&mut self) -> Option<EditApplied> {
+        let step = self.redo_stack.pop()?;
+        let touched = step.touched_row;
+        let for_undo = self.swap_state(step);
+        self.undo_cost += for_undo.cost_bytes;
+        self.undo_stack.push(for_undo);
+        self.rebuild_trees();
+        Some(self.applied(touched))
+    }
+
+    /// 片段列表公开只读访问（保存链使用）。
+    pub(crate) fn pieces(&self) -> &[Piece] {
+        &self.pieces
+    }
+
+    /// 新增缓冲只读访问（保存链使用）。
+    pub(crate) fn added(&self) -> &[u8] {
+        &self.added
+    }
+
+    /// 原文映射字节只读访问（保存链使用）。
+    pub(crate) fn original_bytes(&self) -> &[u8] {
+        self.original.bytes()
+    }
+
+    /// 构造对外的编辑结果。
+    fn applied(&self, touched_row: u64) -> EditApplied {
+        EditApplied {
+            state_id: self.state_id,
+            dirty: self.is_dirty(),
+            touched_row,
+            rows_total: self.rows_total(),
+            byte_len: self.byte_len(),
+        }
+    }
+
+    /// 截取当前状态的快照（撤销步骤载体）。
+    fn take_snapshot(&self, touched_row: u64) -> UndoStep {
+        UndoStep {
+            pieces: self.pieces.clone(),
+            metas: self.metas.clone(),
+            trailing_newline: self.trailing_newline,
+            state_id: self.state_id,
+            touched_row,
+            cost_bytes: 0,
+        }
+    }
+
+    /// 交换当前状态与步骤快照，返回「交换出去的当前状态」构造的新步骤
+    /// （撤销/重做共用；实现为状态互换）。
+    fn swap_state(&mut self, step: UndoStep) -> UndoStep {
+        let current = UndoStep {
+            pieces: std::mem::take(&mut self.pieces),
+            metas: std::mem::take(&mut self.metas),
+            trailing_newline: self.trailing_newline,
+            state_id: self.state_id,
+            touched_row: step.touched_row,
+            cost_bytes: step.cost_bytes,
+        };
+        self.pieces = step.pieces;
+        self.metas = step.metas;
+        self.trailing_newline = step.trailing_newline;
+        self.state_id = step.state_id;
+        current
+    }
+
+    /// 撤销预算裁剪（步数与字节双上限，先到先裁剪；从最旧步骤开始丢弃）。
+    fn trim_undo(&mut self) {
+        while self.undo_stack.len() > UNDO_MAX_STEPS || self.undo_cost > UNDO_MAX_BYTES {
+            let dropped = self.undo_stack.remove(0);
+            self.undo_cost = self.undo_cost.saturating_sub(dropped.cost_bytes);
+        }
+    }
+
+    /// 文档位置 → 全局字节偏移（片段前缀和 + 片段内偏移）。
+    fn global_offset(&self, pos: DocPos) -> u64 {
+        self.byte_tree.prefix(pos.piece) + pos.off
+    }
+
+    /// 将全局字节偏移规范化为片段边界，返回边界处的片段下标。
+    fn boundary_at(&mut self, global: u64) -> usize {
+        if self.pieces.is_empty() {
+            return 0;
+        }
+        if global >= self.byte_tree.total() {
+            return self.pieces.len();
+        }
+        let index = self.byte_tree.lower_bound(global);
+        let prefix = self.byte_tree.prefix(index);
+        let local = global - prefix;
+        if local == 0 {
+            return index;
+        }
+        let piece = self.pieces[index];
+        if local >= piece.len {
+            return index + 1;
+        }
+        self.split_piece(index, local);
+        // 拆分改变了片段列表：立即重建前缀和，保证同批次内后续边界定位正确
+        // （全局偏移语义不因拆分改变，前缀和在变更点之前的取值保持不变）
+        self.rebuild_trees();
+        index + 1
+    }
+
+    /// 在片段内 `off`（0 < off < len）处拆分。
+    ///
+    /// 换行计数按**较小侧扫描**推导另一侧（大文件顶端编辑不产生整片段重扫）：
+    /// `left + right = parent`（上下文一致），扫描较小侧即可。
+    fn split_piece(&mut self, index: usize, off: u64) {
+        let piece = self.pieces[index];
+        let meta = self.metas[index];
+        let bytes = self.piece_bytes(&piece);
+        let encoding = self.encoding_for(&piece);
+        let left_len = off;
+        let right_len = piece.len - off;
+        let (left_meta, right_meta) = if left_len <= right_len {
+            let left_meta = count_units(bytes, encoding, 0, left_len, self.prev_cr(index));
+            let right_meta = PieceMeta {
+                units: meta.units - left_meta.units,
+                ends_with_cr: meta.ends_with_cr,
+            };
+            (left_meta, right_meta)
+        } else {
+            let left_ends = ends_with_cr(bytes, encoding, 0, left_len);
+            let right_meta = count_units(bytes, encoding, left_len, piece.len, left_ends);
+            let left_meta = PieceMeta {
+                units: meta.units - right_meta.units,
+                ends_with_cr: left_ends,
+            };
+            (left_meta, right_meta)
+        };
+        self.pieces[index] = Piece {
+            source: piece.source,
+            off: piece.off,
+            len: left_len,
+        };
+        self.pieces.insert(
+            index + 1,
+            Piece {
+                source: piece.source,
+                off: piece.off + left_len,
+                len: right_len,
+            },
+        );
+        self.metas[index] = left_meta;
+        self.metas.insert(index + 1, right_meta);
+    }
+
+    /// 在全局区间 `[start, end)` 上应用一次替换（`text` 为空 = 纯删除）。
+    fn apply_range(&mut self, start: u64, end: u64, text: &[u8]) {
+        if text.is_empty() && start == end {
+            return;
+        }
+        // 顺序要求：先定位起始边界（其拆分只会在其后插入片段，不影响已取得的 a），
+        // 再定位结束边界（按全局偏移在新片段列表上重新定位）。
+        let a = self.boundary_at(start);
+        let b = self.boundary_at(end).max(a);
+        // 旧右邻（原 `b` 处片段）在操作前的左上下文
+        let old_flag = if b > 0 {
+            self.metas[b - 1].ends_with_cr
+        } else {
+            false
+        };
+        if a < b {
+            self.pieces.drain(a..b);
+            self.metas.drain(a..b);
+        }
+        let mut next = a;
+        if !text.is_empty() {
+            let left_flag = if a > 0 {
+                self.metas[a - 1].ends_with_cr
+            } else {
+                false
+            };
+            let off = self.added.len() as u64;
+            self.added.extend_from_slice(text);
+            let meta = count_units(text, FileEncoding::Utf8, 0, text.len() as u64, left_flag);
+            self.pieces.insert(
+                a,
+                Piece {
+                    source: PieceSource::Added,
+                    off,
+                    len: text.len() as u64,
+                },
+            );
+            self.metas.insert(a, meta);
+            next = a + 1;
+        }
+        // 右邻上下文修正：仅当左侧 `\r` 状态变化且右邻以 `\n` 开头时 ±1
+        if next < self.pieces.len() {
+            let new_flag = if next > 0 {
+                self.metas[next - 1].ends_with_cr
+            } else {
+                false
+            };
+            if old_flag != new_flag {
+                let piece = self.pieces[next];
+                let bytes = self.piece_bytes(&piece);
+                let encoding = self.encoding_for(&piece);
+                if starts_with_lf(bytes, encoding, 0, piece.len) {
+                    if new_flag {
+                        self.metas[next].units -= 1;
+                    } else {
+                        self.metas[next].units += 1;
+                    }
+                }
+            }
+        }
+        // 区间删除/插入改变了片段列表：立即重建前缀和（同批次后续操作按
+        // 全局偏移重定位；变更点之前的前缀和保持不变）
+        self.rebuild_trees();
+    }
+
+    /// 解析 `(行号, 行内 UTF-16 偏移)` → 文档位置。
+    ///
+    /// - `utf16` 落在代理对中间时吸附到字符起点（前端正常输入不会出现）；
+    /// - 行尾（`utf16 == 行长`）返回行结束位置（换行单元之前）。
+    fn resolve_pos(&self, row: u64, utf16: u64) -> Result<DocPos, EditError> {
+        if row >= self.rows_total() {
+            return Err(EditError::RowOutOfRange { row });
+        }
+        let start = self.row_start_pos(row)?;
+        if utf16 == 0 {
+            return Ok(start);
+        }
+        let end = self.row_end_pos(row)?;
+        let mut remaining = utf16;
+        let mut pos = start;
+        while pos.piece < self.pieces.len() {
+            if pos.piece == end.piece && pos.off >= end.off {
+                break;
+            }
+            let piece = self.pieces[pos.piece];
+            let stop = if pos.piece == end.piece {
+                end.off
+            } else {
+                piece.len
+            };
+            let text = self.decode_slice(&piece, pos.off, stop);
+            let encoding = self.encoding_for(&piece);
+            let mut prefix = String::new();
+            for ch in text.chars() {
+                let width = ch.len_utf16() as u64;
+                if remaining < width {
+                    // 落在代理对中间：吸附到字符起点
+                    let byte_off = pos.off + encoded_len(&prefix, encoding);
+                    return Ok(self.normalize_pos(DocPos {
+                        piece: pos.piece,
+                        off: byte_off,
+                    }));
+                }
+                remaining -= width;
+                prefix.push(ch);
+                if remaining == 0 {
+                    let byte_off = pos.off + encoded_len(&prefix, encoding);
+                    return Ok(self.normalize_pos(DocPos {
+                        piece: pos.piece,
+                        off: byte_off,
+                    }));
+                }
+            }
+            pos = DocPos {
+                piece: pos.piece + 1,
+                off: 0,
+            };
+        }
+        Err(EditError::Utf16OutOfRange { row, utf16 })
+    }
+
+    /// 合并相邻可合并片段（同源且字节连续；不同源或间隔的不动）。
+    ///
+    /// 计数合并规则：`units` 直接相加（两者本就在同一上下文中相邻），
+    /// 结尾标记取右片段（左片段因此不产生额外边界）。
+    fn coalesce(&mut self) {
+        let mut index = 0;
+        while index + 1 < self.pieces.len() {
+            let left = self.pieces[index];
+            let right = self.pieces[index + 1];
+            if left.source == right.source && left.end() == right.off {
+                self.pieces[index].len = left.len + right.len;
+                self.metas[index].units += self.metas[index + 1].units;
+                self.metas[index].ends_with_cr = self.metas[index + 1].ends_with_cr;
+                self.pieces.remove(index + 1);
+                self.metas.remove(index + 1);
+            } else {
+                index += 1;
+            }
+        }
+    }
+}
+
+/// 字符串在指定编码下的字节长度（UTF-16 按代码单元 ×2；传统编码经编码器）。
+fn encoded_len(text: &str, encoding: FileEncoding) -> u64 {
+    match encoding {
+        FileEncoding::Utf8 => text.len() as u64,
+        FileEncoding::Utf16Le | FileEncoding::Utf16Be => {
+            (text.chars().map(|ch| ch.len_utf16() as u64).sum::<u64>()) * 2
+        }
+        _ => encoding.encoding().encode(text).0.len() as u64,
     }
 }
 
@@ -636,5 +1158,247 @@ mod tests {
         // 行 1 终点 = 单元 1 起点 = 3
         let row1_end = doc.row_end_pos(1).expect("行 1 存在");
         assert_eq!((row1_end.piece, row1_end.off), (0, 3));
+    }
+
+    /// 构造可编辑文档（测试辅助）。
+    fn open_doc(bytes: &[u8], encoding: Option<FileEncoding>) -> (tempfile::TempDir, EditDoc) {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "edit.txt", bytes);
+        let doc = EditDoc::open(&path, encoding, 100).expect("打开失败");
+        (dir, doc)
+    }
+
+    /// 基础插入 + 撤销 + 重做 + 脏标记。
+    #[test]
+    fn insert_undo_redo_cycle() {
+        let (_dir, mut doc) = open_doc(b"abcdef", None);
+        assert!(!doc.is_dirty());
+        let result = doc
+            .apply_edits(&[EditOp::Insert {
+                row: 0,
+                utf16: 2,
+                text: "XY".into(),
+            }])
+            .expect("插入失败");
+        assert!(result.dirty);
+        assert_eq!(result.touched_row, 0);
+        assert_eq!(doc.row_text(0).as_deref(), Some("abXYcdef"));
+        let undone = doc.undo().expect("应可撤销");
+        assert!(!undone.dirty);
+        assert_eq!(doc.row_text(0).as_deref(), Some("abcdef"));
+        let redone = doc.redo().expect("应可重做");
+        assert!(redone.dirty);
+        assert_eq!(doc.row_text(0).as_deref(), Some("abXYcdef"));
+        assert!(doc.redo().is_none());
+    }
+
+    /// 换行插入（行拆分）+ 跨行删除（行合并）。
+    #[test]
+    fn split_and_merge_rows() {
+        let (_dir, mut doc) = open_doc(b"abcdef", None);
+        doc.apply_edits(&[EditOp::Insert {
+            row: 0,
+            utf16: 3,
+            text: "\n".into(),
+        }])
+        .expect("插入换行失败");
+        assert_eq!(doc.rows_total(), 2);
+        assert_eq!(doc.row_text(0).as_deref(), Some("abc"));
+        assert_eq!(doc.row_text(1).as_deref(), Some("def"));
+        doc.apply_edits(&[EditOp::Delete {
+            start_row: 0,
+            start_utf16: 2,
+            end_row: 1,
+            end_utf16: 1,
+        }])
+        .expect("跨行删除失败");
+        assert_eq!(doc.rows_total(), 1);
+        assert_eq!(doc.row_text(0).as_deref(), Some("abef"));
+    }
+
+    /// 批量操作 = 单撤销步（降序应用互不影响）。
+    #[test]
+    fn batch_is_single_undo_step() {
+        let (_dir, mut doc) = open_doc(b"aaa\nbbb\nccc", None);
+        doc.apply_edits(&[
+            EditOp::Insert {
+                row: 0,
+                utf16: 1,
+                text: "1".into(),
+            },
+            EditOp::Insert {
+                row: 2,
+                utf16: 1,
+                text: "3".into(),
+            },
+        ])
+        .expect("批量插入失败");
+        assert_eq!(doc.row_text(0).as_deref(), Some("a1aa"));
+        assert_eq!(doc.row_text(2).as_deref(), Some("c3cc"));
+        doc.undo().expect("应可撤销");
+        assert_eq!(doc.row_text(0).as_deref(), Some("aaa"));
+        assert_eq!(doc.row_text(2).as_deref(), Some("ccc"));
+    }
+
+    /// 替换操作。
+    #[test]
+    fn replace_range() {
+        let (_dir, mut doc) = open_doc(b"hello world", None);
+        doc.apply_edits(&[EditOp::Replace {
+            start_row: 0,
+            start_utf16: 6,
+            end_row: 0,
+            end_utf16: 11,
+            text: "S-Read".into(),
+        }])
+        .expect("替换失败");
+        assert_eq!(doc.row_text(0).as_deref(), Some("hello S-Read"));
+    }
+
+    /// GB18030：行内 UTF-16→字节换算 + 混合片段解码。
+    #[test]
+    fn gb18030_insert_mixed_decode() {
+        let text = "中文测试内容";
+        let bytes = encoding_rs::GB18030.encode(text).0.into_owned();
+        let (_dir, mut doc) = open_doc(&bytes, None);
+        assert_eq!(doc.encoding(), FileEncoding::Gb18030);
+        doc.apply_edits(&[EditOp::Insert {
+            row: 0,
+            utf16: 2,
+            text: "-插入-".into(),
+        }])
+        .expect("插入失败");
+        assert_eq!(doc.row_text(0).as_deref(), Some("中文-插入-测试内容"));
+        doc.undo().expect("应可撤销");
+        assert_eq!(doc.row_text(0).as_deref(), Some("中文测试内容"));
+    }
+
+    /// UTF-16：混合片段 + 代理对偏移吸附。
+    #[test]
+    fn utf16_edit_and_surrogate_clamp() {
+        let bytes = encode_utf16le("a😀b\n第二行");
+        let (_dir, mut doc) = open_doc(&bytes, Some(FileEncoding::Utf16Le));
+        assert_eq!(doc.row_text(0).as_deref(), Some("a😀b"));
+        // UTF-16 偏移 2 落在代理对内部：吸附到字符起点（a 之后）
+        doc.apply_edits(&[EditOp::Insert {
+            row: 0,
+            utf16: 2,
+            text: "X".into(),
+        }])
+        .expect("插入失败");
+        assert_eq!(doc.row_text(0).as_deref(), Some("aX😀b"));
+        // 行尾偏移
+        doc.apply_edits(&[EditOp::Insert {
+            row: 1,
+            utf16: 3,
+            text: "!".into(),
+        }])
+        .expect("插入失败");
+        assert_eq!(doc.row_text(1).as_deref(), Some("第二行!"));
+    }
+
+    /// 跨片 CRLF 安全：手工拆分 `\r`|`\n`，验证计数与拼合。
+    #[test]
+    fn cross_piece_crlf_safety() {
+        let (_dir, mut doc) = open_doc(b"a\r\nb", None);
+        // 直接删掉 "\n"（全局偏移 2..3），使 \r 与 b 之间形成片段边界
+        doc.apply_range(2, 3, b"");
+        doc.coalesce();
+        doc.rebuild_trees();
+        doc.trailing_newline = doc.doc_ends_with_newline();
+        assert_eq!(doc.rows_total(), 2);
+        assert_eq!(doc.row_text(0).as_deref(), Some("a"));
+        assert_eq!(doc.row_text(1).as_deref(), Some("b"));
+        // 重新插回 "\n"：跨片 CRLF 拼合，行数不变
+        doc.apply_range(2, 2, b"\n");
+        doc.coalesce();
+        doc.rebuild_trees();
+        doc.trailing_newline = doc.doc_ends_with_newline();
+        assert_eq!(doc.rows_total(), 2);
+        assert_eq!(doc.row_text(0).as_deref(), Some("a"));
+        assert_eq!(doc.row_text(1).as_deref(), Some("b"));
+    }
+
+    /// 状态版本单调、脏标记与保存标记联动、撤销后新编辑清空重做。
+    #[test]
+    fn dirty_and_state_id() {
+        let (_dir, mut doc) = open_doc(b"x", None);
+        let initial = doc.state_id();
+        assert!(!doc.is_dirty());
+        let first = doc
+            .apply_edits(&[EditOp::Insert {
+                row: 0,
+                utf16: 1,
+                text: "y".into(),
+            }])
+            .expect("插入失败");
+        assert!(first.state_id > initial);
+        assert!(doc.is_dirty());
+        doc.mark_saved();
+        assert!(!doc.is_dirty());
+        doc.apply_edits(&[EditOp::Insert {
+            row: 0,
+            utf16: 0,
+            text: "z".into(),
+        }])
+        .expect("插入失败");
+        assert!(doc.is_dirty());
+        doc.undo().expect("应可撤销");
+        assert!(!doc.is_dirty());
+        doc.undo().expect("应可撤销");
+        assert_eq!(doc.row_text(0).as_deref(), Some("x"));
+        doc.apply_edits(&[EditOp::Insert {
+            row: 0,
+            utf16: 0,
+            text: "q".into(),
+        }])
+        .expect("插入失败");
+        assert!(doc.redo().is_none());
+    }
+
+    /// 撤销步数上限：超出后丢弃最旧步骤。
+    #[test]
+    fn undo_step_cap_trims_oldest() {
+        let (_dir, mut doc) = open_doc(b"", None);
+        for _ in 0..(UNDO_MAX_STEPS + 5) {
+            doc.apply_edits(&[EditOp::Insert {
+                row: 0,
+                utf16: 0,
+                text: "a".into(),
+            }])
+            .expect("插入失败");
+        }
+        assert_eq!(doc.undo_stack.len(), UNDO_MAX_STEPS);
+        let mut undone = 0usize;
+        while doc.undo().is_some() {
+            undone += 1;
+        }
+        assert_eq!(undone, UNDO_MAX_STEPS);
+    }
+
+    /// 越界解析错误：批次原子（失败不改变状态）。
+    #[test]
+    fn resolve_errors() {
+        let (_dir, mut doc) = open_doc(b"ab\ncd", None);
+        assert!(matches!(
+            doc.apply_edits(&[EditOp::Insert {
+                row: 5,
+                utf16: 0,
+                text: String::new(),
+            }])
+            .err(),
+            Some(EditError::RowOutOfRange { row: 5 })
+        ));
+        assert!(matches!(
+            doc.apply_edits(&[EditOp::Insert {
+                row: 0,
+                utf16: 9,
+                text: "x".into(),
+            }])
+            .err(),
+            Some(EditError::Utf16OutOfRange { .. })
+        ));
+        assert_eq!(doc.row_text(0).as_deref(), Some("ab"));
+        assert!(!doc.is_dirty());
     }
 }
