@@ -15,6 +15,8 @@ if (!target) {
   throw new Error('挂载点 #app 缺失：index.html 被意外修改');
 }
 
+// 启动占位（index.html 内置）在挂载前清除：避免占位与 Svelte 首帧同屏重叠。
+target.replaceChildren();
 // Svelte 5 函数式挂载；返回实例供将来可能的销毁/热更场景使用
 const app = mount(App, { target });
 

@@ -326,8 +326,17 @@ async function main() {
     }, 8000);
     check('C8a 工具栏「设置」→ 打开独立设置窗口', typeof settingsWs === 'string' && settingsWs.length > 0);
     if (settingsWs) {
-      // 关闭设置窗口（点击标题栏关闭按钮：fire-and-forget，不能等待窗口销毁后的响应）
+      // 关闭设置窗口（点击标题栏关闭按钮：fire-and-forget，不能等待窗口销毁后的响应）。
+      // 先等待标题栏渲染完成再点击——CDP 目标出现 ≠ Svelte 已挂载，高负载下直接点击会点空
+      // （selector 未命中时 `?.click()` 静默无操作 → 设置窗口残留 → C8b/D12 连锁失败）。
       const settingsClient = await createClient(settingsWs);
+      await waitForValue(async () => {
+        const result = await settingsClient.send('Runtime.evaluate', {
+          expression: `!!document.querySelector('.title-bar button[aria-label="关闭"]')`,
+          returnByValue: true,
+        });
+        return result.result?.value === true ? true : null;
+      }, 8000);
       await settingsClient.send('Runtime.evaluate', {
         expression: `document.querySelector('.title-bar button[aria-label="关闭"]')?.click() ?? true`,
         returnByValue: true,

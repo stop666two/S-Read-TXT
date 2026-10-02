@@ -1,8 +1,8 @@
-// 会话采集与应用（src/lib/session.ts）
+// 会话采集与保存（src/lib/session.ts）
 // 采集：窗口几何 + 标签表（路径/编码覆盖/滚动行/编辑态）+ 活动标签索引。
-// 应用：启动时恢复窗口几何（在显示之前）；标签恢复在 App 中经 IPC 逐个打开。
+// 说明：窗口几何的「应用」在 Rust 启动层完成（src-tauri/src/main.rs，显示之前应用避免跳动）；
+// 标签恢复在 App 中经 IPC 逐个打开（惰性索引）。
 
-import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 import { ipc, type SessionState, type WindowState } from './ipc';
@@ -53,22 +53,5 @@ export async function saveSessionNow(): Promise<void> {
     await ipc.saveSession(await collectSession());
   } catch {
     // 忽略：会话保存属尽力而为（退出流程优先）
-  }
-}
-
-/** 应用窗口几何（启动、显示之前调用；失败保持默认） */
-export async function applyWindowState(state: WindowState): Promise<void> {
-  const window_ = getCurrentWindow();
-  try {
-    if (state.maximized) {
-      await window_.maximize();
-      return;
-    }
-    if (state.x !== null && state.y !== null) {
-      await window_.setPosition(new PhysicalPosition(state.x, state.y));
-    }
-    await window_.setSize(new PhysicalSize(state.width, state.height));
-  } catch {
-    // 忽略：窗口恢复失败时使用默认几何
   }
 }

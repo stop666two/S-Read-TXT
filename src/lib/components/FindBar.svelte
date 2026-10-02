@@ -138,7 +138,7 @@
     >
       下一个
     </button>
-    <button class="icon" title="关闭" aria-label="关闭查找" onclick={onClose}>×</button>
+    <button class="icon" title="关闭（Esc）" aria-label="关闭查找" onclick={onClose}>×</button>
   </div>
   {#if replaceMode}
     <div class="row">

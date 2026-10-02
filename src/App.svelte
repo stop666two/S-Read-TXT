@@ -4,7 +4,7 @@
   编辑/保存/冲突/未保存三态关闭流程（阶段 4b/4c）、冷启动就绪即显。
 -->
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
   import { listen } from '@tauri-apps/api/event';
   import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -30,7 +30,7 @@
   import { focusEditorProxy } from './lib/edit/focus';
   import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type SessionState } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
-  import { applyWindowState, saveSessionNow } from './lib/session';
+  import { saveSessionNow } from './lib/session';
   import { dataDirStore } from './lib/state/data-dir.svelte';
   import { historyStore } from './lib/state/history.svelte';
   import { tabs } from './lib/state/tabs.svelte';
@@ -742,32 +742,14 @@
   });
 
   onMount(() => {
-    // 冷启动防空白：页面首帧（主题/骨架）渲染完成后才显示窗口。
-    // WebView2 初始化在磁盘压力大时可能耗时较长；隐藏期间用户不会看到空白窗口，
-    // Rust 侧另有 8 秒兜底强制显示（防前端异常导致不可见的僵尸进程）。
-    void (async () => {
-      try {
-        // 窗口几何恢复（显示之前；读取/应失败均不影响启动）
-        try {
-          const session = await ipc.getSession();
-          await applyWindowState(session.window);
-        } catch {
-          // 会话不可读：使用默认窗口几何
-        }
-        await tick();
-        // 等待真实首帧绘制（双重 rAF）：tick 只保证 DOM 更新，rAF 之后才有像素，
-        // 否则「显示瞬间」仍可能是空窗口（内容晚若干帧才出现）。
-        await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        });
-        const appWindow = getCurrentWindow();
-        await appWindow.show();
-        await appWindow.setFocus();
-      } catch (error) {
-        // 不吞错：显示失败时记录（Rust 兜底仍会在 8 秒后显示窗口）
-        if (import.meta.env.DEV) console.error('[app] 窗口显示失败', error);
-      }
-    })();
+    // 启动显示策略（维护者确认）：窗口由 Rust 侧在启动时立即显示
+    // （主题背景色 + HTML 内置占位先行）；窗口几何恢复也已在 Rust 侧完成
+    // （显示之前，避免可见跳动）。这里只归还键盘焦点。
+    void getCurrentWindow()
+      .setFocus()
+      .catch(() => {
+        // 忽略：聚焦失败不影响使用（用户点击窗口后仍可正常操作）
+      });
     // 版本号（状态栏无文件时展示；失败不阻塞启动）
     void ipc.getAppInfo().then(
       (info) => {

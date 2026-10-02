@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- S-Read-TXT 前端入口页：仅承载挂载点与脚本，全部 UI 由 Svelte 渲染 -->
+<!-- S-Read-TXT 前端入口页：承载启动占位与挂载点；主 UI 由 Svelte 渲染 -->
 <html lang="zh-CN">
   <head>
     <!-- 编码：UTF-8（RFC 3629），与全项目编码约定一致 -->
@@ -8,10 +8,73 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- 标题由前端在打开文件后动态更新（“文件名 — S-Read-TXT”） -->
     <title>S-Read-TXT</title>
+    <!--
+      启动占位样式（内联，首帧即刻可用）：窗口由 Rust 侧在启动时立即显示，
+      此占位在 WebView 解析 HTML 后立刻绘制，随后由 main.ts 在挂载前移除。
+      颜色随系统明暗（prefers-color-scheme）近似适配：默认主题为「跟随系统」时完全一致；
+      显式选择浅/深/护眼时占位仅短暂显示（毫秒级），不影响可用性。
+    -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      #app {
+        height: 100%;
+      }
+      .boot-splash {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #faf9f7;
+        color: #3b6ea5;
+        font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+        user-select: none;
+      }
+      .boot-splash__icon {
+        width: 46px;
+        height: 46px;
+      }
+      .boot-splash__name {
+        font-size: 15px;
+        letter-spacing: 0.08em;
+        color: #6b6b6b;
+      }
+      @media (prefers-color-scheme: dark) {
+        .boot-splash {
+          background: #1e1e1e;
+          color: #6fa3d8;
+        }
+        .boot-splash__name {
+          color: #9a9a9a;
+        }
+      }
+    </style>
   </head>
   <body>
-    <!-- Svelte 5 挂载点 -->
-    <div id="app"></div>
+    <!-- Svelte 5 挂载点（含启动占位，main.ts 挂载前清除） -->
+    <div id="app">
+      <div class="boot-splash" aria-hidden="true">
+        <svg
+          class="boot-splash__icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21z" />
+          <path d="M4 5.5V21" />
+          <path d="M8 7h8M8 10.5h5" />
+        </svg>
+        <div class="boot-splash__name">S-Read-TXT</div>
+      </div>
+    </div>
     <!-- 应用入口（ESM） -->
     <script type="module" src="/src/main.ts"></script>
   </body>

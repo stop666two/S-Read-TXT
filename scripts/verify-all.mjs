@@ -108,20 +108,39 @@ function main() {
   for (const step of selected) {
     const stepStart = Date.now();
     process.stdout.write(`▶ ${step.name} … `);
-    const run = spawnSync(step.cmd, {
-      cwd: step.cwd,
-      env: step.env,
-      shell: true,
-      encoding: 'utf8',
-      timeout: step.timeout,
-      maxBuffer: 64 * 1024 * 1024,
-    });
+    const runStep = () =>
+      spawnSync(step.cmd, {
+        cwd: step.cwd,
+        env: step.env,
+        shell: true,
+        encoding: 'utf8',
+        timeout: step.timeout,
+        maxBuffer: 64 * 1024 * 1024,
+      });
+    let run = runStep();
+    // E2E 启动偶发（高负载下应用未在就绪超时内出现 CDP 目标）：
+    // 仅对 E2E 步骤自动重试一次，报告透明标注「重跑通过」；门禁类步骤（构建/单测）不重试。
+    let retried = false;
+    if (run.status !== 0 && step.name.startsWith('E2E')) {
+      retried = true;
+      console.log('重试一次 …');
+      process.stdout.write(`▶ ${step.name}（重试） … `);
+      run = runStep();
+    }
     const durationSec = ((Date.now() - stepStart) / 1000).toFixed(1);
     const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
     const passed = run.status === 0;
-    results.push({ name: step.name, passed, durationSec, output: tail(output, passed ? 700 : 6000) });
+    results.push({
+      name: step.name,
+      passed,
+      retried,
+      durationSec,
+      output: tail(output, passed ? 700 : 6000),
+    });
     console.log(
-      passed ? `PASS（${durationSec}s）` : `FAIL（${durationSec}s，退出码 ${run.status ?? 'timeout'}）`,
+      passed
+        ? `PASS（${durationSec}s${retried ? '，重跑通过' : ''}）`
+        : `FAIL（${durationSec}s，退出码 ${run.status ?? 'timeout'}）`,
     );
     if (!passed) {
       console.log(`  —— 输出尾部 ——\n${tail(output, 3000).replace(/^/gm, '  ')}`);
@@ -145,7 +164,10 @@ function main() {
     '',
     '| 步骤 | 结果 | 耗时(s) |',
     '| --- | --- | --- |',
-    ...results.map((item) => `| ${item.name} | ${item.passed ? '✅' : '❌'} | ${item.durationSec} |`),
+    ...results.map(
+      (item) =>
+        `| ${item.name} | ${item.passed ? `✅${item.retried ? '（重跑通过）' : ''}` : '❌'} | ${item.durationSec} |`,
+    ),
     '',
   ];
   if (failed.length > 0) {

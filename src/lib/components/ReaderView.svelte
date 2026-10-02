@@ -387,6 +387,10 @@
     flex: 1;
     overflow-y: auto;
     background: var(--base);
+    /* 禁用浏览器原生滚动锚定：本组件已自研锚定补偿（见 measureRendered），
+     * 两者叠加会在「程序化远跳 + 窗口重建」时被浏览器二次调整（实测 100MB 文件
+     * 首次跳转被放大数倍并形成反馈循环）；由自带补偿独立负责位置稳定。 */
+    overflow-anchor: none;
   }
 
   .page {

@@ -116,7 +116,7 @@
           aria-label="搜索历史记录"
           bind:value={query}
         />
-        <button class="icon" aria-label="关闭历史面板" onclick={onClose}>
+        <button class="icon" title="关闭历史面板" aria-label="关闭历史面板" onclick={onClose}>
           <Icon name="close" size={14} />
         </button>
       </header>
