@@ -1,6 +1,5 @@
 <script lang="ts">
-// 工具栏：打开 / 历史 / 编码（共享下拉）/ 主题（循环）/ 设置。
-// 历史按钮待功能落地（阶段 7）前保持禁用；设置按钮打开独立设置窗口（阶段 5 起可用）。
+// 工具栏：打开 / 历史（阶段 6 起可用）/ 编码（共享下拉）/ 主题（循环）/ 设置。
   import EncodingMenu from './EncodingMenu.svelte';
   import Icon from './Icon.svelte';
   import type { ThemeChoice } from '../types';
@@ -67,7 +66,7 @@ onSettings?: () => void;
   <button class="icon-btn" title="打开文件（Ctrl+O）" aria-label="打开文件" onclick={() => onOpenFile?.()}>
     <Icon name="open" />
   </button>
-  <button class="icon-btn" title="历史记录" aria-label="历史记录" disabled onclick={() => onHistory?.()}>
+  <button class="icon-btn" title="历史记录（Ctrl+Shift+H）" aria-label="历史记录" onclick={() => onHistory?.()}>
     <Icon name="history" />
   </button>
   <div class="sep"></div>

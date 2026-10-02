@@ -58,6 +58,8 @@
   let programmatic = false;
   let lastPercent = -1;
   let scrollScheduled = false;
+  /** 位置恢复代次：用户主动交互（滚轮/指针/触摸/按键）自增，用于中止进行中的恢复重试 */
+  let scrollEpoch = 0;
 
   /** 当前渲染行（窗口 + 文本；version 驱动刷新）。 */
   const renderedRows = $derived.by(() => {
@@ -267,6 +269,25 @@
     };
   });
 
+  // 用户主动交互（滚轮/拖拽/触摸/按键）→ 中止进行中的位置恢复重试（避免与其竞争）
+  $effect(() => {
+    const el = container;
+    if (!el) return;
+    const bump = (): void => {
+      scrollEpoch += 1;
+    };
+    el.addEventListener('wheel', bump, { passive: true });
+    el.addEventListener('pointerdown', bump);
+    el.addEventListener('touchstart', bump, { passive: true });
+    el.addEventListener('keydown', bump);
+    return () => {
+      el.removeEventListener('wheel', bump);
+      el.removeEventListener('pointerdown', bump);
+      el.removeEventListener('touchstart', bump);
+      el.removeEventListener('keydown', bump);
+    };
+  });
+
   // 排版变更（字体/字号/行高/限宽/边距）：行高模型失效并重排；
   // 滚动位置由 measureRendered 的锚定机制保持（不会跳回顶部）。
   // 关键：version 的自增必须在 untrack 内——`version += 1` 同时读取并写入该 $state，
@@ -280,13 +301,20 @@
   });
 
   /** 应用初始滚动位置（会话恢复/切回长文档）。
-   *  冷启动挂载早于首屏行与占位渲染完成时，容器可能还没有足量可滚动高度，
-   *  直接赋值 scrollTop 会被浏览器钳到 0；因此逐帧重试直到赋值真正生效
-   *  （上限约 2 秒），确保阅读位置不丢。 */
+   *  三个关键点：
+   *  1. 先 refreshWindow() 建立占位高度与首批取行——此前直接赋值 scrollTop，
+   *     在内容比视口矮（切换瞬间占位未重建/冷启动首屏未渲染）时被浏览器钳到 0，
+   *     且触发逐帧重试循环，与用户随后的滚动相互竞争（表现为：滚动位置被反复拉回顶部，
+   *     滚动记忆被写成 0，历史进度丢失）。
+   *  2. 仅对第 >0 行重试（行高模型校准期间位置会漂移）；顶部无需恢复。
+   *  3. 用户主动交互（滚轮/指针/触摸/按键）通过 scrollEpoch 中止重试。 */
   function applyInitialScroll(row: number, rowsTotal: number): void {
+    refreshWindow();
+    if (row <= 0) return;
+    const epoch = scrollEpoch;
     let attempts = 0;
     const attempt = (): void => {
-      if (!container) return;
+      if (!container || scrollEpoch !== epoch) return;
       const contentTop = heights.offsetOf(row, Math.max(1, rowsTotal));
       setContentScrollTop(contentTop);
       if (Math.abs(container.scrollTop - (contentTop + pagePadTop)) <= 2 || attempts >= 120) {

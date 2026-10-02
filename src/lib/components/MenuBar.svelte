@@ -4,6 +4,7 @@
   // 交互约定：点击标题开合；已有菜单打开时悬停切换；点击菜单项执行；Esc / 点击外部关闭。
   import type { ThemeChoice } from '../types';
   import type { EditActionType } from '../edit/actions';
+  import type { HistoryEntry } from '../ipc';
 
   interface Props {
     /** 当前主题选择（用于「查看」菜单的单选标记） */
@@ -40,6 +41,12 @@
     onOpenShortcuts?: () => void;
     /** 打开设置窗口并定位「关于」页签（帮助菜单） */
     onOpenAbout?: () => void;
+    /** 最近打开条目（≤10；空数组时「最近打开」禁用） */
+    recent?: HistoryEntry[];
+    /** 打开最近条目（含进度恢复） */
+    onOpenRecent?: (entry: HistoryEntry) => void;
+    /** 打开历史记录面板 */
+    onOpenHistory?: () => void;
     /** 是否存在活动标签（重新加载可用性） */
     hasTab: boolean;
   }
@@ -61,6 +68,9 @@
     onFontReset,
     onOpenShortcuts,
     onOpenAbout,
+    recent = [],
+    onOpenRecent,
+    onOpenHistory,
     hasTab,
   }: Props = $props();
 
@@ -68,6 +78,8 @@
   type MenuName = 'file' | 'edit' | 'view' | 'help';
   /** 当前展开的菜单（null = 全部收起） */
   let openMenu = $state<MenuName | null>(null);
+  /** 「最近打开」子菜单展开（悬停/点击切换） */
+  let recentOpen = $state(false);
 
   /** 主题菜单项（查看菜单内） */
   const themeItems: { value: ThemeChoice; label: string }[] = [
@@ -121,8 +133,36 @@
       <button class="item" onclick={() => run(onOpenFile)}><span>打开文件…</span><span class="hint">Ctrl+O</span></button>
       <button class="item" disabled={!hasTab} onclick={() => run(onReload)}><span>重新加载</span></button>
       <div class="separator"></div>
-      <button class="item" disabled><span>最近打开</span></button>
-      <button class="item" disabled><span>历史记录</span></button>
+      <div
+        class="submenu-wrap"
+        role="presentation"
+        onmouseenter={() => (recentOpen = true)}
+        onmouseleave={() => (recentOpen = false)}
+      >
+        <button
+          class="item"
+          disabled={recent.length === 0}
+          aria-haspopup="menu"
+          aria-expanded={recentOpen}
+          onclick={() => (recentOpen = !recentOpen)}
+        >
+          <span>最近打开</span>
+          <span class="arrow">▸</span>
+        </button>
+        {#if recentOpen && recent.length > 0}
+          <div class="flyout" role="menu" aria-label="最近打开">
+            {#each recent as entry (entry.path)}
+              <button class="item" title={entry.path} onclick={() => run(() => onOpenRecent?.(entry))}>
+                <span class="recent-name">{entry.name}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+      <button class="item" onclick={() => run(() => onOpenHistory?.())}>
+        <span>历史记录</span>
+        <span class="hint">Ctrl+Shift+H</span>
+      </button>
       <div class="separator"></div>
       <button class="item" onclick={() => run(onQuit)}><span>退出</span></button>
     </div>
@@ -286,5 +326,37 @@
 
   .radio.on {
     border: 4px solid var(--accent);
+  }
+  .submenu-wrap {
+    position: relative;
+  }
+
+  .submenu-wrap .arrow {
+    margin-left: auto;
+    color: var(--muted);
+  }
+
+  .flyout {
+    position: absolute;
+    left: calc(100% + 2px);
+    top: -4px;
+    min-width: 200px;
+    max-width: 320px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.16);
+    z-index: 40;
+  }
+
+  .flyout .recent-name {
+    display: block;
+    max-width: 280px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 </style>

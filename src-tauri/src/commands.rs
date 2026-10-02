@@ -646,6 +646,23 @@ pub fn reorder_tab(
     })
 }
 
+/// 命令：更新历史条目阅读进度（标签关闭/退出前由前端调用；幂等）。
+///
+/// 说明：未找到对应条目（如历史已被清理）时静默成功——进度更新是尽力而为。
+#[tauri::command]
+pub fn update_history_progress(
+    path: String,
+    last_row: u64,
+    last_percent: f64,
+) -> Result<(), IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        history_store::update_progress(&dir, &path, last_row, last_percent)
+            .map_err(|err| IpcError::new(CODE_HISTORY_SAVE, format!("历史进度保存失败：{err}")))?;
+        Ok(())
+    })
+}
+
 /// 设置窗口待打开的页签（`open_settings` 写入；设置窗口启动时经 `take_settings_tab` 取走）。
 /// 用进程级静态而非 AppState：设置窗口生命周期与标签状态无关，且值极小。
 static SETTINGS_PENDING_TAB: Mutex<Option<String>> = Mutex::new(None);

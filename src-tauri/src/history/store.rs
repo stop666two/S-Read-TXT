@@ -50,6 +50,37 @@ pub fn write_all(dir: &Path, entries: &[HistoryEntry]) -> io::Result<()> {
     atomic::write_atomic_str(&history_path(dir), &buffer)
 }
 
+/// 更新指定路径的阅读进度（续读用）。
+///
+/// 语义：读取原始行（不做去重/剪枝，避免进度更新触发隐式压缩），
+/// 找到**最新一条**同路径记录并更新 `last_row` / `last_percent`；有变化才原子重写。
+/// 返回：`Ok(true)` 已更新；`Ok(false)` 未找到或值无变化。
+pub fn update_progress(
+    dir: &Path,
+    path: &str,
+    last_row: u64,
+    last_percent: f64,
+) -> io::Result<bool> {
+    let mut entries = read_all(dir);
+    let mut changed = false;
+    for entry in entries.iter_mut().rev() {
+        if entry.path == path {
+            if entry.last_row != last_row
+                || (entry.last_percent - last_percent).abs() > f64::EPSILON
+            {
+                entry.last_row = last_row;
+                entry.last_percent = last_percent;
+                changed = true;
+            }
+            break;
+        }
+    }
+    if changed {
+        write_all(dir, &entries)?;
+    }
+    Ok(changed)
+}
+
 /// 载入历史（含自愈）：去重 + 修剪 + 时间倒序；必要时压缩重写文件。
 pub fn load(dir: &Path, settings: &HistorySettings) -> Vec<HistoryEntry> {
     let raw = read_all(dir);
@@ -117,14 +148,14 @@ fn dedupe_latest(entries: Vec<HistoryEntry>) -> Vec<HistoryEntry> {
     latest.into_values().collect()
 }
 
-/// 排序键：UNIX 秒；不可解析视为最小值（便于统一丢弃）。
+/// 排序键：UNIX 毫秒（毫秒精度避免「快速连续打开」时次序抖动）；不可解析视为最小值。
 fn sort_key(entry: &HistoryEntry) -> i64 {
-    time_util::unix_seconds(&entry.opened_at).unwrap_or(i64::MIN)
+    time_util::unix_millis(&entry.opened_at).unwrap_or(i64::MIN)
 }
 
 /// 按保留天数修剪（过期或时间不可解析的条目被移除）。
 fn prune_by_days(entries: &mut Vec<HistoryEntry>, retention_days: u32) {
-    let cutoff = time_util::now_unix_seconds() - i64::from(retention_days) * 86_400;
+    let cutoff = time_util::now_unix_millis() - i64::from(retention_days) * 86_400_000;
     entries.retain(|entry| sort_key(entry) >= cutoff);
 }
 
@@ -242,5 +273,29 @@ mod tests {
     fn missing_file_returns_empty() {
         let dir = data_dir();
         assert!(load(dir.path(), &settings(10, 365)).is_empty());
+    }
+
+    /// 进度更新：命中路径更新字段并落盘；未命中/同值不写。
+    #[test]
+    fn update_progress_updates_matching_entry() {
+        let dir = data_dir();
+        append(dir.path(), &entry("D:/a.txt", "2026-01-01T00:00:00Z")).expect("追加失败");
+        append(dir.path(), &entry("D:/b.txt", "2026-01-02T00:00:00Z")).expect("追加失败");
+
+        // 命中：更新 + 落盘
+        assert!(update_progress(dir.path(), "D:/a.txt", 42, 33.5).expect("更新失败"));
+        let loaded = load(dir.path(), &settings(10, 3650));
+        let a = loaded
+            .iter()
+            .find(|e| e.path == "D:/a.txt")
+            .expect("应存在 a");
+        assert_eq!(a.last_row, 42);
+        assert!((a.last_percent - 33.5).abs() < 0.001);
+
+        // 未命中路径：不更新
+        assert!(!update_progress(dir.path(), "D:/missing.txt", 1, 1.0).expect("更新失败"));
+
+        // 同值：无变化（不触发重写）
+        assert!(!update_progress(dir.path(), "D:/a.txt", 42, 33.5).expect("更新失败"));
     }
 }

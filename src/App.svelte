@@ -14,6 +14,7 @@
   import DataDirDialog from './lib/components/DataDirDialog.svelte';
   import DropOverlay from './lib/components/DropOverlay.svelte';
   import EmptyState from './lib/components/EmptyState.svelte';
+  import HistoryPanel from './lib/components/HistoryPanel.svelte';
   import MenuBar from './lib/components/MenuBar.svelte';
   import Onboarding from './lib/components/Onboarding.svelte';
   import ReaderView from './lib/components/ReaderView.svelte';
@@ -31,6 +32,7 @@
   import { scrollMemory } from './lib/reader/scroll-memory';
   import { applyWindowState, saveSessionNow } from './lib/session';
   import { dataDirStore } from './lib/state/data-dir.svelte';
+  import { historyStore } from './lib/state/history.svelte';
   import { tabs } from './lib/state/tabs.svelte';
   import { toasts } from './lib/state/toasts.svelte';
   import { decideShortcut, isEditorContext, modalOpen } from './lib/shortcuts/engine';
@@ -54,6 +56,10 @@
   let readerSettings = $state<ReaderSettings | null>(null);
   /** 数据目录不可写状态（共享 store；非空时展示引导弹窗） */
   const dataDirIssue = $derived(dataDirStore.issue);
+  /** 历史面板开关（工具栏 / 菜单 / 快捷键共用） */
+  let historyOpen = $state(false);
+  /** 最近打开（菜单子项；最多 10 条，来自共享历史 store） */
+  const recentEntries = $derived(historyStore.entries.slice(0, 10));
 
   /** 编辑动作信号（菜单 → 编辑层；seq 递增区分重复动作） */
   let editorAction = $state<EditorAction | null>(null);
@@ -159,6 +165,16 @@
       sessionSaveTimer = null;
       void saveSessionNow();
     }, 2000);
+  }
+
+  /** 历史刷新防抖（打开/关闭文件后刷新「最近打开」子菜单与面板数据源） */
+  let historyRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  function scheduleHistoryRefresh(): void {
+    if (historyRefreshTimer) clearTimeout(historyRefreshTimer);
+    historyRefreshTimer = setTimeout(() => {
+      historyRefreshTimer = null;
+      void historyStore.load();
+    }, 800);
   }
 
   /** 启动初始化：配置载入 + 首启引导判定 */
@@ -304,9 +320,9 @@
       case 'replace':
         if (active?.editing) dispatchEditorAction('replace');
         break;
-      case 'historyPanel':
-        toasts.show('历史记录面板将在后续阶段提供');
-        break;
+    case 'historyPanel':
+      historyOpen = true;
+      break;
     }
   }
 
@@ -358,6 +374,7 @@
       pendingClose = { kind: 'quit' };
       return;
     }
+    historyStore.flushAll(tabs.tabs);
     await saveSessionNow();
     allowClose = true;
     await getCurrentWindow().close();
@@ -578,6 +595,7 @@
     const tab = tabs.tabs.find((item) => item.tabId === tabId);
     if (!tab) return;
     if (!tab.dirty) {
+      historyStore.flushTab(tab);
       await tabs.close(tabId);
       return;
     }
@@ -593,6 +611,7 @@
         skippedDirty += 1;
         continue;
       }
+      historyStore.flushTab(tab);
       await tabs.close(tab.tabId);
     }
     if (skippedDirty > 0) toasts.show(`已保留 ${skippedDirty} 个有未保存修改的标签`, 'warn');
@@ -606,6 +625,7 @@
         skippedDirty += 1;
         continue;
       }
+      historyStore.flushTab(tab);
       await tabs.close(tab.tabId);
     }
     if (skippedDirty > 0) toasts.show(`已保留 ${skippedDirty} 个有未保存修改的标签`, 'warn');
@@ -648,9 +668,12 @@
     }
     pendingClose = null;
     if (pending.kind === 'tab') {
+      const closingTab = tabs.tabs.find((tab) => tab.tabId === pending.tabId);
+      if (closingTab) historyStore.flushTab(closingTab);
       await tabs.close(pending.tabId);
       focusEditorProxy();
     } else {
+      historyStore.flushAll(tabs.tabs);
       await saveSessionNow();
       allowClose = true;
       await getCurrentWindow().close();
@@ -704,11 +727,13 @@
     root.style.setProperty('--reading-pad-x', `${typo.pagePadding}px`);
   });
 
-  // 标签集合/活动标签变化：防抖保存会话（恢复期间由 sessionReady 门控）
+  // 标签集合/活动标签变化：防抖保存会话 + 刷新历史数据源
+  // （「最近打开」子菜单与面板共用；复用打开可只改活动标签，因此监听活动标签而非仅数量）
   $effect(() => {
     void tabs.tabs.map((tab) => tab.tabId).join(',');
     void tabs.activeId;
     scheduleSessionSave();
+    scheduleHistoryRefresh();
   });
 
   onMount(() => {
@@ -754,6 +779,8 @@
     );
     // 数据目录可写性探测（不可写 → 弹引导：选择可写目录 / 仅本次只读运行）
     void dataDirStore.check();
+    // 历史记录预载（面板与「最近打开」子菜单共用数据源）
+    void historyStore.load();
 
     // 窗口关闭拦截（X 按钮/系统关闭）：统一走退出流程——
     // 保存会话 → 脏标签三态确认 → 关闭（避免 X 直关时丢失最后滚动位置）
@@ -767,6 +794,7 @@
           return;
         }
         void (async () => {
+          historyStore.flushAll(tabs.tabs);
           await saveSessionNow();
           allowClose = true;
           await getCurrentWindow().close();
@@ -855,6 +883,7 @@
       unlistenResized?.();
       clearInterval(sessionInterval);
       if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
+      if (historyRefreshTimer) clearTimeout(historyRefreshTimer);
       window.removeEventListener('keydown', onGlobalKeydown, true);
     };
   });
@@ -881,6 +910,9 @@
     onFontReset={resetFontSize}
     onOpenShortcuts={() => void ipc.openSettings('shortcuts')}
     onOpenAbout={() => void ipc.openSettings('about')}
+    recent={recentEntries}
+    onOpenRecent={(entry) => void historyStore.openEntry(entry)}
+    onOpenHistory={() => (historyOpen = true)}
   />
   <ToolBar
     {themeChoice}
@@ -894,6 +926,7 @@
     onToggleEdit={() => void toggleEdit()}
     onSave={openSaveDialog}
     onSettings={() => void ipc.openSettings()}
+    onHistory={() => (historyOpen = true)}
   />
 <TabBar
   tabs={tabs.tabs}
@@ -937,6 +970,7 @@
   onSkip={skipDataDir}
 />
 {/if}
+<HistoryPanel open={historyOpen} onClose={() => (historyOpen = false)} />
   <DropOverlay visible={dragging} />
   <SaveDialog
     open={saveRequest !== null}

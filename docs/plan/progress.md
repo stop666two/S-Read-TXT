@@ -251,3 +251,16 @@
 - **根因**：六处模态遮罩（引导/保存/确认/未保存三态/数据目录/历史面板）均为 `position: fixed; inset: 0` 全屏覆盖，自绘标题栏（无边框窗口的拖拽区与三键）被一并盖住 → 窗口无法拖动、最小化/最大化/关闭不可点。
 - **修复**：遮罩统一从标题栏下方开始（`inset: var(--h-titlebar) 0 0 0`），弹窗期间标题栏始终可用；组件顶部以注释说明该约束。
 - **验证**：`smoke-titlebar` 新增 T7（引导打开时 `elementFromPoint` 命中拖拽区）与 T8（CDP 真实坐标点击最小化成功，JS `.click()` 会绕过命中测试）→ **8/8**；回归 `smoke-buttons` **30/30**（C3 过期灰态断言更新为真实面板开闭）、`smoke-settings` **27/27**、`smoke-abuse` **41/41**。
+
+## 阶段 7：多标签与历史记录（2026-10-02）
+
+### 7a 多标签增强（提交 e0cb6a4）
+- 后端 `app_state.rs`：新增展示顺序 `order: Vec<u64>`（与 BTreeMap 解耦），标签栏顺序与关闭回落同源；`reorder` 方法 + `reorder_tab` 命令（移除后插入语义，越界收敛）。
+- 前端：`TabBar.svelte` 重写（指针拖拽排序含落点指示线、中键关闭、右键菜单、滚轮横向滚动）；新增 `TabContextMenu.svelte`（关闭/关闭其他/关闭全部）；`tabs.svelte.ts` 乐观排序 + 失败回读；App 接脏标签保护（关闭其他/全部时保留脏标签并提示）。
+- E2E `smoke-tabs.mjs` **7/7**（顺序/中键/拖拽/关闭其他/关闭全部/上限）；`verify-all` 纳入。
+
+### 7b 历史记录（本次提交）
+- 后端：`update_history_progress` 命令（按路径回写 lastRow/lastPercent）；时间戳毫秒精度（`now_rfc3339` 毫秒 + `now_unix_millis`）+ `sort_key`/`prune` 毫秒化——修复快速连续打开时排序抖动。
+- 前端：`history.svelte.ts`（共享 store：加载/单删/清空/重开恢复进度/关闭与退出路径回写）、`HistoryPanel.svelte`（虚拟列表/搜索/删除/清空二次确认/进度与大小展示）、菜单「最近打开」子菜单（最近 10 条）、工具栏启用、App 各关闭路径（X/退出/重载/关闭其他/全部）即时 flush。
+- **修复真实缺陷（滚动恢复竞争）**：`applyInitialScroll` 原在内容高度未建立时逐帧重试把 `scrollTop` 拉回顶部（约 2 秒），与用户随后的滚动竞争并把滚动记忆写成 0 → 历史进度丢失/会话位置被覆盖；修复为「先 `refreshWindow()` 建立占位与首批取行 → 仅对第 >0 行重试 → 用户滚轮/指针/触摸/按键立即中止重试（`scrollEpoch`）」。
+- E2E `smoke-history.mjs` **11/11**（面板/搜索/进度回写/重开恢复/删除/清空/最近打开/快捷键）；回归 `smoke-session` **11/11**、`smoke-edit` **12/12**、`smoke-abuse` **41/41**；`verify-all` 纳入。

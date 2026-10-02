@@ -324,6 +324,9 @@ export const ipc = {
   removeHistory: (filePath: string) => invoke<HistoryEntry[]>('remove_history', { filePath }),
   /** 清空历史记录。 */
   clearHistory: () => invoke<void>('clear_history'),
+  /** 更新历史条目阅读进度（关闭标签/退出前调用；尽力而为，幂等）。 */
+  updateHistoryProgress: (filePath: string, lastRow: number, lastPercent: number) =>
+    invoke<void>('update_history_progress', { path: filePath, lastRow, lastPercent }),
   /** 读取会话（窗口/标签/滚动；无会话返回默认值）。 */
   getSession: () => invoke<SessionState>('get_session'),
   /** 保存会话（返回归一化后的结果）。 */

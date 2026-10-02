@@ -91,6 +91,7 @@ fn main() {
             commands::get_history,
             commands::remove_history,
             commands::clear_history,
+            commands::update_history_progress,
             commands::get_session,
             commands::save_session,
             commands::open_file,
