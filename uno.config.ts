@@ -11,21 +11,25 @@ export default defineConfig({
     presetWind3(),
   ],
   theme: {
-    // 语义颜色令牌：类名 → CSS 变量
+    // 语义颜色令牌：类名 → CSS 变量（变量定义见 src/styles/base.css）
     // 用法示例：bg-base / text-ink / border-line / bg-accent / text-muted
     colors: {
-      // 页面背景（最深的一层）
-      base: 'var(--c-bg)',
-      // 表面/面板背景（工具栏、标签、弹窗等）
-      surface: 'var(--c-surface)',
-      // 正文文字颜色（最高对比度）
-      ink: 'var(--c-text)',
+      // 阅读区/页面主背景（最深的一层）
+      base: 'var(--base)',
+      // 面板/下拉/弹窗背景
+      surface: 'var(--surface)',
+      // 菜单栏/工具栏/标签栏/状态栏背景
+      chrome: 'var(--chrome)',
+      // 主文字颜色（最高对比度）
+      ink: 'var(--ink)',
       // 次要文字（时间、辅助说明）
-      muted: 'var(--c-muted)',
+      muted: 'var(--muted)',
       // 边框与分隔线
-      line: 'var(--c-border)',
+      line: 'var(--line)',
+      // 悬停底色
+      hover: 'var(--hover)',
       // 强调色（选中、焦点、链接；蓝系，语义“信息/交互”）
-      accent: 'var(--c-accent)',
+      accent: 'var(--accent)',
     },
   },
 });

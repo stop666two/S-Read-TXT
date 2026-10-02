@@ -1,45 +1,45 @@
 <!--
-  App.svelte — 根组件（阶段 0 冒烟版本）
-  职责：验证「WebView → IPC → Rust」链路与主题令牌渲染是否正常。
-  说明：阶段 2 将整体替换为完整三段式布局（菜单栏/工具栏/标签栏/阅读区/状态栏）。
+  App.svelte — 根组件：应用外壳（菜单栏 / 工具栏 / 标签栏 / 阅读区 / 状态栏）。
+  阶段 2b：完成布局骨架与主题系统；阅读数据与真实交互在 2c 接线。
 -->
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core';
+  import MenuBar from './lib/components/MenuBar.svelte';
+  import ToolBar from './lib/components/ToolBar.svelte';
+  import TabBar from './lib/components/TabBar.svelte';
+  import ReaderView from './lib/components/ReaderView.svelte';
+  import StatusBar from './lib/components/StatusBar.svelte';
+  import type { ResolvedTheme, ThemeChoice } from './lib/types';
 
-  /** 后端 get_app_info 命令的返回体（与 Rust 侧 AppInfo 字段一一对应，camelCase） */
-  interface AppInfo {
-    /** 应用版本号，如 0.0.1-beta */
-    version: string;
-    /** 当前数据目录绝对路径（便携模式：程序目录/data） */
-    dataDir: string;
-  }
+  /** 主题选择（默认跟随系统；阶段 8 起由设置加载/保存） */
+  let themeChoice = $state<ThemeChoice>('system');
 
-  /** 后端信息：异步获取后驱动界面更新（Runes 响应式） */
-  let info = $state<AppInfo | null>(null);
-  /** IPC 错误信息：失败时显式展示，不吞异常（项目规则：优雅错误处理） */
-  let ipcError = $state<string | null>(null);
-
-  // 挂载后调用一次冒烟命令；错误转为可读文案展示
+  // 解析主题：「跟随系统」依据 prefers-color-scheme，其余直接采用；
+  // 结果写入 <html data-theme>，全部令牌随之切换。
   $effect(() => {
-    invoke<AppInfo>('get_app_info')
-      .then((value) => {
-        info = value;
-      })
-      .catch((error: unknown) => {
-        ipcError = error instanceof Error ? error.message : String(error);
-      });
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = (): void => {
+      const resolved: ResolvedTheme =
+        themeChoice === 'system' ? (media.matches ? 'dark' : 'light') : themeChoice;
+      document.documentElement.dataset.theme = resolved;
+    };
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
   });
 </script>
 
-<main class="h-screen flex items-center justify-center bg-base text-ink">
-  <div class="text-center select-none">
-    <h1 class="text-2xl font-medium tracking-wide">S-Read-TXT</h1>
-    {#if ipcError}
-      <p class="mt-3 text-sm text-muted">IPC 链路异常：{ipcError}</p>
-    {:else if info}
-      <p class="mt-3 text-sm text-muted">v{info.version} · 数据目录：{info.dataDir}</p>
-    {:else}
-      <p class="mt-3 text-sm text-muted">正在初始化…</p>
-    {/if}
-  </div>
-</main>
+<div class="shell">
+  <MenuBar {themeChoice} onThemeChange={(theme) => (themeChoice = theme)} />
+  <ToolBar {themeChoice} onThemeChange={(theme) => (themeChoice = theme)} />
+  <TabBar />
+  <ReaderView />
+  <StatusBar />
+</div>
+
+<style>
+  .shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+</style>

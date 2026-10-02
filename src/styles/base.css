@@ -2,9 +2,9 @@
  * 全局基础样式与主题令牌（src/styles/base.css）
  *
  * 主题策略：
- * - 由前端主题模块在 <html> 上写 data-theme="light|dark|eye"；
+ * - 由前端在 <html> 上写 data-theme="light|dark|eye"；
  *   「跟随系统」在解析为具体值后写入，因此本文件无需媒体查询。
- * - 所有颜色经 CSS 变量中转，UnoCSS 颜色令牌（uno.config.ts）映射到这些变量，
+ * - 所有颜色经 CSS 变量中转，UnoCSS 颜色令牌（uno.config.ts）映射到同一批变量，
  *   主题切换不触发原子类重新生成。
  *
  * 对比度：各主题正文/背景组合满足 WCAG 2.2 AA（≥4.5:1）。
@@ -13,36 +13,60 @@
 /* 浅色主题（默认）：暖白基调 */
 :root {
   color-scheme: light;
-  --c-bg: #faf9f7; /* 页面背景 */
-  --c-surface: #ffffff; /* 表面/面板背景 */
-  --c-text: #2b2b2b; /* 正文文字 */
-  --c-muted: #6b6b6b; /* 次要文字 */
-  --c-border: #e5e1da; /* 边框/分隔线 */
-  --c-accent: #3b6ea5; /* 强调色（交互/信息） */
-  /* 阅读区字体：默认微软雅黑（可在设置中改） */
-  --font-reading: 'Microsoft YaHei', '微软雅黑', 'PingFang SC', system-ui, sans-serif;
+
+  /* —— 颜色令牌 —— */
+  --base: #faf9f7; /* 阅读区/页面主背景 */
+  --surface: #ffffff; /* 面板/下拉/弹窗背景 */
+  --chrome: #f3f1ec; /* 菜单栏/工具栏/标签栏/状态栏背景 */
+  --ink: #2b2b2b; /* 主文字 */
+  --muted: #6b6b6b; /* 次要文字 */
+  --line: #e5e1da; /* 边框/分隔线 */
+  --hover: #eae7e0; /* 悬停底色 */
+  --accent: #3b6ea5; /* 强调色（信息/交互；蓝系） */
+  --tab-active: #faf9f7; /* 活动标签底色（与阅读区一致，形成连通感） */
+
+  /* —— 界面尺寸 —— */
+  --h-menu: 30px; /* 菜单栏高度 */
+  --h-toolbar: 36px; /* 工具栏高度 */
+  --h-tabbar: 34px; /* 标签栏高度 */
+  --h-status: 24px; /* 状态栏高度 */
+
+  /* —— 排版 —— */
+  --font-ui: system-ui, 'Microsoft YaHei', '微软雅黑', sans-serif; /* 界面字体 */
+  --font-reading: 'Microsoft YaHei', '微软雅黑', 'PingFang SC', system-ui, sans-serif; /* 阅读字体（设置可改） */
+  --reading-size: 16px; /* 正文字号（设置可改） */
+  --reading-line-height: 1.8; /* 行高（设置可改） */
+  --reading-width: 720px; /* 阅读列宽（设置可改） */
+  --reading-pad-y: 48px; /* 阅读区上下留白 */
+  --reading-pad-x: 48px; /* 阅读区左右留白（设置可改） */
 }
 
 /* 深色主题：Notepad++ 风深灰（非纯黑，降低对比疲劳） */
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --c-bg: #1e1e1e;
-  --c-surface: #252526;
-  --c-text: #d4d4d4;
-  --c-muted: #9a9a9a;
-  --c-border: #3a3a3a;
-  --c-accent: #6fa3d8;
+  --base: #1e1e1e;
+  --surface: #252526;
+  --chrome: #2a2a2b;
+  --ink: #d4d4d4;
+  --muted: #9a9a9a;
+  --line: #3a3a3a;
+  --hover: #333334;
+  --accent: #6fa3d8;
+  --tab-active: #1e1e1e;
 }
 
 /* 护眼主题：米黄纸感 */
 :root[data-theme='eye'] {
   color-scheme: light;
-  --c-bg: #f5efe0;
-  --c-surface: #faf5e8;
-  --c-text: #33302a;
-  --c-muted: #6e675a;
-  --c-border: #e3dcc9;
-  --c-accent: #3b6ea5;
+  --base: #f5efe0;
+  --surface: #faf5e8;
+  --chrome: #efe8d5;
+  --ink: #33302a;
+  --muted: #6e675a;
+  --line: #e3dcc9;
+  --hover: #e9e1cc;
+  --accent: #3b6ea5;
+  --tab-active: #f5efe0;
 }
 
 /* 全屏布局基线：应用为单窗口桌面 UI，禁止页面级滚动 */
@@ -54,10 +78,9 @@ body,
 }
 
 body {
-  background: var(--c-bg);
-  color: var(--c-text);
-  font-family: system-ui, 'Microsoft YaHei', sans-serif;
-  /* 桌面应用：禁用意外文本选择仅在 UI 部件上按需启用，正文默认可选 */
+  background: var(--base);
+  color: var(--ink);
+  font-family: var(--font-ui);
   overflow: hidden;
 }
 
@@ -70,9 +93,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--c-border);
+  background: var(--line);
   border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--c-muted);
+  background: var(--muted);
 }
