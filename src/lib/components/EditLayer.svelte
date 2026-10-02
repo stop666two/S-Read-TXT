@@ -7,6 +7,8 @@
 <script lang="ts">
   import { tick } from 'svelte';
 
+  import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
+
   import { describeIpcError, ipc, toIpcError, type EditApplied, type FindHit } from '../ipc';
   import {
     clampPos,
@@ -400,15 +402,15 @@
     return out;
   }
 
-  /** 复制/剪切选区（写系统剪贴板）。 */
+  /** 复制/剪切选区（写系统剪贴板；经 Tauri 剪贴板插件，无浏览器权限弹窗）。 */
   async function doCopy(cut: boolean): Promise<void> {
     if (isCollapsed(selection)) return;
     const text = await gatherSelectedText();
     if (text === null) return;
     try {
-      await navigator.clipboard.writeText(text);
+      await writeText(text);
     } catch {
-      toasts.error('复制失败：系统剪贴板不可用');
+      toasts.error('复制失败：无法写入系统剪贴板');
       return;
     }
     if (cut) {
@@ -531,10 +533,10 @@
     setSelection(collapsed(clamped));
   }
 
-  /** 菜单粘贴：读取系统剪贴板（浏览器 API；失败时提示改用 Ctrl+V）。 */
+  /** 菜单粘贴：读取系统剪贴板（Tauri 剪贴板插件，无浏览器权限弹窗）。 */
   async function doPasteFromMenu(): Promise<void> {
     try {
-      const text = await navigator.clipboard.readText();
+      const text = await readText();
       await doInsert(text);
     } catch {
       toasts.error('无法读取系统剪贴板，请使用 Ctrl+V 粘贴');

@@ -47,6 +47,8 @@ fn main() {
     tauri::Builder::default()
         // 原生对话框能力（文件选择/目录选择/消息框）
         .plugin(tauri_plugin_dialog::init())
+        // 剪贴板能力（复制/剪切/粘贴走 Rust 侧，避免 WebView 的剪贴板权限弹窗）
+        .plugin(tauri_plugin_clipboard_manager::init())
         // 窗口级图标：显式设置（任务栏小图标 + Alt-Tab 大图标均可见）。
         // 优先使用 128px 图标（缩放到各尺寸更清晰），解码失败回退构建期内置图标。
         .setup(|app| {

@@ -169,3 +169,15 @@
 - E2E `scripts/smoke-titlebar.mjs` **7/7**（T1 标题联动 / T2 结构 / T3 按钮最大化 / T4 还原 / T5 双击切换 / T6 双主题截图 / T7 最小化经 is_minimized 断言——WebView2 最小化不改变 visibilityState）；smoke-edit 回归 12/12；svelte-check 0/0。
 - 截图：`docs/screenshots/phase5-titlebar-{light,dark}.png`。
 - 待人工核验：无边框窗口的边缘/角落拖拽缩放与窗口阴影（Windows 下由框架处理）；如发现缺失将补边缘拖拽手柄。
+
+## 附加：全按钮审计与修复（2026-10-02，维护者指示）
+
+- 维护者要求：所有显示出来的按钮都必须测试；未实现的功能保持灰态、不测点击。
+- 交付 `scripts/smoke-buttons.mjs` **27/27**：空状态/工具栏全按钮/菜单栏全部项/标签栏/查找条关闭/状态栏/退出流；原生对话框（打开/另存为）经 user32 枚举进程内 `#32770` 窗口 + `WM_CLOSE` 自动开合并关闭；PS5.1 参数改经环境变量传递（`-Command` 会拼接尾随参数，不可用）。
+- **审计发现并修复的真实缺陷**：
+  1. **关闭按钮失效**：标题栏 × / 菜单「退出→不保存」/三态「不保存」都无法关闭应用——`onCloseRequested` 未被阻止时 JS 侧调用内部 `destroy`，而最小权限集缺 `core:window:allow-destroy`；已补权限（独立探针 ALIVE→GONE 实证）。
+  2. **剪贴板权限弹窗**：菜单「粘贴」弹出「http://tauri.localhost 想要查看剪贴板」且读取失败；复制/剪切/粘贴全部改走 `tauri-plugin-clipboard-manager`（Rust 侧，无弹窗；版本两边统一 =2.4.1）。
+  3. 工具栏「历史记录」「设置」可点但无反应 → 改灰态（待阶段 7/8）。
+  4. 状态栏「编码（点击切换）」是假标签 → 改为真实上弹菜单（新增共享组件 `EncodingMenu.svelte`，工具栏/状态栏同款）。
+  5. 查看菜单「全屏」灰 → 启用（含 F11）。
+- 回归：smoke-edit 12/12、smoke-titlebar 7/7、smoke-abuse 41/41；截图 `docs/screenshots/phase5-buttons-{menu,statusbar}.png`。

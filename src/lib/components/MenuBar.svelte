@@ -28,6 +28,8 @@
     onReload?: () => void;
     /** 编辑动作分发（撤销/重做/剪贴板/全选/查找/替换） */
     onEditorAction?: (type: EditActionType) => void;
+    /** 全屏切换回调（查看菜单） */
+    onToggleFullscreen?: () => void;
     /** 是否存在活动标签（重新加载可用性） */
     hasTab: boolean;
   }
@@ -43,6 +45,7 @@
     onSaveAs,
     onReload,
     onEditorAction,
+    onToggleFullscreen,
     hasTab,
   }: Props = $props();
 
@@ -170,7 +173,7 @@
       <button class="item" disabled><span>字号增大</span><span class="hint">Ctrl+=</span></button>
       <button class="item" disabled><span>字号减小</span><span class="hint">Ctrl+-</span></button>
       <div class="separator"></div>
-      <button class="item" disabled><span>全屏</span><span class="hint">F11</span></button>
+      <button class="item" onclick={() => run(onToggleFullscreen)}><span>全屏</span><span class="hint">F11</span></button>
     </div>
   {:else if openMenu === 'help'}
     <div class="dropdown" role="menu" style="left: 130px">

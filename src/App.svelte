@@ -66,6 +66,16 @@
     themeChoice = theme;
   }
 
+  /** 切换全屏（查看菜单 / F11；阶段 5 快捷键引擎接入后统一管理） */
+  async function toggleFullscreen(): Promise<void> {
+    try {
+      const win = getCurrentWindow();
+      await win.setFullscreen(!(await win.isFullscreen()));
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('[app] 全屏切换失败', error);
+    }
+  }
+
   /** 打开文件（对话框；菜单/工具栏/空状态共用） */
   function openFile(): void {
     void tabs.openViaDialog();
@@ -460,6 +470,16 @@
   });
 </script>
 
+<svelte:window
+  onkeydown={(event) => {
+    // F11 全屏（与查看菜单同款；阶段 5 快捷键引擎接入后统一管理）
+    if (event.key === 'F11') {
+      event.preventDefault();
+      void toggleFullscreen();
+    }
+  }}
+/>
+
 <div class="shell">
   <TitleBar title={windowTitle} />
   <MenuBar
@@ -475,6 +495,7 @@
     onSaveAs={() => void saveAsFlow()}
     onReload={reloadFlow}
     onEditorAction={dispatchEditorAction}
+    onToggleFullscreen={() => void toggleFullscreen()}
   />
   <ToolBar
     {themeChoice}
@@ -509,6 +530,9 @@
     percent={readPercent}
     sizeLabel={active ? formatBytes(active.byteLen) : undefined}
     encodingLabel={active?.encoding}
+    {encodings}
+    encodingOverride={active?.encodingOverride ?? null}
+    onEncodingChange={(label) => void changeEncoding(label)}
     {version}
   />
   <Toast />
