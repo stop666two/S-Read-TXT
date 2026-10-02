@@ -90,3 +90,77 @@ pub fn default_bindings() -> BTreeMap<String, String> {
 pub fn is_known_action(action: &str) -> bool {
     DEFAULT_BINDINGS.iter().any(|(known, _)| *known == action)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::{default_bindings, is_known_action, DEFAULT_BINDINGS};
+
+    /// 默认表不变量：数量固定、动作唯一、组合键唯一且格式规范
+    /// （快捷键引擎与录制校验依赖这些前提）。
+    #[test]
+    fn default_bindings_are_unique_and_wellformed() {
+        assert_eq!(
+            DEFAULT_BINDINGS.len(),
+            15,
+            "默认动作数量变化须同步引擎与文档"
+        );
+        let mut actions: BTreeSet<&str> = BTreeSet::new();
+        let mut combos: BTreeSet<String> = BTreeSet::new();
+        for (action, combo) in DEFAULT_BINDINGS {
+            assert!(actions.insert(action), "动作 id 重复：{action}");
+            assert!(is_known_action(action));
+            assert!(!combo.trim().is_empty(), "空绑定：{action}");
+            assert!(
+                combos.insert(combo.to_lowercase()),
+                "组合键重复（大小写不敏感）：{combo}"
+            );
+            let parts: Vec<&str> = combo.split('+').collect();
+            assert!(
+                parts.iter().all(|part| !part.is_empty()),
+                "格式错误：{combo}"
+            );
+            let base = parts.last().expect("至少一个按键");
+            assert!(is_canonical_base_key(base), "主键名不合法：{combo}");
+            for modifier in &parts[..parts.len() - 1] {
+                assert!(
+                    matches!(*modifier, "Ctrl" | "Shift" | "Alt"),
+                    "未知修饰键 {modifier}（{combo}）"
+                );
+            }
+        }
+        assert_eq!(default_bindings().len(), DEFAULT_BINDINGS.len());
+    }
+
+    /// 主键名是否与前端 `keys.ts` 的规范名一致（单字符大写字母/数字、命名键、F1~F24）。
+    fn is_canonical_base_key(base: &str) -> bool {
+        const NAMED: [&str; 14] = [
+            "Tab",
+            "PgUp",
+            "PgDn",
+            "Home",
+            "End",
+            "Insert",
+            "Delete",
+            "Backspace",
+            "Enter",
+            "Space",
+            "Esc",
+            "Up",
+            "Down",
+            "Left",
+        ];
+        if NAMED.contains(&base) {
+            return true;
+        }
+        if base.len() == 1 {
+            return base
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
+        }
+        base.strip_prefix('F')
+            .and_then(|num| num.parse::<u8>().ok())
+            .is_some_and(|num| (1..=24).contains(&num))
+    }
+}

@@ -28,7 +28,7 @@
   import { describeIpcError, ipc, toIpcError, type EditApplied } from './lib/ipc';
   import { tabs } from './lib/state/tabs.svelte';
   import { toasts } from './lib/state/toasts.svelte';
-  import { actionForCombo, EDITOR_OWNED, fixedTabIndex, isEditorContext, modalOpen } from './lib/shortcuts/engine';
+  import { decideShortcut, isEditorContext, modalOpen } from './lib/shortcuts/engine';
   import { comboFromEvent } from './lib/shortcuts/keys';
   import type { ShortcutAction, ShortcutMap } from './lib/shortcuts/types';
   import type { ResolvedTheme, ThemeChoice } from './lib/types';
@@ -577,26 +577,21 @@
 
     // 全局快捷键（捕获阶段：先于编辑层与浏览器默认行为）
     const onGlobalKeydown = (event: KeyboardEvent): void => {
-      if (event.defaultPrevented || event.isComposing) return;
-      const combo = comboFromEvent(event);
-      if (!combo) return;
-      const action = actionForCombo(shortcuts, combo);
-      if (!action) {
-        // 固定键：Ctrl+1~9 跳转标签（不参与自定义）
-        const tabIndex = fixedTabIndex(combo);
-        if (tabIndex !== null && !modalOpen()) {
-          event.preventDefault();
-          const target = tabs.tabs[tabIndex];
-          if (target) tabs.select(target.tabId);
-        }
-        return;
-      }
-      // 弹窗打开时引擎挂起；编辑上下文让位给编辑专属按键（PgUp/PgDn/Home/End）
-      if (modalOpen()) return;
-      if (isEditorContext(event.target) && EDITOR_OWNED.has(action)) return;
+      const decision = decideShortcut(comboFromEvent(event), shortcuts, {
+        editorContext: isEditorContext(event.target),
+        modalOpen: modalOpen(),
+        defaultPrevented: event.defaultPrevented,
+        composing: event.isComposing,
+      });
+      if (!decision) return;
       event.preventDefault();
       event.stopPropagation();
-      runShortcut(action);
+      if (decision.kind === 'fixedTab') {
+        const target = tabs.tabs[decision.index];
+        if (target) tabs.select(target.tabId);
+        return;
+      }
+      runShortcut(decision.action);
     };
     window.addEventListener('keydown', onGlobalKeydown, true);
 
