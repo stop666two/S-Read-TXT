@@ -15,7 +15,9 @@
 //! - `textfile`：读取引擎（mmap/编码/稀疏索引/文本窗口）
 //! - `time_util`：RFC 3339 时间工具
 
+pub mod app_state;
 pub mod history;
+pub mod ipc_error;
 pub mod logging;
 pub mod session;
 pub mod settings;

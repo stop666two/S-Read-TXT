@@ -8,8 +8,8 @@
 use crate::textfile::encoding::decode_range;
 use crate::textfile::line_index::RowIndex;
 
-/// 单行文本（显示行号 + 解码后的 UTF-8 内容）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 单行文本（显示行号 + 解码后的 UTF-8 内容；可序列化供 IPC 载荷嵌套）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct RowText {
     /// 显示行号（从 0 开始）
     pub row: u64,
