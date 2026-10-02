@@ -64,6 +64,7 @@ const steps = [
   { name: 'E2E 历史记录（smoke-history）', cmd: 'node scripts/smoke-history.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 会话恢复（smoke-session）', cmd: 'node scripts/smoke-session.mjs', cwd: root, env: process.env, timeout: 900_000 },
   { name: 'E2E 数据目录引导（smoke-datadir）', cmd: 'node scripts/smoke-datadir.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 卸载清理（smoke-uninstall）', cmd: 'node scripts/smoke-uninstall.mjs', cwd: root, env: process.env, timeout: 900_000 },
   { name: 'E2E 对抗（smoke-abuse）', cmd: 'node scripts/smoke-abuse.mjs', cwd: root, env: process.env, timeout: 900_000 },
   ...(skipLongline
     ? []

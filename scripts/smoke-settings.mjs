@@ -150,21 +150,34 @@ async function main() {
       evalSet(
         `(() => { const row = [...document.querySelectorAll('.row')].find((r) => r.querySelector('.label')?.textContent?.trim() === '${label}'); return row?.querySelector('.combo')?.textContent?.trim() ?? ''; })()`,
       );
+    /** 进入录制态（点击组合键并确认已进入录制；首击偶发丢失时重试一次） */
+    const startRecording = async (label) => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await clickCombo(label);
+        const active = await waitForValue(
+          async () => ((await comboText(label)).includes('按下新组合') ? true : null),
+          2000,
+        );
+        if (active) return true;
+      }
+      return false;
+    };
     /** 读最新 Toast 文本（无则空串） */
     const toastText = () =>
       evalSet(`document.querySelector('.toast:last-of-type .text')?.textContent?.trim() ?? ''`);
 
     // S2 录制 closeTab → Ctrl+Q
     currentStep = 'S2 录制 Ctrl+Q';
-    await clickCombo('关闭当前标签');
+    await startRecording('关闭当前标签');
     await pressOn(settingsClient, 'q', 'KeyQ', 81, 2);
     const savedText = await waitForValue(async () => {
       const text = await comboText('关闭当前标签');
       return text === 'Ctrl+Q' ? text : null;
     }, 6000);
-    check('S2a 录制后组合键更新为 Ctrl+Q', savedText === 'Ctrl+Q');
+    check('S2a 录制后组合键更新为 Ctrl+Q', savedText === 'Ctrl+Q', `text=${savedText ?? ''}`);
     await waitForValue(async () => ((await toastText()) === '快捷键已保存' ? true : null), 6000);
-    check('S2b 保存提示出现', (await toastText()) === '快捷键已保存');
+    const saveToast = await toastText();
+    check('S2b 保存提示出现', saveToast === '快捷键已保存', `toast=${saveToast}`);
     const overridesAfterRecord = readOverrides();
     check(
       'S2c 覆盖表已落盘（仅含 closeTab）',
@@ -174,7 +187,7 @@ async function main() {
 
     // S3 冲突检测：打开文件 录制 Ctrl+Q（已占用）
     currentStep = 'S3 冲突检测';
-    await clickCombo('打开文件');
+    await startRecording('打开文件');
     await pressOn(settingsClient, 'q', 'KeyQ', 81, 2);
     await delay(400);
     check('S3a 冲突提示出现', (await toastText()) === '该组合已被其他动作使用', await toastText());
@@ -206,7 +219,7 @@ async function main() {
 
     // S7 自定义并全部恢复默认
     currentStep = 'S7 全部恢复默认';
-    await clickCombo('关闭当前标签');
+    await startRecording('关闭当前标签');
     await pressOn(settingsClient, 'q', 'KeyQ', 81, 2);
     await waitForValue(async () => ((await comboText('关闭当前标签')) === 'Ctrl+Q' ? true : null), 6000);
     await evalSet(`document.querySelector('.reset-all')?.click() ?? true`);
@@ -219,7 +232,7 @@ async function main() {
 
     // S8 自定义在主窗口生效：设置 Ctrl+Q 关闭 → 关设置窗 → 主窗口 Ctrl+Q 关闭标签、Ctrl+W 无效
     currentStep = 'S8 自定义在主窗口生效';
-    await clickCombo('关闭当前标签');
+    await startRecording('关闭当前标签');
     await pressOn(settingsClient, 'q', 'KeyQ', 81, 2);
     await waitForValue(async () => ((await comboText('关闭当前标签')) === 'Ctrl+Q' ? true : null), 6000);
     await evalSet(`document.querySelector('.title-bar button[aria-label="关闭"]')?.click() ?? true`);
@@ -265,7 +278,9 @@ async function main() {
     const reopenSettings = async () => {
       await evalMain(`document.querySelector('button[title="设置"]')?.click() ?? true`);
       settingsClient?.close?.();
-      settingsClient = await createClient(await findTarget(port, 'settings.html'));
+    settingsClient = await createClient(await findTarget(port, 'settings.html'));
+    // 激活目标：窗口刚打开时首个按键注入偶发被吞（机器负载下更明显）；bringToFront 稳定输入路由
+    await settingsClient.send('Page.bringToFront');
       await clickTab('快捷键');
       return waitRows();
     };
@@ -277,7 +292,7 @@ async function main() {
     // S10 裸字母被拒绝（录制校验）
     currentStep = 'S10 裸字母键校验';
     await reopenSettings();
-    await clickCombo('打开文件');
+    await startRecording('打开文件');
     await pressOn(settingsClient, 'a', 'KeyA', 65, 0);
     await delay(400);
     check('S10a 裸字母被拒绝并提示', (await toastText()).includes('干扰'), await toastText());
@@ -306,7 +321,7 @@ async function main() {
     // S12 持久化跨重启：自定义绑定在应用重启后仍生效
     currentStep = 'S12 跨重启持久化';
     await reopenSettings();
-    await clickCombo('关闭当前标签');
+    await startRecording('关闭当前标签');
     await pressOn(settingsClient, 'q', 'KeyQ', 81, 2);
     await waitForValue(async () => ((await comboText('关闭当前标签')) === 'Ctrl+Q' ? true : null), 6000);
     await closeSettings();
@@ -364,7 +379,7 @@ async function main() {
     const setFontSize = async (size) => {
       await evalSet(
         `(() => {
-          const range = document.querySelector('.rows input[type="range"]');
+          const range = document.querySelector('input[data-setting="fontSize"]');
           if (!range) return false;
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
           setter.call(range, '${size}');
