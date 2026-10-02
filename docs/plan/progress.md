@@ -210,3 +210,18 @@
 - **E2E 扩展**：`smoke-settings` 30 项（录制/冲突/保留键/恢复默认/主窗生效/**跨重启持久化**/页签占位）、`smoke-shortcuts` 19 项（PgUp/历史提示/无标签安全/Ctrl+S 保存弹窗/Ctrl+Shift+S 另存为/三态弹窗与模态挂起）、`smoke-buttons` C8（开设置窗口→关闭）
 - **真实缺陷（测试发现）**：替换/全部替换后焦点停留在查找条 → `Ctrl+Z` 失效；修复 = 动作成功后 `focusEditorProxy()` 归还焦点
 - 测试总量（截至 5c）：cargo **186 lib + 15 对抗 + 5 集成**；vitest **77**；E2E 套件 11 个（edit/find/ime/i18n/titlebar/buttons/settings/shortcuts/abuse/longline/…）；`node scripts/verify-all.mjs` 一键复现全部质量门禁
+
+## 阶段 6：设置全部落地 + 会话恢复 + 数据目录兜底（进行中；2026-10-02）
+
+### 6a/6b 设置全部落地（提交 5814785）
+- 主窗口设置状态：`appSettings`/`readerSettings` 载入与持久化（`reloadSettings`/`persistReader`/`srt://settings-changed` 广播热刷新）；排版实时预览（CSS 变量字体/字号/行高/限宽/边距 + `layoutKey` 触发行高模型失效重排）；查看菜单字号增大/减小/重置字号。
+- 设置窗口五页签全部落地：常规（文件大小上限/标签上限/日志级别/保存备份开关）/ 阅读排版（主题/字体/字号/行高/限宽/边距，改动即存）/ 快捷键（沿用 5b）/ 历史（保留条数与天数/清空二次确认）/ 关于（版本 + 仓库占位）；`open_settings(tab)` 支持指定页签（`take_settings_tab` 握手）。
+- 证据：ACTIVE_TAB=阅读排版 / READER_JSON_HAS_22=true / MAIN_CSS_SIZE=22px / GENERAL_MAXFILE=100；smoke-settings 30/30 回归。
+
+### 6c 会话与窗口恢复 + 首启引导（本切片）
+- 新增 `src/lib/session.ts`：采集（窗口几何/最大化、标签路径/编码覆盖/滚动行/编辑态、活动下标；异常回退默认 1100×760）、静默保存、启动恢复（先 seed 滚动记忆 → applyView → 激活标签；缺失文件跳过 + Toast）。
+- 触发时机：标签集合/活动标签变化 2s 防抖；窗口移动/缩放事件监听 + 30s 周期兜底；退出统一先保存再关闭（X / 菜单退出 / 三态不保存同一路径，`onCloseRequested` 统一拦截）。
+- 首启引导 `Onboarding.svelte`（打开文件/多标签/历史/快捷键四要点 + 「不再显示」勾选，持久化）。
+- **本切片修复的两个真实缺陷**：①滚动记忆只在切换标签时写入 → 滚动后直接退出恢复不到位置；改为滚动 rAF 内实时记录。②冷启动恢复早于首屏渲染时容器尚无足量可滚动高度，`scrollTop` 被钳到 0；新增 `applyInitialScroll` 逐帧重试至赋值生效（约 2s 上限）。
+- E2E `scripts/smoke-session.mjs` **11/11**：建现场（两标签 / b 滚动 1500 / a 编码覆盖 GB18030 / 窗口移动 100,100,900×600）→ X 关闭 → 重启核对（标签/活动/编码覆盖/几何 ±3/±45/滚动 1498）→ 删除文件后缺失跳过。
+- 已知怪癖（记录）：无边框窗口经 `GetWindowRect` 读取含不可见缩放边框（宽约 16px、高约 31px），E2E 几何断言容差：位置 ±3、尺寸 ±45。

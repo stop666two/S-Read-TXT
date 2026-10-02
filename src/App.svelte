@@ -14,6 +14,7 @@
   import DropOverlay from './lib/components/DropOverlay.svelte';
   import EmptyState from './lib/components/EmptyState.svelte';
   import MenuBar from './lib/components/MenuBar.svelte';
+  import Onboarding from './lib/components/Onboarding.svelte';
   import ReaderView from './lib/components/ReaderView.svelte';
   import SaveDialog from './lib/components/SaveDialog.svelte';
   import StatusBar from './lib/components/StatusBar.svelte';
@@ -25,7 +26,9 @@
   import { formatBytes } from './lib/format';
   import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
-  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings } from './lib/ipc';
+  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type SessionState } from './lib/ipc';
+  import { scrollMemory } from './lib/reader/scroll-memory';
+  import { applyWindowState, saveSessionNow } from './lib/session';
   import { tabs } from './lib/state/tabs.svelte';
   import { toasts } from './lib/state/toasts.svelte';
   import { decideShortcut, isEditorContext, modalOpen } from './lib/shortcuts/engine';
@@ -109,6 +112,92 @@
   function resetFontSize(): void {
     if (!readerSettings) return;
     void persistReader({ typography: { ...readerSettings.typography, fontSize: 16 } });
+  }
+
+  /** 首启引导可见性（仅启动时按配置判定一次） */
+  let onboardingOpen = $state(false);
+  let onboardingChecked = false;
+  /** 会话恢复完成标记（恢复期间不触发自动保存，避免写回半成品状态） */
+  let sessionReady = false;
+  let sessionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** 防抖保存会话（2s；窗口移动/缩放与标签变化共用） */
+  function scheduleSessionSave(): void {
+    if (!sessionReady) return;
+    if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
+    sessionSaveTimer = setTimeout(() => {
+      sessionSaveTimer = null;
+      void saveSessionNow();
+    }, 2000);
+  }
+
+  /** 启动初始化：配置载入 + 首启引导判定 */
+  async function initSettings(): Promise<void> {
+    await reloadSettings();
+    if (!onboardingChecked) {
+      onboardingChecked = true;
+      onboardingOpen = appSettings?.showOnboarding ?? false;
+    }
+  }
+
+  /** 关闭首启引导（可勾选不再显示 → 持久化） */
+  async function closeOnboarding(dontShowAgain: boolean): Promise<void> {
+    onboardingOpen = false;
+    if (!dontShowAgain || !appSettings || !readerSettings) return;
+    const next: AppSettings = { ...appSettings, showOnboarding: false };
+    try {
+      const snapshot = await ipc.saveSettings({
+        app: next,
+        reader: readerSettings,
+        shortcuts: shortcuts as Record<string, string>,
+      });
+      appSettings = snapshot.app;
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 会话恢复：逐个打开上次的标签（缺失/失败经 Toast 跳过）、补齐编码覆盖与编辑态，
+   *  恢复滚动锚点与活动标签；恢复期间由 sessionReady 门控自动保存。 */
+  async function restoreSession(): Promise<void> {
+    let session: SessionState | null = null;
+    try {
+      session = await ipc.getSession();
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('[app] 读取会话失败', error);
+    }
+    try {
+      if (!session || session.tabs.length === 0) return;
+      const seeds: { tabId: number; row: number }[] = [];
+      for (const item of session.tabs) {
+        try {
+          const info = await ipc.openFile(item.path);
+          if (item.encoding) {
+            await ipc.setEncoding(info.tabId, item.encoding);
+          }
+          if (item.editMode) {
+            try {
+              await ipc.toggleEdit(info.tabId);
+            } catch {
+              // 编辑态恢复失败（文件已变化等）：保持只读，不阻塞其余标签
+            }
+          }
+          seeds.push({ tabId: info.tabId, row: item.scrollRow });
+        } catch (error) {
+          const payload = toIpcError(error);
+          toasts.error(`无法恢复「${item.path}」：${describeIpcError(payload)}`);
+        }
+      }
+      // 先预热滚动锚点再应用视图：活动标签首次渲染即可恢复到记录位置
+      for (const seed of seeds) {
+        scrollMemory.seed(seed.tabId, seed.row);
+      }
+      tabs.applyView(await ipc.listTabs());
+      const target = tabs.tabs[session.activeTabIndex];
+      if (target) tabs.select(target.tabId);
+    } finally {
+      sessionReady = true;
+    }
   }
 
   /** 循环切换标签（nextTab / prevTab） */
@@ -239,6 +328,7 @@
       pendingClose = { kind: 'quit' };
       return;
     }
+    await saveSessionNow();
     allowClose = true;
     await getCurrentWindow().close();
   }
@@ -499,6 +589,7 @@
       await tabs.close(pending.tabId);
       focusEditorProxy();
     } else {
+      await saveSessionNow();
       allowClose = true;
       await getCurrentWindow().close();
     }
@@ -551,12 +642,26 @@
     root.style.setProperty('--reading-pad-x', `${typo.pagePadding}px`);
   });
 
+  // 标签集合/活动标签变化：防抖保存会话（恢复期间由 sessionReady 门控）
+  $effect(() => {
+    void tabs.tabs.map((tab) => tab.tabId).join(',');
+    void tabs.activeId;
+    scheduleSessionSave();
+  });
+
   onMount(() => {
     // 冷启动防空白：页面首帧（主题/骨架）渲染完成后才显示窗口。
     // WebView2 初始化在磁盘压力大时可能耗时较长；隐藏期间用户不会看到空白窗口，
     // Rust 侧另有 8 秒兜底强制显示（防前端异常导致不可见的僵尸进程）。
     void (async () => {
       try {
+        // 窗口几何恢复（显示之前；读取/应失败均不影响启动）
+        try {
+          const session = await ipc.getSession();
+          await applyWindowState(session.window);
+        } catch {
+          // 会话不可读：使用默认窗口几何
+        }
         await tick();
         // 等待真实首帧绘制（双重 rAF）：tick 只保证 DOM 更新，rAF 之后才有像素，
         // 否则「显示瞬间」仍可能是空窗口（内容晚若干帧才出现）。
@@ -586,13 +691,22 @@
       (error: unknown) => toasts.error(describeIpcError(toIpcError(error))),
     );
 
-    // 窗口关闭拦截（X 按钮/系统关闭）：脏标签先走三态确认
+    // 窗口关闭拦截（X 按钮/系统关闭）：统一走退出流程——
+    // 保存会话 → 脏标签三态确认 → 关闭（避免 X 直关时丢失最后滚动位置）
     let unlistenClose: (() => void) | undefined;
     void getCurrentWindow()
       .onCloseRequested((event) => {
-        if (allowClose || !tabs.tabs.some((tab) => tab.dirty)) return;
+        if (allowClose) return;
         event.preventDefault();
-        pendingClose = { kind: 'quit' };
+        if (tabs.tabs.some((tab) => tab.dirty)) {
+          pendingClose = { kind: 'quit' };
+          return;
+        }
+        void (async () => {
+          await saveSessionNow();
+          allowClose = true;
+          await getCurrentWindow().close();
+        })();
       })
       .then((stop) => {
         unlistenClose = stop;
@@ -617,8 +731,24 @@
         unlisten = stop;
       });
 
+    // 会话：启动恢复 + 窗口移动/缩放防抖保存 + 定时兜底保存
+    void restoreSession();
+    let unlistenMoved: (() => void) | undefined;
+    void getCurrentWindow()
+      .onMoved(() => scheduleSessionSave())
+      .then((stop) => {
+        unlistenMoved = stop;
+      });
+    let unlistenResized: (() => void) | undefined;
+    void getCurrentWindow()
+      .onResized(() => scheduleSessionSave())
+      .then((stop) => {
+        unlistenResized = stop;
+      });
+    const sessionInterval = setInterval(() => void saveSessionNow(), 30000);
+
     // 配置：启动加载 + 设置窗口变更事件刷新 + 窗口聚焦兜底刷新
-    void reloadSettings();
+    void initSettings();
     let unlistenSettings: (() => void) | undefined;
     void listen('srt://settings-changed', () => void reloadSettings()).then((stop) => {
       unlistenSettings = stop;
@@ -657,6 +787,10 @@
       unlistenClose?.();
       unlistenSettings?.();
       unlistenFocus?.();
+      unlistenMoved?.();
+      unlistenResized?.();
+      clearInterval(sessionInterval);
+      if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
       window.removeEventListener('keydown', onGlobalKeydown, true);
     };
   });
@@ -725,6 +859,9 @@
     {version}
   />
   <Toast />
+  {#if onboardingOpen}
+    <Onboarding onClose={(dontShowAgain) => void closeOnboarding(dontShowAgain)} />
+  {/if}
   <DropOverlay visible={dragging} />
   <SaveDialog
     open={saveRequest !== null}

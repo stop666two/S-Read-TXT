@@ -179,13 +179,19 @@
     }
   }
 
-  /** 滚动处理（rAF 节流）。 */
+  /** 滚动处理（rAF 节流）：刷新窗口 + 实时更新滚动记忆（会话保存直接读取）。 */
   function handleScroll(): void {
     if (programmatic || scrollScheduled) return;
     scrollScheduled = true;
     requestAnimationFrame(() => {
       scrollScheduled = false;
       refreshWindow();
+      // 实时记录顶部定位行（会话/标签切换共用数据源）；
+      // 此前仅在切换标签的清理阶段记录，导致「滚动后直接退出」恢复不到位置。
+      scrollMemory.set(
+        tab.tabId,
+        heights.rowAtOffset(contentScrollTop(), Math.max(1, tab.rowsTotal)),
+      );
     });
   }
 
@@ -267,6 +273,26 @@
     version += 1;
   });
 
+  /** 应用初始滚动位置（会话恢复/切回长文档）。
+   *  冷启动挂载早于首屏行与占位渲染完成时，容器可能还没有足量可滚动高度，
+   *  直接赋值 scrollTop 会被浏览器钳到 0；因此逐帧重试直到赋值真正生效
+   *  （上限约 2 秒），确保阅读位置不丢。 */
+  function applyInitialScroll(row: number, rowsTotal: number): void {
+    let attempts = 0;
+    const attempt = (): void => {
+      if (!container) return;
+      const contentTop = heights.offsetOf(row, Math.max(1, rowsTotal));
+      setContentScrollTop(contentTop);
+      if (Math.abs(container.scrollTop - (contentTop + pagePadTop)) <= 2 || attempts >= 120) {
+        requestAnimationFrame(() => refreshWindow());
+        return;
+      }
+      attempts += 1;
+      requestAnimationFrame(attempt);
+    };
+    attempt();
+  }
+
   // 标签或编码变化：重建缓存/高度，按记忆行号恢复位置；离开前记录当前行号
   $effect(() => {
     const currentTabId = tab.tabId;
@@ -278,10 +304,7 @@
     lastPercent = -1;
     const restoredRow = Math.min(scrollMemory.get(currentTabId) ?? 0, Math.max(0, rowsTotal - 1));
     if (container) {
-      setContentScrollTop(heights.offsetOf(restoredRow, rowsTotal));
-      requestAnimationFrame(() => {
-        refreshWindow();
-      });
+      applyInitialScroll(restoredRow, rowsTotal);
     }
     return () => {
       scrollMemory.set(
