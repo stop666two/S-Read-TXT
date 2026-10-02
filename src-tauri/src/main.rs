@@ -1,13 +1,16 @@
 // S-Read-TXT 主进程入口（src-tauri/src/main.rs）
-// 阶段 1：接入 storage 模块（便携数据目录解析 + 可写性探测）。
-// 命令清单按设计文档 §6 分阶段扩充；本切片仅 storage 相关命令。
+// 阶段 1：storage（便携数据目录）+ settings（三类配置）接入；
+// 命令清单按设计文档 §6 分阶段扩充。
 
 // 发布构建隐藏 Windows 控制台窗口；调试构建保留控制台以便查看日志
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod settings;
 mod storage;
 
 use serde::Serialize;
+use settings::store as settings_store;
+use settings::SettingsSnapshot;
 use storage::data_dir;
 use storage::paths::{self, DataDirOrigin};
 
@@ -38,8 +41,6 @@ struct DataDirStatus {
 }
 
 /// 命令：返回应用版本与数据目录（关于页数据源；亦用于 IPC 冒烟自检）。
-///
-/// 返回：AppInfo（不会失败——目录解析有退化路径）。
 #[tauri::command]
 fn get_app_info() -> AppInfo {
     let (dir, origin) = paths::resolve_data_dir();
@@ -74,11 +75,25 @@ fn data_dir_status() -> DataDirStatus {
     }
 }
 
+/// 命令：读取全部配置（聚合快照；快捷键字段为「生效绑定」= 默认 + 覆盖）。
+///
+/// 说明：读取具备自愈能力——文件缺失回默认值；内容损坏则备份为
+///       `<文件名>.corrupt-<纳秒>` 后回默认值（见 `settings::store`）。
+#[tauri::command]
+fn get_settings() -> SettingsSnapshot {
+    let (dir, _origin) = paths::resolve_data_dir();
+    settings_store::load_snapshot(&dir)
+}
+
 fn main() {
     tauri::Builder::default()
         // 原生对话框能力（文件选择/目录选择/消息框）
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_app_info, data_dir_status])
+        .invoke_handler(tauri::generate_handler![
+            get_app_info,
+            data_dir_status,
+            get_settings
+        ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
 }

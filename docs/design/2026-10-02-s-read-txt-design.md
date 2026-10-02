@@ -217,7 +217,7 @@ data/
 |---|---|---|---|
 | 打开文件 | Ctrl+O | 保存 | Ctrl+S（编辑态） |
 | 切换编辑/只读 | Ctrl+E | 关闭标签 | Ctrl+W |
-| 下一/上一标签 | Ctrl+Tab / Ctrl+Shift+Tab | 跳转标签 | Ctrl+1~9 |
+| 下一/上一标签 | Ctrl+Tab / Ctrl+Shift+Tab | 跳转标签（固定键） | Ctrl+1~9 |
 | 向下/向上翻页 | PgDn / PgUp | 文首/文末 | Home / End（阅读态） |
 | 全屏 | F11 | 查找 / 替换 | Ctrl+F / Ctrl+H（编辑态） |
 | 另存为 | Ctrl+Shift+S（编辑态） | 历史面板 | Ctrl+Shift+H |

@@ -1,0 +1,380 @@
+//! 配置文件读写（`settings.json` / `reader.json` / `shortcuts.json`）。
+//!
+//! 策略：
+//! - 读：文件缺失 → 默认值；内容损坏 → 备份为 `<文件名>.corrupt-<纳秒>` 后回退默认值（记日志）；
+//! - 归一：载入与保存前对齐 `schemaVersion`、未知枚举回退默认、数值裁剪到文档范围；
+//! - 写：经 `json_io` 原子落盘（pretty JSON、UTF-8 无 BOM）；
+//! - 快捷键：文件仅存覆盖项；[`effective_bindings`] = 默认 + 覆盖；[`to_overrides`] = 与默认不同的项。
+
+use std::collections::BTreeMap;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde::de::DeserializeOwned;
+
+use crate::settings::defaults;
+use crate::settings::model::AppSettings;
+use crate::settings::reader::ReaderSettings;
+use crate::settings::shortcuts::ShortcutSettings;
+use crate::settings::SettingsSnapshot;
+use crate::storage::json_io;
+
+/// 主配置文件名
+pub const FILE_APP_SETTINGS: &str = "settings.json";
+/// 阅读排版配置文件名
+pub const FILE_READER_SETTINGS: &str = "reader.json";
+/// 快捷键配置文件名
+pub const FILE_SHORTCUTS: &str = "shortcuts.json";
+
+/// 主配置文件路径（数据目录内）
+pub fn app_settings_path(dir: &Path) -> PathBuf {
+    dir.join(FILE_APP_SETTINGS)
+}
+
+/// 阅读排版配置文件路径（数据目录内）
+pub fn reader_settings_path(dir: &Path) -> PathBuf {
+    dir.join(FILE_READER_SETTINGS)
+}
+
+/// 快捷键配置文件路径（数据目录内）
+pub fn shortcuts_path(dir: &Path) -> PathBuf {
+    dir.join(FILE_SHORTCUTS)
+}
+
+/// 载入聚合快照（app + reader + 生效快捷键），供 `get_settings` 命令使用。
+pub fn load_snapshot(dir: &Path) -> SettingsSnapshot {
+    let raw_shortcuts = load_shortcuts(dir);
+    SettingsSnapshot {
+        app: load_app_settings(dir),
+        reader: load_reader_settings(dir),
+        shortcuts: ShortcutSettings {
+            schema_version: defaults::SCHEMA_VERSION,
+            bindings: effective_bindings(&raw_shortcuts.bindings),
+        },
+    }
+}
+
+/// 载入主配置（自愈：缺失/损坏回退默认值）。
+pub fn load_app_settings(dir: &Path) -> AppSettings {
+    load_or_default(&app_settings_path(dir), normalize_app)
+}
+
+/// 载入阅读排版配置（自愈：缺失/损坏回退默认值）。
+pub fn load_reader_settings(dir: &Path) -> ReaderSettings {
+    load_or_default(&reader_settings_path(dir), normalize_reader)
+}
+
+/// 载入快捷键覆盖表（自愈：缺失/损坏回退空覆盖；未知动作与空绑定被丢弃）。
+pub fn load_shortcuts(dir: &Path) -> ShortcutSettings {
+    load_or_default(&shortcuts_path(dir), normalize_shortcuts)
+}
+
+/// 保存主配置（保存前归一，确保写入合法值）。
+pub fn save_app_settings(dir: &Path, settings: &AppSettings) -> io::Result<()> {
+    let mut copy = settings.clone();
+    normalize_app(&mut copy);
+    json_io::write_json_atomic(&app_settings_path(dir), &copy)
+}
+
+/// 保存阅读排版配置（保存前归一）。
+pub fn save_reader_settings(dir: &Path, settings: &ReaderSettings) -> io::Result<()> {
+    let mut copy = settings.clone();
+    normalize_reader(&mut copy);
+    json_io::write_json_atomic(&reader_settings_path(dir), &copy)
+}
+
+/// 保存快捷键覆盖表（保存前归一；传入的应是覆盖项，生效表请先用 [`to_overrides`] 转换）。
+pub fn save_shortcuts(dir: &Path, settings: &ShortcutSettings) -> io::Result<()> {
+    let mut copy = settings.clone();
+    normalize_shortcuts(&mut copy);
+    json_io::write_json_atomic(&shortcuts_path(dir), &copy)
+}
+
+/// 合并生效绑定：默认表为底，覆盖表覆盖（未知动作再防御性过滤一次）。
+pub fn effective_bindings(overrides: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let mut effective = defaults::default_bindings();
+    for (action, combo) in overrides {
+        if defaults::is_known_action(action) {
+            effective.insert(action.clone(), combo.clone());
+        }
+    }
+    effective
+}
+
+/// 由生效绑定表反推覆盖表（只保留与默认不同的项；恢复默认 → 空表）。
+pub fn to_overrides(effective: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let defaults_map = defaults::default_bindings();
+    effective
+        .iter()
+        .filter(|(action, combo)| {
+            defaults_map
+                .get(*action)
+                .map(|d| d != *combo)
+                .unwrap_or(false)
+        })
+        .map(|(action, combo)| (action.clone(), combo.clone()))
+        .collect()
+}
+
+/// 通用载入：成功则归一；缺失取默认；损坏备份后取默认。
+fn load_or_default<T, F>(path: &Path, normalize: F) -> T
+where
+    T: DeserializeOwned + Default,
+    F: FnOnce(&mut T),
+{
+    match json_io::read_json_opt::<T>(path) {
+        Ok(Some(mut value)) => {
+            normalize(&mut value);
+            value
+        }
+        Ok(None) => T::default(),
+        Err(err) => {
+            log::warn!(
+                "配置损坏，回退默认值并备份：{}（原因：{err}）",
+                path.display()
+            );
+            backup_corrupt(path);
+            T::default()
+        }
+    }
+}
+
+/// 将损坏配置重命名为 `<文件名>.corrupt-<纳秒>`；失败仅记日志（不阻塞启动）。
+fn backup_corrupt(path: &Path) -> Option<PathBuf> {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let file_name = path.file_name()?.to_string_lossy().into_owned();
+    let backup = path.with_file_name(format!("{file_name}.corrupt-{nanos}"));
+    match std::fs::rename(path, &backup) {
+        Ok(()) => Some(backup),
+        Err(err) => {
+            log::warn!("配置备份失败：{}（{err}）", path.display());
+            None
+        }
+    }
+}
+
+/// 主配置归一：版本对齐、枚举回退、数值裁剪。
+fn normalize_app(settings: &mut AppSettings) {
+    settings.schema_version = defaults::SCHEMA_VERSION;
+    settings.log_level = settings.log_level.normalized();
+    let (min_size, max_size) = defaults::MAX_FILE_SIZE_MB_RANGE;
+    settings.max_file_size_mb = settings.max_file_size_mb.clamp(min_size, max_size);
+    let (min_tabs, max_tabs) = defaults::MAX_TABS_RANGE;
+    settings.max_tabs = settings.max_tabs.clamp(min_tabs, max_tabs);
+    let (min_entries, max_entries) = defaults::HISTORY_MAX_ENTRIES_RANGE;
+    settings.history.max_entries = settings.history.max_entries.clamp(min_entries, max_entries);
+    let (min_days, max_days) = defaults::HISTORY_RETENTION_DAYS_RANGE;
+    settings.history.retention_days = settings.history.retention_days.clamp(min_days, max_days);
+}
+
+/// 阅读排版归一：主题回退、字体去空白、数值裁剪。
+fn normalize_reader(settings: &mut ReaderSettings) {
+    settings.schema_version = defaults::SCHEMA_VERSION;
+    settings.theme = settings.theme.normalized();
+    let font = settings.typography.font_family.trim();
+    settings.typography.font_family = if font.is_empty() {
+        defaults::DEFAULT_FONT_FAMILY.to_string()
+    } else {
+        font.to_string()
+    };
+    let (min_size, max_size) = defaults::FONT_SIZE_RANGE;
+    settings.typography.font_size = settings.typography.font_size.clamp(min_size, max_size);
+    let (min_lh, max_lh) = defaults::LINE_HEIGHT_RANGE;
+    settings.typography.line_height = settings.typography.line_height.clamp(min_lh, max_lh);
+    let (min_width, max_width) = defaults::CONTENT_WIDTH_RANGE;
+    settings.typography.content_width = settings
+        .typography
+        .content_width
+        .clamp(min_width, max_width);
+    let (min_pad, max_pad) = defaults::PAGE_PADDING_RANGE;
+    settings.typography.page_padding = settings.typography.page_padding.clamp(min_pad, max_pad);
+}
+
+/// 快捷键归一：版本对齐；丢弃未知动作与空绑定（记日志）。
+fn normalize_shortcuts(settings: &mut ShortcutSettings) {
+    settings.schema_version = defaults::SCHEMA_VERSION;
+    let mut cleaned = BTreeMap::new();
+    for (action, combo) in std::mem::take(&mut settings.bindings) {
+        let action = action.trim().to_string();
+        let combo = combo.trim().to_string();
+        if !defaults::is_known_action(&action) {
+            log::warn!("快捷键配置包含未知动作，已忽略：{action}");
+            continue;
+        }
+        if combo.is_empty() {
+            log::warn!("快捷键配置包含空绑定，已忽略：{action}");
+            continue;
+        }
+        cleaned.insert(action, combo);
+    }
+    settings.bindings = cleaned;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn data_dir() -> tempfile::TempDir {
+        tempfile::tempdir().expect("创建临时目录失败")
+    }
+
+    /// 主配置往返一致（保存会写入当前 schemaVersion）。
+    #[test]
+    fn app_settings_roundtrip() {
+        let dir = data_dir();
+        let mut settings = AppSettings::default();
+        settings.max_file_size_mb = 256;
+        settings.max_tabs = 30;
+        settings.history.max_entries = 500;
+        settings.log_level = crate::settings::model::LogLevel::Debug;
+        settings.save_backup_enabled = false;
+        save_app_settings(dir.path(), &settings).expect("保存失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded, settings);
+        let raw = std::fs::read_to_string(app_settings_path(dir.path())).expect("读取失败");
+        assert!(
+            raw.contains("\"schemaVersion\": 1"),
+            "保存应写入当前 schemaVersion：{raw}"
+        );
+    }
+
+    /// 主配置缺失 → 默认值。
+    #[test]
+    fn app_settings_missing_returns_defaults() {
+        let dir = data_dir();
+        assert_eq!(load_app_settings(dir.path()), AppSettings::default());
+    }
+
+    /// 主配置损坏 → 备份文件生成 + 回退默认值。
+    #[test]
+    fn app_settings_corrupt_backs_up_and_defaults() {
+        let dir = data_dir();
+        std::fs::write(app_settings_path(dir.path()), b"{ broken").expect("写损坏文件失败");
+        assert_eq!(load_app_settings(dir.path()), AppSettings::default());
+        let backups: Vec<_> = std::fs::read_dir(dir.path())
+            .expect("列目录失败")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with("settings.json.corrupt-"))
+            .collect();
+        assert_eq!(backups.len(), 1, "应生成一个备份：{backups:?}");
+    }
+
+    /// 主配置数值裁剪 + 未知日志级别归一。
+    #[test]
+    fn app_settings_clamps_and_normalizes_unknown_values() {
+        let dir = data_dir();
+        std::fs::write(
+            app_settings_path(dir.path()),
+            br#"{"schemaVersion":99,"logLevel":"trace","maxFileSizeMB":0,"maxTabs":9999,"history":{"maxEntries":0,"retentionDays":99999},"saveBackupEnabled":false,"showOnboarding":false}"#,
+        )
+        .expect("写配置失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded.schema_version, 1);
+        assert_eq!(loaded.log_level, crate::settings::model::LogLevel::Info);
+        assert_eq!(loaded.max_file_size_mb, 1);
+        assert_eq!(loaded.max_tabs, 100);
+        assert_eq!(loaded.history.max_entries, 1);
+        assert_eq!(loaded.history.retention_days, 3650);
+        assert!(!loaded.save_backup_enabled);
+        assert!(!loaded.show_onboarding);
+    }
+
+    /// 阅读配置：未知主题归一、空字体回退、数值裁剪。
+    #[test]
+    fn reader_settings_clamps_and_falls_back() {
+        let dir = data_dir();
+        std::fs::write(
+            reader_settings_path(dir.path()),
+            br#"{"theme":"neon","typography":{"fontFamily":"   ","fontSize":100,"lineHeight":0.5,"contentWidth":10,"pagePadding":1000}}"#,
+        )
+        .expect("写配置失败");
+        let loaded = load_reader_settings(dir.path());
+        assert_eq!(loaded.theme, crate::settings::reader::Theme::System);
+        assert_eq!(loaded.typography.font_family, defaults::DEFAULT_FONT_FAMILY);
+        assert_eq!(loaded.typography.font_size, 32);
+        assert!((loaded.typography.line_height - 1.2).abs() < f32::EPSILON);
+        assert_eq!(loaded.typography.content_width, 480);
+        assert_eq!(loaded.typography.page_padding, 96);
+    }
+
+    /// 阅读配置往返一致。
+    #[test]
+    fn reader_settings_roundtrip() {
+        let dir = data_dir();
+        let mut settings = ReaderSettings::default();
+        settings.theme = crate::settings::reader::Theme::Eye;
+        settings.typography.font_size = 20;
+        settings.typography.line_height = 2.0;
+        save_reader_settings(dir.path(), &settings).expect("保存失败");
+        assert_eq!(load_reader_settings(dir.path()), settings);
+    }
+
+    /// 快捷键：生效表 = 默认 + 覆盖。
+    #[test]
+    fn shortcuts_effective_merges_defaults_and_overrides() {
+        let overrides: BTreeMap<String, String> = [("openFile".to_string(), "Alt+O".to_string())]
+            .into_iter()
+            .collect();
+        let effective = effective_bindings(&overrides);
+        assert_eq!(effective.get("openFile").map(String::as_str), Some("Alt+O"));
+        assert_eq!(effective.get("save").map(String::as_str), Some("Ctrl+S"));
+        assert_eq!(effective.len(), defaults::DEFAULT_BINDINGS.len());
+    }
+
+    /// 快捷键：`to_overrides` 仅保留与默认不同的项（恢复默认 → 空表）。
+    #[test]
+    fn shortcuts_to_overrides_filters_defaults() {
+        let mut effective = defaults::default_bindings();
+        effective.insert("closeTab".to_string(), "Ctrl+Q".to_string());
+        let overrides = to_overrides(&effective);
+        assert_eq!(overrides.len(), 1);
+        assert_eq!(
+            overrides.get("closeTab").map(String::as_str),
+            Some("Ctrl+Q")
+        );
+        assert!(to_overrides(&defaults::default_bindings()).is_empty());
+    }
+
+    /// 快捷键：未知动作与空绑定在加载时丢弃。
+    #[test]
+    fn shortcuts_drop_unknown_and_empty_on_load() {
+        let dir = data_dir();
+        std::fs::write(
+            shortcuts_path(dir.path()),
+            br#"{"schemaVersion":1,"bindings":{"openFile":"Alt+O","notAnAction":"Ctrl+X","save":"  "}}"#,
+        )
+        .expect("写配置失败");
+        let loaded = load_shortcuts(dir.path());
+        assert_eq!(loaded.bindings.len(), 1);
+        assert_eq!(
+            loaded.bindings.get("openFile").map(String::as_str),
+            Some("Alt+O")
+        );
+    }
+
+    /// 快捷键：保存覆盖表并回读（文件只含覆盖项）。
+    #[test]
+    fn shortcuts_roundtrip_stores_only_overrides() {
+        let dir = data_dir();
+        let mut effective = defaults::default_bindings();
+        effective.insert("fullscreen".to_string(), "Alt+Enter".to_string());
+        save_shortcuts(
+            dir.path(),
+            &ShortcutSettings {
+                schema_version: 1,
+                bindings: to_overrides(&effective),
+            },
+        )
+        .expect("保存失败");
+        let raw = std::fs::read_to_string(shortcuts_path(dir.path())).expect("读取失败");
+        assert!(raw.contains("Alt+Enter"));
+        assert!(!raw.contains("Ctrl+O"), "默认项不应落盘：{raw}");
+        let loaded = load_shortcuts(dir.path());
+        assert_eq!(loaded.bindings.len(), 1);
+    }
+}

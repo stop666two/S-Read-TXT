@@ -27,6 +27,7 @@
 | `history.maxEntries` | number | 1–100000 整数 | `10000` | 历史保留条数上限（超出裁剪最旧） |
 | `history.retentionDays` | number | 1–3650 整数 | `365` | 历史保留天数（过期裁剪） |
 | `saveBackupEnabled` | boolean | `true`/`false` | `true` | 首次保存前是否生成 `.bak` 备份 |
+| `showOnboarding` | boolean | `true`/`false` | `true` | 是否显示首启引导；用户选择「不再显示」后置 `false` |
 
 ### 2.2 `reader.json`（阅读排版子配置）
 
@@ -45,10 +46,23 @@
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
 | `schemaVersion` | number | 固定 `1` | `1` | 格式版本 |
-| `bindings` | object | 动作名 → 组合键字符串 | 见设计文档 §9 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
+| `bindings` | object | 动作 id → 组合键字符串 | 见下表 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
 
-组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`、`Ctrl+1`）。
-不可绑定项：编辑标准键（`Ctrl+Z/Y/X/C/V/A`、方向键、`Home/End` 在编辑态的默认行为）与阅读态备用键（空格翻页）。
+组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`）。
+不可绑定项（固定键）：编辑标准键（`Ctrl+Z/Y/X/C/V/A`、方向键、编辑态 `Home/End`）、阅读态备用键（空格/Shift+空格翻页）、标签跳转（`Ctrl+1`~`9`）。
+
+默认绑定表（动作 id 为稳定 ASCII 标识，随配置持久化；未列出的动作 id 视为未知并忽略）：
+
+| 动作 id | 默认组合键 | 动作 id | 默认组合键 |
+|---|---|---|---|
+| `openFile` | `Ctrl+O` | `save` | `Ctrl+S` |
+| `saveAs` | `Ctrl+Shift+S` | `toggleEdit` | `Ctrl+E` |
+| `closeTab` | `Ctrl+W` | `nextTab` | `Ctrl+Tab` |
+| `prevTab` | `Ctrl+Shift+Tab` | `pageDown` | `PgDn` |
+| `pageUp` | `PgUp` | `firstLine` | `Home` |
+| `lastLine` | `End` | `fullscreen` | `F11` |
+| `find` | `Ctrl+F` | `replace` | `Ctrl+H` |
+| `historyPanel` | `Ctrl+Shift+H` | | |
 
 ### 2.4 `session.json`（会话；退出时写入，启动时读取）
 
