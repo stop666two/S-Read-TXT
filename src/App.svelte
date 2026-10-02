@@ -638,6 +638,7 @@
     canSave={active?.dirty ?? false}
     onToggleEdit={() => void toggleEdit()}
     onSave={openSaveDialog}
+    onSettings={() => void ipc.openSettings()}
   />
   <TabBar
     tabs={tabs.tabs}

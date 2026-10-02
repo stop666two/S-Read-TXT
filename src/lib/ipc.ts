@@ -188,11 +188,11 @@ export interface SettingsSnapshot {
   shortcuts: ShortcutSettings;
 }
 
-/** 配置保存请求（`save_settings` 入参；shortcuts 传「生效绑定」）。 */
+/** 配置保存请求（`save_settings` 入参；shortcuts 直接传「生效绑定」扁平表）。 */
 export interface SettingsSaveRequest {
   app: AppSettings;
   reader: ReaderSettings;
-  shortcuts: ShortcutSettings;
+  shortcuts: Record<string, string>;
 }
 
 /** 类型化 IPC 命令集合（参数名与 Tauri 的 camelCase 约定一致）。 */
@@ -215,6 +215,8 @@ export const ipc = {
   closeTab: (tabId: number) => invoke<TabsView>('close_tab', { tabId }),
   /** 同步活动标签到后端（点击/快捷键选择后调用）。 */
   setActiveTab: (tabId: number) => invoke<void>('set_active_tab', { tabId }),
+  /** 打开设置窗口（已存在则聚焦；按需创建）。 */
+  openSettings: () => invoke<void>('open_settings'),
   /** 切换编辑模式（首次进入创建编辑文档）。 */
   toggleEdit: (tabId: number) => invoke<TabInfo>('toggle_edit', { tabId }),
   /** 应用编辑批次（批次 = 单个撤销步）。 */

@@ -99,6 +99,7 @@ fn main() {
             commands::list_tabs,
             commands::close_tab,
             commands::set_active_tab,
+            commands::open_settings,
             commands::toggle_edit,
             commands::apply_edits,
             commands::undo_edit,

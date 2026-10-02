@@ -592,3 +592,37 @@ pub fn set_active_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<
             .map_err(IpcError::from)
     })
 }
+
+/// 命令：打开设置窗口（已存在则显示并聚焦；不存在按需创建）。
+///
+/// 说明：设置窗口按需创建而非启动时常驻——隐藏的 WebView 仍占内存（约数十 MB），
+/// 会挤压「10 标签 <100MB」的内存红线；关闭后窗口销毁，再次打开重建。
+#[tauri::command]
+pub async fn open_settings(app: tauri::AppHandle) -> Result<(), IpcError> {
+    use tauri::Manager;
+    if let Some(window) = app.get_webview_window("settings") {
+        window
+            .show()
+            .map_err(|err| IpcError::internal(format!("显示设置窗口失败：{err}")))?;
+        window
+            .set_focus()
+            .map_err(|err| IpcError::internal(format!("聚焦设置窗口失败：{err}")))?;
+        return Ok(());
+    }
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "settings",
+        tauri::WebviewUrl::App("settings.html".into()),
+    )
+    .title("设置 - S-Read-TXT")
+    .inner_size(640.0, 520.0)
+    .resizable(false)
+    .maximizable(false)
+    .decorations(false)
+    .visible(false)
+    .center()
+    .build()
+    .map_err(|err| IpcError::internal(format!("创建设置窗口失败：{err}")))?;
+    log::info!(target: "sread::ipc", "设置窗口已创建");
+    Ok(())
+}

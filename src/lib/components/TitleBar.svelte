@@ -14,8 +14,10 @@
   interface Props {
     /** 窗口标题（App 计算：文件名 + 应用名） */
     title: string;
+  /** 是否显示最大化/还原按钮（设置窗口等不可最大化窗口传 false） */
+  showMaximize?: boolean;
   }
-  let { title }: Props = $props();
+  let { title, showMaximize = true }: Props = $props();
 
   const appWindow = getCurrentWindow();
   /** 当前是否最大化（驱动中间按钮图标与提示文案） */
@@ -52,7 +54,7 @@
   <span class="app-title">{title}</span>
   <!-- 双击拖拽区最大化是桌面窗口惯例（鼠标手势）；键盘用户可用右侧按钮，功能等价 -->
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-  <div class="drag-region" data-tauri-drag-region ondblclick={toggleMaximize} role="presentation"
+  <div class="drag-region" data-tauri-drag-region ondblclick={() => showMaximize && toggleMaximize()} role="presentation"
   ></div>
   <div class="controls">
     <button class="ctl" type="button" aria-label="最小化" title="最小化" onclick={minimize}>
@@ -60,6 +62,7 @@
         <path d="M0 5h10" stroke="currentColor" stroke-width="1" />
       </svg>
     </button>
+    {#if showMaximize}
     <button
       class="ctl"
       type="button"
@@ -78,6 +81,7 @@
         </svg>
       {/if}
     </button>
+    {/if}
     <button class="ctl close" type="button" aria-label="关闭" title="关闭" onclick={close}>
       <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
         <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" stroke="currentColor" stroke-width="1" />

@@ -33,6 +33,13 @@ export default defineConfig({
   // 暴露给前端的注入变量前缀（TAURI_ENV_* 由 Tauri CLI 注入平台/调试信息）
   envPrefix: ['VITE_', 'TAURI_ENV_*'],
   build: {
+    // 多入口构建：main = 主窗口；settings = 设置窗口（独立 HTML，按需创建）
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        settings: 'settings.html',
+      },
+    },
     // 浏览器编译目标：Windows WebView2 基线（Chromium 105）；其他平台保守目标
     target: process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari13',
     // 仅调试构建禁用压缩；正式构建使用 Vite 8 默认压缩器（Oxc，无需额外依赖）

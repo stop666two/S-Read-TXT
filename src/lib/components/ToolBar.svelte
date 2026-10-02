@@ -1,6 +1,6 @@
 <script lang="ts">
-  // 工具栏：打开 / 历史 / 编码（共享下拉）/ 主题（循环）/ 设置。
-  // 历史与设置按钮待功能落地（阶段 7/8）前保持禁用，避免“能点但无反应”的死按钮。
+// 工具栏：打开 / 历史 / 编码（共享下拉）/ 主题（循环）/ 设置。
+// 历史按钮待功能落地（阶段 7）前保持禁用；设置按钮打开独立设置窗口（阶段 5 起可用）。
   import EncodingMenu from './EncodingMenu.svelte';
   import Icon from './Icon.svelte';
   import type { ThemeChoice } from '../types';
@@ -20,8 +20,8 @@
     onOpenFile?: () => void;
     /** 历史面板回调（阶段 6 接线） */
     onHistory?: () => void;
-    /** 设置窗口回调（阶段 8 接线） */
-    onSettings?: () => void;
+/** 设置窗口回调（打开独立设置窗口） */
+onSettings?: () => void;
     /** 是否处于编辑模式（编辑按钮激活态） */
     editing: boolean;
     /** 是否有未保存修改（保存按钮可用性） */
@@ -106,7 +106,7 @@
   >
     <Icon name="palette" />
   </button>
-  <button class="icon-btn" title="设置" aria-label="设置" disabled onclick={() => onSettings?.()}>
+  <button class="icon-btn" title="设置" aria-label="设置" onclick={() => onSettings?.()}>
     <Icon name="settings" />
   </button>
 </div>
