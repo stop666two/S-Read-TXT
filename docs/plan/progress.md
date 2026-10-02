@@ -160,3 +160,12 @@
 - `scripts/smoke-ime.mjs` **7/7**：I1 打开并进入编辑 → I2 组合中 preedit 悬浮显示（ni）→ I3 候选更新（你）→ I4 提交入库（你alpha + 脏态 + preedit 消失）→ I5 取消组合无副作用 → I6 保存后磁盘 UTF-8 中文 → I7 截图。
 - 关键发现：本 WebView2 的 CDP 协议面无 `Input.imeCommitComposition`；**组合中的 `Input.insertText` 会被 Blink 路由为“提交当前组合”并触发 `compositionend`**（探针记录完整事件序列：compositionstart → update → beforeinput/input → … → compositionend）；空文本 imeSetComposition 为取消路径。
 - 阶段 4 全部完成：4a 后端接线、4b 交互层、4c 超长行分段 / 查找替换 / 菜单补全 / 另存为 / 重载 / IME 验证。
+
+## 附加：自定义标题栏（2026-10-02，维护者指示，先于阶段 5）
+
+- 动机：原生标题栏（图标/名字/三大件按钮）视觉不合格；维护者要求自绘并经其验收后再进入阶段 5。
+- 实现：`decorations:false`；新增 `src/lib/components/TitleBar.svelte`（应用图标 16px + 「文件名 - S-Read-TXT」 + 拖拽区（双击最大化/还原） + 最小化/最大化(还原)/关闭，46×32、关闭悬停 #E81123）；`document.title` 随活动文件同步；`--h-titlebar:32px` 令牌；图标资产 `src/assets/app-icon.png`。
+- 权限（最小集新增）：allow-start-dragging / allow-minimize / allow-is-minimized / allow-toggle-maximize / allow-is-maximized。
+- E2E `scripts/smoke-titlebar.mjs` **7/7**（T1 标题联动 / T2 结构 / T3 按钮最大化 / T4 还原 / T5 双击切换 / T6 双主题截图 / T7 最小化经 is_minimized 断言——WebView2 最小化不改变 visibilityState）；smoke-edit 回归 12/12；svelte-check 0/0。
+- 截图：`docs/screenshots/phase5-titlebar-{light,dark}.png`。
+- 待人工核验：无边框窗口的边缘/角落拖拽缩放与窗口阴影（Windows 下由框架处理）；如发现缺失将补边缘拖拽手柄。

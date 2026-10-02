@@ -17,6 +17,7 @@
   import SaveDialog from './lib/components/SaveDialog.svelte';
   import StatusBar from './lib/components/StatusBar.svelte';
   import TabBar from './lib/components/TabBar.svelte';
+  import TitleBar from './lib/components/TitleBar.svelte';
   import Toast from './lib/components/Toast.svelte';
   import ToolBar from './lib/components/ToolBar.svelte';
   import UnsavedDialog from './lib/components/UnsavedDialog.svelte';
@@ -51,6 +52,14 @@
 
   /** 当前活动标签 */
   const active = $derived(tabs.active);
+
+  /** 窗口标题（自定义标题栏 + document.title：文件名 - 应用名） */
+  const windowTitle = $derived(active ? `${active.name} - S-Read-TXT` : 'S-Read-TXT');
+
+  // 同步 document.title（任务栏/Alt-Tab 名称）
+  $effect(() => {
+    document.title = windowTitle;
+  });
 
   /** 主题切换入口 */
   function setTheme(theme: ThemeChoice): void {
@@ -452,6 +461,7 @@
 </script>
 
 <div class="shell">
+  <TitleBar title={windowTitle} />
   <MenuBar
     {themeChoice}
     onThemeChange={setTheme}
