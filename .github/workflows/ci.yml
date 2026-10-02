@@ -1,0 +1,97 @@
+# S-Read-TXT 持续集成（CI）
+#
+# 触发：任意分支 push / pull_request / 手动
+# 目标（维护者约定）：推送代码后自动完成一次「完整构建 + 完整测试 + 仓库卫生检查」
+#
+# 工具链说明：
+# - 本地开发使用 GNU 工具链（Windows + MSYS2，见 README）；
+# - CI 使用 MSVC：三架构（x64 / x86 / ARM64）均为一等支持，发布件与 CI 保持一致；
+# - 本工作流对 i686 / ARM64 执行 `cargo check` 兼容检查（快）；
+#   三架构完整打包在 release.yml（仅 tag 触发）。
+#
+# 卫生检查（AGENTS.md 防泄露等）规则见 scripts/ci/check-hygiene.mjs。
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # 仓库卫生：拦截 AGENTS.md 及其变体、便携数据目录、构建产物、可疑大文件
+  hygiene:
+    name: 仓库卫生检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出（含历史）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 生成变更文件清单
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed-files.txt
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            git diff --name-only "${{ github.event.before }}..${{ github.sha }}" > changed-files.txt
+          else
+            git diff --name-only --root HEAD > changed-files.txt || true
+          fi
+          echo "变更文件数：$(wc -l < changed-files.txt)"
+      - name: 检查 AGENTS.md / data / 大文件
+        run: node scripts/ci/check-hygiene.mjs changed-files.txt
+
+  # 前端：类型 / 可访问性检查 + 单元测试 + 生产构建
+  frontend:
+    name: 前端检查与测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: svelte-check（类型与可访问性）
+        run: npm run check
+      - name: 单元测试（vitest）
+        run: npx vitest run
+      - name: 生产构建
+        run: npm run build
+
+  # Rust：全量测试 + 完整构建（x64）+ 32 位与 ARM64 兼容检查
+  rust:
+    name: Rust 测试与完整构建
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: 前端构建（Rust 编译需要 dist）
+        run: npm ci; npm run build
+      - name: 添加 i686 / aarch64 目标
+        run: rustup target add i686-pc-windows-msvc aarch64-pc-windows-msvc
+      - name: Rust 缓存
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: 运行全部 Rust 测试
+        run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+      - name: 完整构建（release，x64）
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+      - name: 32 位（i686）兼容检查
+        run: cargo check --target i686-pc-windows-msvc --manifest-path src-tauri/Cargo.toml
+      - name: ARM64 兼容检查
+        run: cargo check --target aarch64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml

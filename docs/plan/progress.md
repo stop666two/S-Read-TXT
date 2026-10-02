@@ -93,3 +93,18 @@
 - **本次修复的三个真实缺陷**：①`boundary_at` 拆分片段后前缀和未同步 → 同一批次第二次边界定位错位（删除范围少删/多删）；修复为每次变更即时 `rebuild_trees`（全局偏移语义不受拆分影响）。②跨片 `\r`+`\n`：单元终点恰在片段末尾时，行起点必须越过配对的另一半 `\n`（`unit_span` 扩展）。③encoding_rs 陷阱实锤：普通 `encode_from_utf8` 会把不可表示字符替换为数字字符引用（不会报错），必须用 `encode_from_utf8_without_replacement` 才能拿到 `EncoderResult::Unmappable` 致命错误。
 - **已知行为（记录）**：Windows 上第三方工具若对已打开文件做 in-place 写入，会被我们的 mmap 拒绝（`ERROR_USER_MAPPED_FILE = 1224`）；编辑器惯例的「临时文件 + rename」不受影响（我们的保存即此路径）。阶段 9 文档收尾时纳入 README 已知限制。
 - **测试**：lib **139/139** + 集成 5；阶段 3 新增 **38** 项；`cargo build` 0 告警。
+
+## CI/CD：持续集成与发布流水线（已完成 ✅ 2026-10-02）
+
+> 维护者约定：推送代码后自动完整构建 + 完整测试；Releases 只保留最新一个（旧 Release 全删，含测试版与正式版）；tag **永不删除**；**未经维护者明确允许，不执行任何 push**。
+
+| 项 | 内容 | 状态 | 证据 |
+|---|---|---|---|
+| CI 工作流 | `.github/workflows/ci.yml`：仓库卫生（AGENTS.md 变体 / data/ / 大文件）、前端检查测试与构建、Rust 全量测试 + 完整构建、i686/aarch64 兼容检查；触发 = 任意分支 push / PR / 手动 | ✅ 完成 | 本地验证：prettier YAML 解析两文件均通过（退出码 0） |
+| 发布工作流 | `.github/workflows/release.yml`：仅 tag（`v*`）触发；测试摘要 → 三架构 NSIS 构建（x64/x86/ARM64，MSVC）→ 详尽描述 → 创建 Release → **删除其他全部旧 Release**（删除 Release 不影响 tag）；tag 含 `-` 自动 prerelease；同 tag 幂等重建；`gh release create --verify-tag` 保证不创建新 tag | ✅ 完成 | 本地验证：描述生成全链路实测（4980 字符、11 个章节、无重复标题） |
+| CI 脚本 | `scripts/ci/`：check-hygiene（正反例已测）/ collect-test-summary / env-info / sha256sums / release-notes（Node 零依赖；npm 版本检测含 Windows .cmd shell 回退） | ✅ 完成 | 卫生脚本：违规 exit 1、合规 exit 0；摘要：Rust 144 / vitest 30 / svelte-check 0-0；sha256：6 文件实测 |
+| 文档 | README（真实仓库地址、CI 徽章、发布与 CI/CD 说明、MSVC 说明）；`docs/known-issues.md`（发布描述自动纳入） | ✅ 完成 | — |
+
+发布描述板块（维护者已确认）：基础五件套 + 构建环境细节 + 变更明细 + 测试报告附件 + 已知问题与限制。
+
+**首次推送前待办**：① 推送后检查 CI 首跑（32 位/ARM 兼容检查、MSVC 构建）；② 首个 tag（建议 `v0.0.1-beta`）发布演练；③ 若 ARM64 的 NSIS 打包在 CI 遇到问题，回退方案为该架构改传原始可执行文件（仅需调整 `release.yml` 的产物汇总步骤）。

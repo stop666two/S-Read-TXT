@@ -1,0 +1,248 @@
+# S-Read-TXT 发布流水线（Release）
+#
+# 发布策略（维护者约定，逐步细化自 2026-10-02 确认）：
+# - 仅 tag 推送（v*）触发发布；CI 永不创建、永不删除 tag（tag 永久保留）；
+# - 三架构（x64 / x86 32 位 / ARM64）完整构建，产物为 NSIS 安装包；
+# - Releases 永远只保留最新一个：新版本发布后，其他全部旧 Release 被删除
+#   （含测试版与正式版）；旧版本仍可通过其 tag 获取源码自行构建；
+# - tag 名含 `-`（如 v0.0.2-beta）自动标记为预发布（prerelease）；
+# - 描述板块：基础五件套（版本/亮点/测试摘要/产物与校验和/安装与备份提醒）
+#   + 构建环境细节 + 变更明细 + 测试报告附件 + 已知问题与限制。
+#
+# 与 CI 的关系：push 的常规检查由 ci.yml 负责；本工作流只处理「发布」，
+# 且发布前会重新完整测试（needs: test），测试不通过则不会产生 Release。
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的已存在 tag（如 v0.0.1-beta；本工作流不会创建 tag）"
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # 发布目标 tag：tag 推送时取 ref_name；手动触发时取输入值
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  # 完整测试 + 生成测试摘要与环境信息（测试不过 → 阻断发布）
+  test:
+    name: 测试与摘要
+    runs-on: windows-latest
+    steps:
+      - name: 检出目标 revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: 前端构建（Rust 编译需要 dist）
+        run: npm run build
+      - name: 前端检查与单测（收集日志）
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run check 2>&1 | tee check.log
+          npx vitest run --reporter=default --reporter=json --outputFile=vitest-report.json 2>&1 | tee vitest.log
+      - name: Rust 全量测试（收集日志）
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --all-targets 2>&1 | tee cargo-test.log
+      - name: 生成测试摘要
+        run: node scripts/ci/collect-test-summary.mjs --cargo cargo-test.log --vitest vitest-report.json --check check.log --out test-summary.md
+      - name: 生成构建环境信息
+        run: node scripts/ci/env-info.mjs --out env-info.md
+      - name: 上传元数据
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-meta
+          if-no-files-found: error
+          path: |
+            test-summary.md
+            env-info.md
+            cargo-test.log
+            vitest.log
+            check.log
+
+  # 三架构完整构建（NSIS 安装包 + 原始可执行文件）
+  build:
+    name: 构建 ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            target: x86_64-pc-windows-msvc
+          - arch: x86
+            target: i686-pc-windows-msvc
+          - arch: arm64
+            target: aarch64-pc-windows-msvc
+    steps:
+      - name: 检出目标 revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: 添加目标架构
+        run: rustup target add ${{ matrix.target }}
+      - name: Rust 缓存
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+      - name: 构建安装包（NSIS）
+        run: npm run tauri build -- --target ${{ matrix.target }}
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: s-read-txt-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
+            src-tauri/target/${{ matrix.target }}/release/s-read-txt.exe
+
+  # 发布：生成详尽描述 → 创建（或重建）Release → 删除其他全部旧 Release
+  release:
+    name: 发布 Release（保留唯一最新）
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 检出目标 revision（脚本与文档）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 下载三架构产物
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: s-read-txt-*
+      - name: 下载元数据
+        uses: actions/download-artifact@v4
+        with:
+          name: release-meta
+          path: release-meta
+      - name: 汇总产物并生成校验和
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets-all
+          # 安装包自带架构名；原始可执行文件三架构同名，按架构目录重命名避免互相覆盖
+          for arch in x64 x86 arm64; do
+            dir="release-assets/s-read-txt-$arch"
+            if [ ! -d "$dir" ]; then
+              echo "缺少产物目录：$dir"; exit 1
+            fi
+            for f in "$dir"/*.exe; do
+              base=$(basename "$f")
+              case "$base" in
+                *setup.exe) cp "$f" "release-assets-all/$base" ;;
+                *) cp "$f" "release-assets-all/s-read-txt-$arch.exe" ;;
+              esac
+            done
+          done
+          ls -la release-assets-all
+          node scripts/ci/sha256sums.mjs release-assets-all > release-assets-all/SHA256SUMS.txt
+          cat release-assets-all/SHA256SUMS.txt
+      - name: 生成变更明细（自上一个 tag）
+        run: |
+          set -euo pipefail
+          PREV=$(git describe --tags --abbrev=0 "${RELEASE_TAG}^" 2>/dev/null || true)
+          if [ -n "$PREV" ]; then
+            RANGE="$PREV..$RELEASE_TAG"
+            STAT_BASE="$PREV"
+          else
+            FIRST=$(git rev-list --max-parents=0 HEAD | tail -1)
+            RANGE="$FIRST..$RELEASE_TAG"
+            STAT_BASE="$FIRST"
+          fi
+          echo "对比范围：$RANGE"
+          {
+            echo "### 提交列表"
+            echo
+            echo '```'
+            git log --oneline --no-decorate "$RANGE" | head -200
+            echo '```'
+            echo
+            echo "### 文件变更统计"
+            echo
+            echo '```'
+            git diff --stat "$STAT_BASE" "$RELEASE_TAG" | tail -40
+            echo '```'
+          } > git-log.md
+          head -20 git-log.md
+      - name: 生成 Release 描述
+        run: |
+          node scripts/ci/release-notes.mjs \
+            --tag "$RELEASE_TAG" \
+            --test-summary release-meta/test-summary.md \
+            --env-info release-meta/env-info.md \
+            --changelog CHANGELOG.md \
+            --known-issues docs/known-issues.md \
+            --git-log git-log.md \
+            --sha256 release-assets-all/SHA256SUMS.txt \
+            --out release-notes.md
+      - name: 创建 Release（幂等：同 tag 旧 Release 先移除；tag 不受影响）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag=false 2>/dev/null || true
+          PRERELEASE_FLAG=""
+          case "$RELEASE_TAG" in *-*) PRERELEASE_FLAG="--prerelease" ;; esac
+          gh release create "$RELEASE_TAG" --verify-tag \
+            --title "S-Read-TXT $RELEASE_TAG" \
+            --notes-file release-notes.md $PRERELEASE_FLAG \
+            release-assets-all/*.exe \
+            release-assets-all/SHA256SUMS.txt \
+            release-meta/test-summary.md
+      - name: 附加完整测试报告（如仓库已有）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f docs/test-report.md ]; then
+            gh release upload "$RELEASE_TAG" docs/test-report.md --clobber
+            echo "已附加 docs/test-report.md"
+          else
+            echo "docs/test-report.md 尚不存在，跳过（阶段 9 生成后自动附带）"
+          fi
+      - name: 删除其他全部旧 Release（tag 永久保留）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          NEW_ID=$(gh release view "$RELEASE_TAG" --json id --jq .id)
+          echo "保留 Release id=$NEW_ID（$RELEASE_TAG）"
+          gh api "repos/${{ github.repository }}/releases?per_page=100" --paginate --jq '.[].id' | while read -r id; do
+            if [ "$id" != "$NEW_ID" ]; then
+              echo "删除旧 Release id=$id（tag 保留）"
+              gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
+            fi
+          done
+          echo "当前 Releases："
+          gh release list

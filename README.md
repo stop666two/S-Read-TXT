@@ -2,10 +2,12 @@
 
 极简 Windows 桌面 TXT 阅读器（可切换编辑）。基于 Tauri v2 + Rust + Svelte 5，完全离线、便携存储、专注长文阅读。
 
+[![CI](https://github.com/stop666two/S-Read-TXT/actions/workflows/ci.yml/badge.svg)](https://github.com/stop666two/S-Read-TXT/actions/workflows/ci.yml)
+
 - 版本：0.0.1-beta
-- 平台：Windows 10/11（x64）
+- 平台：Windows 10/11（x64 / x86 32 位 / ARM64 三架构构建）
 - 许可证：MIT
-- 仓库地址：待补充（占位）
+- 仓库地址：https://github.com/stop666two/S-Read-TXT
 
 ## 功能
 
@@ -31,11 +33,19 @@
 - 测试：cargo test、Vitest、CDP 驱动 E2E、Node 采样脚本
 - 依赖精确锁定（`Cargo.toml` 使用 `=` 版本；`package.json` 无范围符）
 
+## 发布与 CI/CD
+
+- **CI**（`.github/workflows/ci.yml`）：任意分支 push / PR 触发——仓库卫生检查（AGENTS.md 防泄露、便携数据目录、大文件）、前端检查测试构建、Rust 全量测试与完整构建、32 位与 ARM64 兼容检查
+- **发布**（`.github/workflows/release.yml`）：仅 tag（`v*`）触发；三架构（x64 / x86 / ARM64）NSIS 安装包；描述包含测试摘要、构建环境、变更明细、SHA256 校验和、已知问题与备份提醒
+- **Releases 只保留最新一个**：发布新版本时，其他全部旧 Release（含测试版与正式版）被删除；**tag 永不删除**，旧版本可经对应 tag 获取源码自行构建
+- tag 名含 `-`（如 `v0.0.2-beta`）自动标记为预发布（prerelease）
+- CI 与发布构建使用 MSVC 工具链；本地开发可继续使用 GNU（见上节说明）
+
 ## 开发环境要求
 
 - Windows 10/11 x64，WebView2 运行时（系统自带；安装包不捆绑）
 - Node.js ≥ 20（开发使用 v26）与 npm
-- Rust 工具链（开发使用 stable-x86_64-pc-windows-gnu；MSVC 工具链亦可）
+- Rust 工具链（本地开发使用 stable-x86_64-pc-windows-gnu；CI 与发布构建使用 MSVC）
 
 ### Windows 构建环境注意
 
@@ -81,7 +91,7 @@ npm run tauri build
 
 ```
 docs/            设计文档、实施计划、配置说明、测试报告、截图
-scripts/         Node 脚本（图标生成、编码自检、内存采样、git 钩子）
+scripts/         Node 脚本（图标生成、编码自检、内存采样、git 钩子、CI/CD 辅助）
 src/             Svelte 前端
 src-tauri/       Rust 后端（Tauri）
 ```
@@ -91,4 +101,5 @@ src-tauri/       Rust 后端（Tauri）
 - 设计定稿：`docs/design/2026-10-02-s-read-txt-design.md`
 - 实施计划：`docs/plan/implementation-plan.md`
 - 配置逐字段说明：`docs/configuration.md`（随阶段补充）
+- 已知问题与限制：`docs/known-issues.md`（发布时自动纳入 Release 描述）
 - 测试报告：`docs/test-report.md`（阶段 9 交付）
