@@ -70,12 +70,15 @@ function waitGone(pid, timeoutMs = 20000) {
 
 /** 启动应用（SRT_DATA_DIR=不可写路径）并建立 CDP 客户端（等待自动化钩子就绪）。 */
 async function launchAndConnect() {
-  const proc = spawn(exePath, [], {
-    env: {
-      ...process.env,
-      SRT_DATA_DIR: blockedPath,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
-    },
+    const proc = spawn(exePath, [], {
+      env: {
+        ...process.env,
+        SRT_DATA_DIR: blockedPath,
+        // 自动化场景显式禁用「按需提权」：本套件用「数据目录指向文件」模拟不可写，
+        // 若不禁用会触发 UAC 提权重启（交互无法自动化且与所测引导流程冲突）。
+        SRT_NO_ELEVATION: '1',
+        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+      },
     stdio: 'ignore',
   });
   const wsUrl = await findTarget(port);

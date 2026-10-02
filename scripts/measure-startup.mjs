@@ -59,7 +59,9 @@ for (let run = 0; run < runs; run += 1) {
     env: {
       ...process.env,
       SRT_DATA_DIR: dataDir,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+      // SRT_MEASURE_EXTRA_ARGS：可选附加 WebView2 参数（A/B 对比用；如 ' --in-process-gpu'
+      // 可让应用跳过其默认参数组，用于隔离参数对启动的影响）。
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}${process.env.SRT_MEASURE_EXTRA_ARGS ?? ''}`,
     },
     stdio: 'ignore',
   });
