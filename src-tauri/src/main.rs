@@ -1,31 +1,21 @@
-// S-Read-TXT 主进程入口（src-tauri/src/main.rs）
-// 阶段 1：storage/settings/logging/history/session 接入；
-// 每个 IPC 命令携带请求链路上下文（req id），日志可串联同一次调用。
+// S-Read-TXT 启动入口与应用胶水（IPC 命令、窗口与插件装配）。
+// 业务逻辑全部位于 `s_read_txt` 库（见 src/lib.rs）；本文件只做装配。
+// 发布构建隐藏 Windows 控制台窗口；调试构建保留控制台以便查看日志。
 
-// 发布构建隐藏 Windows 控制台窗口；调试构建保留控制台以便查看日志
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
-mod history;
-mod logging;
-mod session;
-mod settings;
-mod storage;
-// textfile 目前由单元测试驱动；阶段 2 接线阅读命令后移除该 allow（见进度台账 1.7）
-#[allow(dead_code)]
-mod textfile;
-mod time_util;
 
 use serde::Serialize;
 
-use history::entry::HistoryEntry;
-use history::store as history_store;
-use logging::context::{with_context, LogContext};
-use session::model::SessionState;
-use session::store as session_store;
-use settings::store as settings_store;
-use settings::{SettingsSaveRequest, SettingsSnapshot};
-use storage::data_dir;
-use storage::paths::{self, DataDirOrigin};
+use s_read_txt::history::entry::HistoryEntry;
+use s_read_txt::history::store as history_store;
+use s_read_txt::logging;
+use s_read_txt::logging::context::{with_context, LogContext};
+use s_read_txt::session::model::SessionState;
+use s_read_txt::session::store as session_store;
+use s_read_txt::settings::store as settings_store;
+use s_read_txt::settings::{SettingsSaveRequest, SettingsSnapshot};
+use s_read_txt::storage::data_dir;
+use s_read_txt::storage::paths::{self, DataDirOrigin};
 
 /// 应用信息（IPC 返回体；字段序列化为 camelCase 供前端直接消费）
 #[derive(Serialize)]

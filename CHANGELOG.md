@@ -8,7 +8,9 @@
 
 - 工程初始化：Tauri v2 + Svelte 5 脚手架、便携数据目录保护（`.gitignore`/pre-commit 钩子）、MIT 许可证、设计文档与实施计划
 - 构建与验证工具链：编码自检（UTF-8 无 BOM / LF）、图标生成、CDP 冒烟与截图脚本
+- Rust 核心模块与 IPC（阶段 1）：便携存储（原子写/JSON 容错）、三类配置（settings/reader/shortcuts）、日志（JSON 行 + 5MB×3 轮转 + 请求链路上下文）、历史（JSONL 去重/剪枝）、会话（窗口 + 标签锚点）、文本读取引擎（mmap + 编码检测 + 稀疏行索引 + 按需解码，禁止整读）；对应命令 get_app_info / data_dir_status / get_settings / save_settings / get_history / remove_history / clear_history / get_session / save_session
 
 ### 修复
 
 - Windows GNU 工具链构建失败：PATH 中旧版 `libgcc_s_seh-1.dll`（Tesseract-OCR）遮蔽 MSYS2 运行库，导致 `cc1.exe` 启动失败（`0xC0000139 STATUS_ENTRYPOINT_NOT_FOUND`）而 `windres` 报 `preprocessing failed.`；修复方式见 README「Windows 构建环境注意」
+- Windows GNU 工具链下，链接 GUI 依赖的测试目标因缺少 Common-Controls v6 清单而加载旧版 comctl32（导入 `TaskDialogIndirect` 失败，`0xC0000139`）；通过 lib+bin 拆分（库 = 纯逻辑，测试不链接 GUI）规避，应用二进制不受影响
