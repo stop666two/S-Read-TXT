@@ -1,10 +1,11 @@
 // S-Read-TXT 主进程入口（src-tauri/src/main.rs）
-// 阶段 1：storage（便携数据目录）+ settings（三类配置）接入；
+// 阶段 1：storage（便携数据目录）+ settings（三类配置）+ logging（文件日志）接入；
 // 命令清单按设计文档 §6 分阶段扩充。
 
 // 发布构建隐藏 Windows 控制台窗口；调试构建保留控制台以便查看日志
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod logging;
 mod settings;
 mod storage;
 
@@ -86,6 +87,20 @@ fn get_settings() -> SettingsSnapshot {
 }
 
 fn main() {
+    // 日志先行：级别来源 SRT_LOG_LEVEL > settings.json 的 logLevel > 默认 info；
+    // 日志初始化失败不阻塞应用（降级为无文件日志）。
+    let (startup_dir, _origin) = paths::resolve_data_dir();
+    let startup_settings = settings_store::load_app_settings(&startup_dir);
+    if let Err(err) = logging::init(&startup_dir, startup_settings.log_level) {
+        eprintln!("[s-read-txt] 日志初始化失败（应用继续运行）：{err}");
+    }
+    log::info!(
+        target: "sread::main",
+        "S-Read-TXT v{} 启动（数据目录：{}）",
+        env!("CARGO_PKG_VERSION"),
+        startup_dir.display()
+    );
+
     tauri::Builder::default()
         // 原生对话框能力（文件选择/目录选择/消息框）
         .plugin(tauri_plugin_dialog::init())

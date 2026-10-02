@@ -8,7 +8,7 @@
 | 名称 | 作用 | 类型 | 可填值 | 必填 | 默认 | 示例 |
 |---|---|---|---|---|---|---|
 | `SRT_DATA_DIR` | 覆盖数据目录（测试/特殊部署用；便携要求下一般不需要） | 路径字符串 | 绝对路径 | 否 | 未设置（程序目录/data） | `D:\srt-data` |
-| `SRT_LOG_LEVEL` | 覆盖日志级别（优先于 settings.json 的 `logLevel`） | 枚举字符串 | `error` / `warn` / `info` / `debug` | 否 | 未设置（读取 settings.logLevel） | `debug` |
+| `SRT_LOG_LEVEL` | 覆盖日志级别（优先于 settings.json 的 `logLevel`；空白/非法值忽略并回退） | 枚举字符串 | `error` / `warn` / `info` / `debug`（大小写不敏感） | 否 | 未设置（读取 settings.logLevel） | `debug` |
 
 说明：
 - 应用**不读取** `.env` 文件；环境变量由启动环境（终端、快捷方式）提供。

@@ -29,7 +29,8 @@ thiserror = "=2.0.21"
 # UTC 时间与 RFC3339：历史时间戳、日志时间戳
 time = { version = "=0.3.55", features = ["formatting", "parsing"] }
 # 日志门面：本项目自实现轻量 JSON 行日志写入（无第三方日志后端依赖）
-log = "=0.4.34"
+# features 说明：`alloc` 提供 `set_boxed_logger`（安装全局 logger 必需）；`std` 提供标准库集成
+log = { version = "=0.4.34", features = ["std", "alloc"] }
 
 [build-dependencies]
 # Tauri 构建期：校验配置、生成权限 schema 与资源
