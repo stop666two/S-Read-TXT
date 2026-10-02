@@ -205,6 +205,52 @@ async function main() {
       `window.__TAURI_INTERNALS__.invoke('get_app_info').then((info) => info.version)`,
     );
     check('D4c 应用仍可用（IPC 正常）', typeof version === 'string' && version.length > 0, version);
+
+    // ---- D5：提权助手模式（真实 exe：--prepare-data-dir / --grant-sid） ----
+    // 目的：验证「一次性授权」在真实 ACL 下生效——先制造只读目录，再用助手模式修复。
+    const helperData = join(workDir, 'helper-data');
+    mkdirSync(helperData, { recursive: true });
+    const sidProbe = spawnSync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-Command',
+        '[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value',
+      ],
+      { encoding: 'utf8', timeout: 15000 },
+    );
+    const sid = (sidProbe.stdout ?? '').trim();
+    if (!/^S-1-\d+/.test(sid)) {
+      check('D5a 获取当前用户 SID', false, sid || '（空）');
+    } else {
+      const readonly = spawnSync(
+        'icacls',
+        [helperData, '/inheritance:r', '/grant:r', `*${sid}:(RX)`],
+        { stdio: 'ignore', timeout: 20000 },
+      );
+      let writableBefore = true;
+      try {
+        writeFileSync(join(helperData, 'probe.txt'), 'x', 'utf8');
+      } catch {
+        writableBefore = false;
+      }
+      check('D5a 预置只读 ACL 后不可写', readonly.status === 0 && !writableBefore);
+
+      const helperRun = spawnSync(
+        exePath,
+        ['--prepare-data-dir', helperData, '--grant-sid', sid],
+        { encoding: 'utf8', timeout: 60000 },
+      );
+      check('D5b 助手模式退出码 0', helperRun.status === 0, `status=${helperRun.status}`);
+
+      let writableAfter = true;
+      try {
+        writeFileSync(join(helperData, 'probe2.txt'), 'x', 'utf8');
+      } catch {
+        writableAfter = false;
+      }
+      check('D5c 授权后当前用户可写', writableAfter);
+    }
   } catch (error) {
     failed += 1;
     failures.push(`异常：${error?.message ?? error}`);
