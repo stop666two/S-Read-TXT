@@ -52,6 +52,7 @@
 - 首次 Rust 编译约需 10~15 分钟（依赖全量编译），之后增量构建为秒级。
 - 本项目在 Windows 上以 **GNU 工具链**实测构建通过（Tauri 官方仅支持 MSVC；如需切换：安装 VS Build Tools 后执行 `rustup default stable-x86_64-pc-windows-msvc`）。
 - 若构建报 `windres: preprocessing failed.` 或 `cc1.exe` 静默失败（退出码 `0xC0000139` / `STATUS_ENTRYPOINT_NOT_FOUND`）：原因是 PATH 中其他目录（如 Tesseract-OCR）携带的**旧版 `libgcc_s_seh-1.dll`** 抢先覆盖了 MSYS2 的运行库。修复：确保 MSYS2 的 `ucrt64\bin`（例如 `D:\msys64\ucrt64\bin`）在 PATH 中排在该目录之前，或从 PATH 移除该目录后重新构建。
+- **「localhost 拒绝连接」防护（已根治）**：Tauri 以 `custom-protocol` feature 区分打包模式（内嵌前端资源）与开发模式（连 `http://localhost:1420`）；`tauri build` 由 CLI 自动启用，而裸 `cargo build`/`cargo test` 不会——产物会显示「localhost 拒绝连接」。本项目已在 `Cargo.toml` 中**常开该 feature**，任何方式编译的 exe 均可独立运行。代价：不支持 `tauri dev` HMR 开发服务器（本项目流程为构建产物 + CDP 自动化验证，不使用）。
 
 ## 构建与运行
 
