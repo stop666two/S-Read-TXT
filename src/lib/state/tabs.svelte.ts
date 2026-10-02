@@ -58,9 +58,23 @@ class TabStore {
     }
   }
 
-  /** 选择活动标签（仅前端镜像；后端活动同步随会话保存接入）。 */
+  /** 选择活动标签（本地即时生效 + 同步后端；失败回读视图纠正）。
+   *
+   *  说明：后端活动标签决定关闭回落方向与会话语义，必须保持一致；
+   *  同步失败（如标签已被并发关闭）时以 list_tabs 回读校准，避免镜像漂移。 */
   select(tabId: number): void {
     this.activeId = tabId;
+    void ipc.setActiveTab(tabId).catch((error: unknown) => {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[tabs] 同步活动标签失败', payload);
+      toasts.error(describeIpcError(payload));
+      void ipc
+        .listTabs()
+        .then((view) => this.applyView(view))
+        .catch(() => {
+          // 回读也失败时保持现状（下一次操作会再次校准）
+        });
+    });
   }
 
   /** 关闭标签：以返回值重建视图（幂等）。 */

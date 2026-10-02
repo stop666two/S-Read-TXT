@@ -6,6 +6,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
+  import { listen } from '@tauri-apps/api/event';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { save } from '@tauri-apps/plugin-dialog';
 
@@ -27,6 +28,9 @@
   import { describeIpcError, ipc, toIpcError, type EditApplied } from './lib/ipc';
   import { tabs } from './lib/state/tabs.svelte';
   import { toasts } from './lib/state/toasts.svelte';
+  import { actionForCombo, EDITOR_OWNED, fixedTabIndex, isEditorContext, modalOpen } from './lib/shortcuts/engine';
+  import { comboFromEvent } from './lib/shortcuts/keys';
+  import type { ShortcutAction, ShortcutMap } from './lib/shortcuts/types';
   import type { ResolvedTheme, ThemeChoice } from './lib/types';
 
   /** 主题选择（默认跟随系统；阶段 8 起由设置加载/保存） */
@@ -52,6 +56,99 @@
 
   /** 当前活动标签 */
   const active = $derived(tabs.active);
+
+  /** 生效快捷键绑定（后端为唯一真源；启动加载，设置变更后刷新） */
+  let shortcuts = $state<ShortcutMap>({});
+
+  /** 重新载入快捷键绑定（启动 / 设置窗口事件 / 窗口聚焦兑底） */
+  async function reloadShortcuts(): Promise<void> {
+    try {
+      const snapshot = await ipc.getSettings();
+      shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('[app] 载入快捷键失败', error);
+    }
+  }
+
+  /** 循环切换标签（nextTab / prevTab） */
+  function cycleTab(step: number): void {
+    const ids = tabs.tabs.map((tab) => tab.tabId);
+    if (ids.length < 2) return;
+    const index = tabs.activeId === null ? -1 : ids.indexOf(tabs.activeId);
+    const next = ids[(index + step + ids.length) % ids.length];
+    if (next !== undefined) tabs.select(next);
+  }
+
+  /** 阅读区滚动容器（虚拟滚动；无文件打开时为 null） */
+  function readerElement(): HTMLElement | null {
+    return document.querySelector<HTMLElement>('.reader');
+  }
+
+  /** 翻页（阅读态）：约一屏（留 3 行重叠） */
+  function scrollPages(step: number): void {
+    const element = readerElement();
+    if (!element) return;
+    const span = Math.max(120, element.clientHeight - 96);
+    element.scrollBy({ top: step * span, behavior: 'auto' });
+  }
+
+  /** 跳到开头 / 结尾（阅读态） */
+  function scrollToEdge(edge: 'top' | 'bottom'): void {
+    const element = readerElement();
+    if (!element) return;
+    element.scrollTop = edge === 'top' ? 0 : element.scrollHeight;
+  }
+
+  /** 执行快捷键动作（分发到既有功能函数） */
+  function runShortcut(action: ShortcutAction): void {
+    switch (action) {
+      case 'openFile':
+        openFile();
+        break;
+      case 'save':
+        if (active?.editing) openSaveDialog();
+        break;
+      case 'saveAs':
+        if (active?.editing) void saveAsFlow();
+        break;
+      case 'toggleEdit':
+        void toggleEdit();
+        break;
+      case 'closeTab':
+        if (active) void requestCloseTab(active.tabId);
+        break;
+      case 'nextTab':
+        cycleTab(1);
+        break;
+      case 'prevTab':
+        cycleTab(-1);
+        break;
+      case 'pageDown':
+        scrollPages(1);
+        break;
+      case 'pageUp':
+        scrollPages(-1);
+        break;
+      case 'firstLine':
+        scrollToEdge('top');
+        break;
+      case 'lastLine':
+        scrollToEdge('bottom');
+        break;
+      case 'fullscreen':
+        void toggleFullscreen();
+        break;
+      case 'find':
+        if (active?.editing) dispatchEditorAction('find');
+        break;
+      case 'replace':
+        if (active?.editing) dispatchEditorAction('replace');
+        break;
+      case 'historyPanel':
+        toasts.show('历史记录面板将在后续阶段提供');
+        break;
+    }
+  }
 
   /** 窗口标题（自定义标题栏 + document.title：文件名 - 应用名） */
   const windowTitle = $derived(active ? `${active.name} - S-Read-TXT` : 'S-Read-TXT');
@@ -463,22 +560,55 @@
         unlisten = stop;
       });
 
+    // 快捷键：启动加载 + 设置窗口变更事件刷新 + 窗口聚焦兑底刷新
+    void reloadShortcuts();
+    let unlistenShortcuts: (() => void) | undefined;
+    void listen('srt://shortcuts-changed', () => void reloadShortcuts()).then((stop) => {
+      unlistenShortcuts = stop;
+    });
+    let unlistenFocus: (() => void) | undefined;
+    void getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        if (focused) void reloadShortcuts();
+      })
+      .then((stop) => {
+        unlistenFocus = stop;
+      });
+
+    // 全局快捷键（捕获阶段：先于编辑层与浏览器默认行为）
+    const onGlobalKeydown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.isComposing) return;
+      const combo = comboFromEvent(event);
+      if (!combo) return;
+      const action = actionForCombo(shortcuts, combo);
+      if (!action) {
+        // 固定键：Ctrl+1~9 跳转标签（不参与自定义）
+        const tabIndex = fixedTabIndex(combo);
+        if (tabIndex !== null && !modalOpen()) {
+          event.preventDefault();
+          const target = tabs.tabs[tabIndex];
+          if (target) tabs.select(target.tabId);
+        }
+        return;
+      }
+      // 弹窗打开时引擎挂起；编辑上下文让位给编辑专属按键（PgUp/PgDn/Home/End）
+      if (modalOpen()) return;
+      if (isEditorContext(event.target) && EDITOR_OWNED.has(action)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runShortcut(action);
+    };
+    window.addEventListener('keydown', onGlobalKeydown, true);
+
     return () => {
       unlisten?.();
       unlistenClose?.();
+      unlistenShortcuts?.();
+      unlistenFocus?.();
+      window.removeEventListener('keydown', onGlobalKeydown, true);
     };
   });
 </script>
-
-<svelte:window
-  onkeydown={(event) => {
-    // F11 全屏（与查看菜单同款；阶段 5 快捷键引擎接入后统一管理）
-    if (event.key === 'F11') {
-      event.preventDefault();
-      void toggleFullscreen();
-    }
-  }}
-/>
 
 <div class="shell">
   <TitleBar title={windowTitle} />

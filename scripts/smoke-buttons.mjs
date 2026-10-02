@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createDialogOps } from './lib/dialog.mjs';
 import { argValue, createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -45,48 +46,6 @@ async function removeWithRetry(path, attempts = 12) {
   }
 }
 
-/** 原生对话框探针/关闭（user32：枚举目标进程的 #32770 窗口；close 时 PostMessage WM_CLOSE）。
- *  参数经环境变量传入（PS 5.1 的 -Command 会把尾随参数拼进脚本，不可用）。 */
-const PS_DIALOG = `
-$target = [uint32]$env:SRT_DLG_PID
-$action = [string]$env:SRT_DLG_ACTION
-Add-Type -TypeDefinition @'
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-public class SrtDlg2 {
-  public delegate bool EnumProc(IntPtr h, IntPtr l);
-  public static List<string> Lines = new List<string>();
-  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
-  [DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder sb, int max);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
-  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
-}
-'@
-$global:target = $target
-$global:action = $action
-$cb = [SrtDlg2+EnumProc]{
-  param($h, $l)
-  if ([SrtDlg2]::IsWindowVisible($h)) {
-    $wpid = [uint32]0
-    [SrtDlg2]::GetWindowThreadProcessId($h, [ref]$wpid) | Out-Null
-    if ($wpid -eq $global:target) {
-      $c = New-Object System.Text.StringBuilder 256
-      [SrtDlg2]::GetClassName($h, $c, 256) | Out-Null
-      if ($c.ToString() -eq '#32770') {
-        [void][SrtDlg2]::Lines.Add($c.ToString())
-        if ($global:action -eq 'close') { [SrtDlg2]::PostMessage($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null }
-      }
-    }
-  }
-  return $true
-}
-[SrtDlg2]::EnumWindows($cb, [IntPtr]::Zero) | Out-Null
-if ([SrtDlg2]::Lines.Count -gt 0) { 'FOUND' } else { 'NONE' }
-`;
-
 const watchdog = setTimeout(() => {
   console.error(`看门狗超时（${watchdogMs}ms），最后步骤：${currentStep}`);
   process.exit(4);
@@ -112,24 +71,8 @@ async function main() {
     stdio: 'ignore',
   });
 
-  /** 原生对话框探测/关闭 */
-  const dialogOp = (action) => {
-    const res = spawnSync('powershell', ['-NoProfile', '-Command', PS_DIALOG], {
-      encoding: 'utf8',
-      timeout: 20000,
-      env: { ...process.env, SRT_DLG_PID: String(child.pid), SRT_DLG_ACTION: action },
-    });
-    return (res.stdout ?? '').trim();
-  };
-  const waitDialog = async (expectFound, timeoutMs = 6000) => {
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-      const result = dialogOp('find');
-      if ((result === 'FOUND') === expectFound) return true;
-      if (Date.now() > deadline) return false;
-      await delay(300);
-    }
-  };
+  /** 原生对话框探测/关闭（共享实现：scripts/lib/dialog.mjs） */
+  const { dialogOp, waitDialog } = createDialogOps(child.pid);
 
   let client;
   try {

@@ -443,13 +443,18 @@ impl AppState {
             .ok_or(AppStateError::NotEditing(tab_id))
     }
 
-    /// 关闭标签；若关闭的是活动标签，则活动标签回落为剩余最后一个。
+    /// 关闭标签；若关闭的是活动标签，则活动标签回落为东侧相邻（无东侧时回落西侧）。
     ///
     /// 返回：`true` 表示确实关闭了一个标签。
     pub fn close(&mut self, tab_id: u64) -> bool {
         let removed = self.tabs.remove(&tab_id).is_some();
         if removed && self.active_tab == Some(tab_id) {
-            self.active_tab = self.tabs.keys().next_back().copied();
+            let east = self
+                .tabs
+                .range(tab_id.saturating_add(1)..)
+                .next()
+                .map(|(id, _)| *id);
+            self.active_tab = east.or_else(|| self.tabs.range(..tab_id).next_back().map(|(id, _)| *id));
         }
         removed
     }
@@ -457,6 +462,18 @@ impl AppState {
     /// 当前活动标签 id。
     pub fn active_tab(&self) -> Option<u64> {
         self.active_tab
+    }
+
+    /// 设置活动标签（前端点击/快捷键选择同步到后端；标签不存在报错）。
+    ///
+    /// 说明：后端活动标签用于关闭回落与会话语义，必须与前端选择保持一致。
+    pub fn set_active_tab(&mut self, tab_id: u64) -> Result<(), AppStateError> {
+        if self.tabs.contains_key(&tab_id) {
+            self.active_tab = Some(tab_id);
+            Ok(())
+        } else {
+            Err(AppStateError::TabNotFound(tab_id))
+        }
     }
 
     /// 单个标签信息（不存在返回 None）。
@@ -604,6 +621,44 @@ mod tests {
             .rows(info.tab_id, 0, MAX_ROWS_PER_FETCH + 1000)
             .expect("取行失败");
         assert!(payload.rows.len() <= MAX_ROWS_PER_FETCH as usize);
+    }
+
+    /// 活动标签：前端选择可同步；选择不存在的标签报错。
+    #[test]
+    fn set_active_tab_roundtrip() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path_a = write_file(dir.path(), "a.txt", "a\n");
+        let path_b = write_file(dir.path(), "b.txt", "b\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info_a, _) = state.open_file(&path_a, &settings).expect("打开失败");
+        let (info_b, _) = state.open_file(&path_b, &settings).expect("打开失败");
+        assert_eq!(state.active_tab(), Some(info_b.tab_id));
+        state.set_active_tab(info_a.tab_id).expect("同步失败");
+        assert_eq!(state.active_tab(), Some(info_a.tab_id));
+        assert!(state.set_active_tab(9999).is_err(), "不存在的标签应报错");
+    }
+
+    /// 关闭活动标签：回落东侧相邻；无东侧时回落西侧。
+    #[test]
+    fn close_active_falls_back_to_east_neighbor() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path_a = write_file(dir.path(), "a.txt", "a\n");
+        let path_b = write_file(dir.path(), "b.txt", "b\n");
+        let path_c = write_file(dir.path(), "c.txt", "c\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info_a, _) = state.open_file(&path_a, &settings).expect("打开失败");
+        let (info_b, _) = state.open_file(&path_b, &settings).expect("打开失败");
+        let (info_c, _) = state.open_file(&path_c, &settings).expect("打开失败");
+
+        state.set_active_tab(info_b.tab_id).expect("同步失败");
+        assert!(state.close(info_b.tab_id));
+        assert_eq!(state.active_tab(), Some(info_c.tab_id), "中间标签关闭应回落东侧");
+
+        state.set_active_tab(info_c.tab_id).expect("同步失败");
+        assert!(state.close(info_c.tab_id));
+        assert_eq!(state.active_tab(), Some(info_a.tab_id), "末位标签关闭应回落西侧");
     }
 
     /// 切换编码更新标签信息；关闭标签回落活动标签。

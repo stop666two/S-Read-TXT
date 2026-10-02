@@ -147,6 +147,14 @@ pub fn save_settings(request: SettingsSaveRequest) -> Result<SettingsSnapshot, I
     })
 }
 
+/// 命令：默认快捷键表（动作 id → 组合键；设置界面「恢复默认」的唯一真源）。
+#[tauri::command]
+pub fn get_default_shortcuts() -> std::collections::BTreeMap<String, String> {
+    with_context(LogContext::request(), || {
+        s_read_txt::settings::defaults::default_bindings()
+    })
+}
+
 /// 命令：读取历史记录（去重 + 修剪 + 时间倒序；必要时自愈压缩文件）。
 #[tauri::command]
 pub fn get_history() -> Vec<HistoryEntry> {
@@ -570,5 +578,17 @@ pub fn replace_all_in_edit(
             outcome.replaced
         );
         Ok(outcome)
+    })
+}
+
+/// 命令：同步活动标签（前端点击/快捷键选择后调用；标签不存在报错）。
+///
+/// 说明：后端活动标签决定关闭回落方向与会话语义，必须与前端选择保持一致。
+#[tauri::command]
+pub fn set_active_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<(), IpcError> {
+    with_context(LogContext::request(), || {
+        lock_state(&state)?
+            .set_active_tab(tab_id)
+            .map_err(IpcError::from)
     })
 }

@@ -142,6 +142,59 @@ export function describeIpcError(error: IpcErrorPayload): string {
   }
 }
 
+/** 历史保留策略（与 Rust `HistorySettings` 对应）。 */
+export interface HistorySettings {
+  maxEntries: number;
+  retentionDays: number;
+}
+
+/** 主配置（与 Rust `AppSettings` 对应；字段名以 Rust 序列化为准）。 */
+export interface AppSettings {
+  schemaVersion: number;
+  logLevel: string;
+  maxFileSizeMB: number;
+  maxTabs: number;
+  history: HistorySettings;
+  saveBackupEnabled: boolean;
+  showOnboarding: boolean;
+}
+
+/** 排版配置（与 Rust `TypographySettings` 对应）。 */
+export interface TypographySettings {
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  contentWidth: number;
+  pagePadding: number;
+}
+
+/** 阅读配置（与 Rust `ReaderSettings` 对应）。 */
+export interface ReaderSettings {
+  schemaVersion: number;
+  theme: string;
+  typography: TypographySettings;
+}
+
+/** 快捷键配置（与 Rust `ShortcutSettings` 对应；bindings 为「生效绑定」）。 */
+export interface ShortcutSettings {
+  schemaVersion: number;
+  bindings: Record<string, string>;
+}
+
+/** 配置聚合快照（`get_settings` 返回体）。 */
+export interface SettingsSnapshot {
+  app: AppSettings;
+  reader: ReaderSettings;
+  shortcuts: ShortcutSettings;
+}
+
+/** 配置保存请求（`save_settings` 入参；shortcuts 传「生效绑定」）。 */
+export interface SettingsSaveRequest {
+  app: AppSettings;
+  reader: ReaderSettings;
+  shortcuts: ShortcutSettings;
+}
+
 /** 类型化 IPC 命令集合（参数名与 Tauri 的 camelCase 约定一致）。 */
 export const ipc = {
   /** 应用信息（版本 / 数据目录）。 */
@@ -160,6 +213,8 @@ export const ipc = {
   listTabs: () => invoke<TabsView>('list_tabs'),
   /** 关闭标签（返回剩余视图）。 */
   closeTab: (tabId: number) => invoke<TabsView>('close_tab', { tabId }),
+  /** 同步活动标签到后端（点击/快捷键选择后调用）。 */
+  setActiveTab: (tabId: number) => invoke<void>('set_active_tab', { tabId }),
   /** 切换编辑模式（首次进入创建编辑文档）。 */
   toggleEdit: (tabId: number) => invoke<TabInfo>('toggle_edit', { tabId }),
   /** 应用编辑批次（批次 = 单个撤销步）。 */
@@ -198,4 +253,11 @@ export const ipc = {
   /** 全部替换（单撤销步）。 */
   replaceAllInEdit: (tabId: number, query: string, caseSensitive: boolean, replacement: string) =>
     invoke<ReplaceAllOutcome>('replace_all_in_edit', { tabId, query, caseSensitive, replacement }),
+  /** 配置快照（快捷键等；后端为唯一真源）。 */
+  getSettings: () => invoke<SettingsSnapshot>('get_settings'),
+  /** 保存配置（返回保存后的快照）。 */
+  saveSettings: (request: SettingsSaveRequest) =>
+    invoke<SettingsSnapshot>('save_settings', { request }),
+  /** 默认快捷键表（设置界面「恢复默认」用）。 */
+  getDefaultShortcuts: () => invoke<Record<string, string>>('get_default_shortcuts'),
 };

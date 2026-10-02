@@ -630,10 +630,8 @@
         if (mod && (event.key === 'a' || event.key === 'A')) selectAll();
         else if (mod && (event.key === 'z' || event.key === 'Z')) void doUndoRedo(event.shiftKey);
         else if (mod && (event.key === 'y' || event.key === 'Y')) void doUndoRedo(true);
-        else if (mod && (event.key === 'c' || event.key === 'C')) void doCopy(false);
-        else if (mod && (event.key === 'x' || event.key === 'X')) void doCopy(true);
-        else if (mod && (event.key === 'f' || event.key === 'F')) openFind(false);
-        else if (mod && (event.key === 'h' || event.key === 'H')) openFind(true);
+      else if (mod && (event.key === 'c' || event.key === 'C')) void doCopy(false);
+      else if (mod && (event.key === 'x' || event.key === 'X')) void doCopy(true);
         else handled = false;
     }
     if (handled) event.preventDefault();
