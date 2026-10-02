@@ -108,6 +108,29 @@ export interface ReplaceAllOutcome {
   applied: EditApplied | null;
 }
 
+/** 查找模式：标准（字面）或正则（用户自写 Rust regex 语法）。 */
+export type SearchMode = 'literal' | 'regex';
+
+/** 「全部替换」预览中的单条命中（确认弹窗展示与逐条剔除用）。 */
+export interface ReplacePreviewItem {
+  index: number;
+  startRow: number;
+  startUtf16: number;
+  endRow: number;
+  endUtf16: number;
+  lineText: string;
+  matchedText: string;
+  replacementText: string;
+}
+
+/** 「全部替换」预览结果（stateId 用于执行时校验文档未变化）。 */
+export interface ReplacePreview {
+  stateId: number;
+  total: number;
+  truncated: boolean;
+  items: ReplacePreviewItem[];
+}
+
 /** 保存结果（与 Rust commands::SaveTabResult 对齐）。 */
 export interface SaveTabResult {
   bytesWritten: number;
@@ -291,13 +314,19 @@ export const ipc = {
   /** 从磁盘重载（丢弃未保存修改）。 */
   reloadTab: (tabId: number) => invoke<TabInfo>('reload_tab', { tabId }),
   /** 查找下一个（from = 显示坐标；不环绕，由前端在文末后从头重试）。 */
-  findInEdit: (tabId: number, query: string, caseSensitive: boolean, from: [number, number] | null) =>
-    invoke<FindHit | null>('find_in_edit', { tabId, query, caseSensitive, from }),
-  /** 替换一次（从 from 起）并返回后续命中。 */
+  findInEdit: (
+    tabId: number,
+    query: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+    from: [number, number] | null,
+  ) => invoke<FindHit | null>('find_in_edit', { tabId, query, caseSensitive, mode, from }),
+  /** 替换一次（从 from 起）并返回后续命中；正则替换支持 $1 捕获展开。 */
   replaceInEdit: (
     tabId: number,
     query: string,
     caseSensitive: boolean,
+    mode: SearchMode,
     from: [number, number] | null,
     replacement: string,
   ) =>
@@ -305,12 +334,76 @@ export const ipc = {
       tabId,
       query,
       caseSensitive,
+      mode,
       from,
       replacement,
     }),
-  /** 全部替换（单撤销步）。 */
-  replaceAllInEdit: (tabId: number, query: string, caseSensitive: boolean, replacement: string) =>
-    invoke<ReplaceAllOutcome>('replace_all_in_edit', { tabId, query, caseSensitive, replacement }),
+  /** 全部替换（单撤销步；正常流程请用预览 + applyReplaceAll）。 */
+  replaceAllInEdit: (
+    tabId: number,
+    query: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+    replacement: string,
+  ) =>
+    invoke<ReplaceAllOutcome>('replace_all_in_edit', {
+      tabId,
+      query,
+      caseSensitive,
+      mode,
+      replacement,
+    }),
+  /** 生成「全部替换」预览（二次确认弹窗数据源；命中过多时报 QUERY_TOO_BROAD）。 */
+  previewReplaceAll: (
+    tabId: number,
+    query: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+    replacement: string,
+  ) =>
+    invoke<ReplacePreview>('preview_replace_all_in_edit', {
+      tabId,
+      query,
+      caseSensitive,
+      mode,
+      replacement,
+    }),
+  /** 执行「全部替换」：selected=null 全部；数组 = 仅替换所列序号（预览剔除后）。 */
+  applyReplaceAll: (
+    tabId: number,
+    query: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+    replacement: string,
+    selected: number[] | null,
+    expectStateId: number,
+  ) =>
+    invoke<ReplaceAllOutcome>('apply_replace_all_in_edit', {
+      tabId,
+      query,
+      caseSensitive,
+      mode,
+      replacement,
+      selected,
+      expectStateId,
+    }),
+  /** 显示行窗口内的命中（文档高亮用；扫描越过窗口即停止）。 */
+  matchWindow: (
+    tabId: number,
+    query: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+    startRow: number,
+    count: number,
+  ) =>
+    invoke<FindHit[]>('match_window_in_edit', {
+      tabId,
+      query,
+      caseSensitive,
+      mode,
+      startRow,
+      count,
+    }),
   /** 配置快照（快捷键等；后端为唯一真源）。 */
   getSettings: () => invoke<SettingsSnapshot>('get_settings'),
   /** 保存配置（返回保存后的快照）。 */

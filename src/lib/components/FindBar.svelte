@@ -5,6 +5,8 @@
   定位：fixed 相对视口（锚定阅读容器右上角），容器内部滚动不影响位置。
 -->
 <script lang="ts">
+  import type { SearchMode } from '../ipc';
+
   interface Props {
     /** 打开时是否显示替换行 */
     replaceMode: boolean;
@@ -13,20 +15,37 @@
     /** 定位基准容器（阅读 .reader；窗口尺寸变化时重算） */
     anchor: () => HTMLElement | null;
     /** 查找下一个 */
-    onFindNext: (query: string, caseSensitive: boolean) => void;
+    onFindNext: (query: string, caseSensitive: boolean, mode: SearchMode) => void;
     /** 替换一个（从当前选区起点/光标起） */
-    onReplace: (query: string, replacement: string, caseSensitive: boolean) => void;
-    /** 全部替换 */
-    onReplaceAll: (query: string, replacement: string, caseSensitive: boolean) => void;
+    onReplace: (query: string, replacement: string, caseSensitive: boolean, mode: SearchMode) => void;
+    /** 全部替换（走「预览 → 二次确认（可剔除）→ 执行」流程） */
+    onReplaceAll: (
+      query: string,
+      replacement: string,
+      caseSensitive: boolean,
+      mode: SearchMode,
+    ) => void;
+    /** 查询条件变化（查询/大小写/模式；EditLayer 据此刷新文档高亮） */
+    onQueryChange: (query: string, caseSensitive: boolean, mode: SearchMode) => void;
     /** 关闭查找条 */
     onClose: () => void;
   }
-  let { replaceMode, focusSignal, anchor, onFindNext, onReplace, onReplaceAll, onClose }: Props =
-    $props();
+  let {
+    replaceMode,
+    focusSignal,
+    anchor,
+    onFindNext,
+    onReplace,
+    onReplaceAll,
+    onQueryChange,
+    onClose,
+  }: Props = $props();
 
   let query = $state('');
   let replacement = $state('');
   let caseSensitive = $state(false);
+  /** 查找模式：标准字面 / 用户正则（`.*` 按钮切换） */
+  let mode = $state<SearchMode>('literal');
   let findInput = $state<HTMLInputElement | null>(null);
   /** 相对视口的定位（top/right，px） */
   let position = $state<{ top: number; right: number }>({ top: 64, right: 24 });
@@ -55,6 +74,11 @@
     findInput?.select();
   });
 
+  // 查询条件变化上报（文档高亮的刷新由 EditLayer 统一防抖调度）
+  $effect(() => {
+    onQueryChange(query, caseSensitive, mode);
+  });
+
   /** 查找条内按键：Esc 关闭；Enter 查找下一个 / 替换一个。 */
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
@@ -65,8 +89,8 @@
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      if (event.target === findInput) onFindNext(query, caseSensitive);
-      else onReplace(query, replacement, caseSensitive);
+      if (event.target === findInput) onFindNext(query, caseSensitive, mode);
+      else onReplace(query, replacement, caseSensitive, mode);
     }
   }
 </script>
@@ -89,6 +113,16 @@
     />
     <button
       class="icon"
+      class:on={mode === 'regex'}
+      aria-pressed={mode === 'regex'}
+      title="正则表达式（Rust regex 语法；替换支持 $1 捕获展开）"
+      aria-label="正则表达式"
+      onclick={() => (mode = mode === 'regex' ? 'literal' : 'regex')}
+    >
+      .*
+    </button>
+    <button
+      class="icon"
       class:on={caseSensitive}
       aria-pressed={caseSensitive}
       title="区分大小写"
@@ -97,7 +131,11 @@
     >
       Aa
     </button>
-    <button class="action" disabled={query.length === 0} onclick={() => onFindNext(query, caseSensitive)}>
+    <button
+      class="action"
+      disabled={query.length === 0}
+      onclick={() => onFindNext(query, caseSensitive, mode)}
+    >
       下一个
     </button>
     <button class="icon" title="关闭" aria-label="关闭查找" onclick={onClose}>×</button>
@@ -115,14 +153,14 @@
       <button
         class="action"
         disabled={query.length === 0}
-        onclick={() => onReplace(query, replacement, caseSensitive)}
+        onclick={() => onReplace(query, replacement, caseSensitive, mode)}
       >
         替换
       </button>
       <button
         class="action"
         disabled={query.length === 0}
-        onclick={() => onReplaceAll(query, replacement, caseSensitive)}
+        onclick={() => onReplaceAll(query, replacement, caseSensitive, mode)}
       >
         全部替换
       </button>

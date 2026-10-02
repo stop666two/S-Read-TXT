@@ -163,8 +163,14 @@ async function main() {
       async () => (await evalJs(`document.querySelector('.find-bar') !== null`)) || null,
       5000,
     );
-    const focused = await evalJs(
-      `document.activeElement?.closest('.find-bar') !== null && document.activeElement?.tagName === 'INPUT'`,
+    const focused = await waitForValue(
+      async () =>
+        ((await evalJs(
+          `document.activeElement?.closest('.find-bar') !== null && document.activeElement?.tagName === 'INPUT'`,
+        )) === true
+          ? true
+          : null),
+      5000,
     );
     check('F2 Ctrl+F 打开查找条（输入框聚焦）', barOpen === true && focused === true);
 
@@ -205,13 +211,13 @@ async function main() {
     }, 8000);
     check('F5 大小写不敏感命中并替换 row1', r5 === 'REPLACED here', r5 ?? '(超时)');
 
-    // F6：全部替换（row3 剩余 1 处）
+    // F6：全部替换（row3 剩余 1 处；命中 =1 直接执行，不弹预览）
     currentStep = 'F6 全部替换';
     await clickBarButton('全部替换');
     const r6 = await waitForValue(async () => {
       const text = await rowText(3);
       const toast = await toastText();
-      return text === 'REPLACED again' && toast.includes('已全部替换 1 处') ? text : null;
+      return text === 'REPLACED again' && toast.includes('已替换 1 处') ? text : null;
     }, 8000);
     check('F6 全部替换（1 处 + 提示）', r6 === 'REPLACED again', r6 ?? '(超时)');
 
@@ -338,6 +344,128 @@ async function main() {
       'F14 脏态重新加载（确认丢弃）',
       wAdded !== null && dialogSeen === true && r14 === true,
     );
+
+    // F15：正则模式（切换 `.*` → ne+dle 命中并产生文档高亮）
+    currentStep = 'F15 正则查找与高亮';
+    await evalJs(`(document.querySelector('[aria-label="切换编辑模式"]')?.click(), true)`);
+    await waitForValue(async () => ((await activeTab())?.editing ? true : null), 8000);
+    await focusProxy();
+    await ctrlKey('f', 'KeyF', 70);
+    await waitForValue(
+      async () => (await evalJs(`document.querySelector('.find-bar') !== null`)) || null,
+      5000,
+    );
+    await evalJs(
+      `(() => { const b = [...document.querySelectorAll('.find-bar button')].find((n) => n.textContent.trim() === '.*'); b?.click(); return !!b; })()`,
+    );
+    await focusFindInput();
+    await client.send('Input.insertText', { text: 'ne+dle' });
+    await delay(500); // 高亮防抖 150ms
+    const highlightCount = await waitForValue(async () => {
+      const count = await evalJs(`document.querySelectorAll('.match').length`);
+      return count > 0 ? count : null;
+    }, 6000);
+    await clickBarButton('下一个');
+    const regexSel = await waitForValue(async () => {
+      const rects = await evalJs(`document.querySelectorAll('.selection').length`);
+      return rects > 0 ? rects : null;
+    }, 6000);
+    check(
+      'F15 正则模式（ne+dle 命中 + 文档高亮）',
+      highlightCount !== null && regexSel !== null,
+      `match=${highlightCount} sel=${regexSel}`,
+    );
+
+    // F16：无效正则 → 明确提示
+    currentStep = 'F16 无效正则提示';
+    await focusFindInput();
+    await client.send('Input.insertText', { text: '(' });
+    await clickBarButton('下一个');
+    const invalidToast = await waitForValue(async () => {
+      const t = await toastText();
+      return t.includes('正则表达式无效') ? t : null;
+    }, 6000);
+    check('F16 无效正则提示', invalidToast !== null, invalidToast ?? '(超时)');
+
+    // F17：全部替换 ≥2 命中 → 预览弹窗（行号/原文高亮/替换后文本）；剔除一条后仅替换勾选项
+    currentStep = 'F17 预览确认与剔除';
+    await focusFindInput();
+    await client.send('Input.insertText', { text: 'needle' });
+    await evalJs(
+      `(() => { const b = [...document.querySelectorAll('.find-bar button')].find((n) => n.textContent.trim() === '.*'); b?.click(); return !!b; })()`,
+    );
+    // 查找模式（Ctrl+F）打开时没有替换输入框：经编辑菜单切到替换形态
+    await menuClick('编辑', '替换…');
+    await waitForValue(async () => {
+      const count = await evalJs(`document.querySelectorAll('.find-bar input').length`);
+      return count === 2 ? count : null;
+    }, 5000);
+    await evalJs(
+      `(() => { const inputs = document.querySelectorAll('.find-bar input'); inputs[1]?.focus(); inputs[1]?.select(); return true; })()`,
+    );
+    await client.send('Input.insertText', { text: 'FIXED' });
+    await clickBarButton('全部替换');
+    const previewSeen = await waitForValue(async () => {
+      const n = await evalJs(
+        `document.querySelector('[aria-label="全部替换预览"]') !== null`,
+      );
+      return n === true ? true : null;
+    }, 8000);
+    const previewHighlight = await evalJs(
+      `document.querySelectorAll('[aria-label="全部替换预览"] mark.old').length + document.querySelectorAll('[aria-label="全部替换预览"] mark.new').length`,
+    );
+    // 取消勾选第一条（从待替换集合中“删除”）
+    await evalJs(
+      `(() => { const boxes = document.querySelectorAll('[aria-label="全部替换预览"] input[type=checkbox]'); boxes[0]?.click(); return boxes.length; })()`,
+    );
+    const pickedLabel = await evalJs(
+      `(() => { const b = [...document.querySelectorAll('[aria-label="全部替换预览"] button')].find((n) => n.textContent.includes('替换已选')); return b ? b.textContent.trim() : ''; })()`,
+    );
+    await evalJs(
+      `(() => { const b = [...document.querySelectorAll('[aria-label="全部替换预览"] button')].find((n) => n.textContent.includes('替换已选')); b?.click(); return !!b; })()`,
+    );
+    const r17 = await waitForValue(async () => {
+      const t0 = await rowText(0);
+      const t1 = await rowText(1);
+      const t3 = await rowText(3);
+      // 剔除的 row0 保持 'needle'；row1 的 'Needle' 与 row3 的 'needle' 被替换
+      return t0 === 'alpha needle beta' && t1 === 'FIXED here' && t3 === 'FIXED again'
+        ? true
+        : null;
+    }, 8000);
+    const toast17 = await toastText();
+    check(
+      'F17 预览剔除后仅替换勾选项',
+      previewSeen === true &&
+        previewHighlight >= 6 &&
+        pickedLabel.includes('替换已选') &&
+        r17 === true &&
+        toast17.includes('已替换'),
+      `marks=${previewHighlight} label=${pickedLabel}`,
+    );
+
+    // F18：单步撤销还原全部替换（两处）
+    currentStep = 'F18 撤销恢复';
+    await focusProxy();
+    await ctrlKey('z', 'KeyZ', 90);
+    const r18 = await waitForValue(async () => {
+      const t1 = await rowText(1);
+      const t3 = await rowText(3);
+      return t1 === 'Needle here' && t3 === 'needle again' ? true : null;
+    }, 8000);
+    check('F18 单步撤销还原全部替换', r18 === true);
+
+    // F19：关闭查找条（清理交互态）
+    currentStep = 'F19 关闭查找条';
+    await evalJs(
+      `(() => { const b = [...document.querySelectorAll('.find-bar button')].find((n) => n.textContent.trim() === '×'); b?.click(); return !!b; })()`,
+    );
+    const findClosed = await waitForValue(
+      async () => ((await evalJs(`document.querySelector('.find-bar') === null`)) || null),
+      5000,
+    );
+    const matchCleared = await evalJs(`document.querySelectorAll('.match').length`);
+    check('F19 关闭查找条并清除高亮', findClosed === true && matchCleared === 0);
   } finally {
     client?.close();
     if (child.pid) {

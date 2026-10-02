@@ -5,11 +5,11 @@
   坐标：位置 = (行号, 行内 UTF-16 偏移)，与编辑引擎一致；叠加层坐标相对 .page。
 -->
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
   import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
-  import { describeIpcError, ipc, toIpcError, type EditApplied, type FindHit } from '../ipc';
+  import { describeIpcError, ipc, toIpcError, type EditApplied, type FindHit, type ReplacePreview, type SearchMode } from '../ipc';
   import {
     clampPos,
     collapsed,
@@ -30,6 +30,7 @@
   import { deleteOp, deleteRangeOp, insertOp, replaceOp } from '../edit/ops';
   import { toasts } from '../state/toasts.svelte';
   import FindBar from './FindBar.svelte';
+  import ReplacePreviewDialog from './ReplacePreviewDialog.svelte';
   import type { EditActionType, EditorAction } from '../edit/actions';
 
   interface Props {
@@ -101,6 +102,31 @@
   let findFocusSeq = $state(0);
   /** 最近一次已处理的外部动作序号（去重） */
   let lastActionSeq = -1;
+  /** 文档高亮单次最多渲染的命中数（可见窗口内足够；防止海量命中拖慢渲染） */
+  const MATCH_HIGHLIGHT_MAX = 800;
+  /** 文档内全部命中高亮盒（当前可见行窗口内） */
+  let matchBoxes = $state<Box[]>([]);
+  /** 最近一次查询条件（FindBar 上报；驱动高亮刷新） */
+  let liveQuery = $state<{ query: string; caseSensitive: boolean; mode: SearchMode }>({
+    query: '',
+    caseSensitive: false,
+    mode: 'literal',
+  });
+  /** 高亮刷新防抖定时器 */
+  let matchTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 高亮请求序号（丢弃过期响应） */
+  let matchSeq = 0;
+  /** 全部替换预览数据（二次确认弹窗；null = 未激活） */
+  let previewData = $state<ReplacePreview | null>(null);
+  /** 预览对应的查询参数（执行时回传） */
+  let previewArgs: {
+    query: string;
+    replacement: string;
+    caseSensitive: boolean;
+    mode: SearchMode;
+  } | null = null;
+  /** 预览弹窗开关 */
+  let previewOpen = $state(false);
 
   // ---- 坐标与渲染 ----
 
@@ -432,7 +458,7 @@
     if (lastText === undefined) void ensureRow(lastRow);
   }
 
-  // ---- 查找/替换（阶段 4c） ----
+  // ---- 查找/替换（v2：标准/正则双模式 + 预览确认 + 文档高亮） ----
 
   /** 打开查找条（replace = 同时显示替换行）。 */
   function openFind(replace: boolean): void {
@@ -441,9 +467,10 @@
     findFocusSeq += 1;
   }
 
-  /** 关闭查找条并归还键盘焦点。 */
+  /** 关闭查找条、清除高亮并归还键盘焦点。 */
   function closeFind(): void {
     findOpen = false;
+    matchBoxes = [];
     focusInput();
   }
 
@@ -455,13 +482,98 @@
     });
   }
 
+  /** 查询条件变化（FindBar 上报）：记录，高亮由防抖 effect 统一刷新。 */
+  function handleQueryChange(query: string, caseSensitive: boolean, mode: SearchMode): void {
+    liveQuery = { query, caseSensitive, mode };
+  }
+
+  /** 可见行窗口内全部命中 → 高亮盒（正则语法错误等静默；动作路径有 toast 反馈）。 */
+  async function refreshMatches(): Promise<void> {
+    const { query, caseSensitive, mode } = liveQuery;
+    if (!findOpen || query.length === 0) {
+      matchBoxes = [];
+      return;
+    }
+    const container = getContainer();
+    if (!container) {
+      matchBoxes = [];
+      return;
+    }
+    const nodes = container.querySelectorAll<HTMLElement>('.row[data-row]');
+    if (nodes.length === 0) {
+      matchBoxes = [];
+      return;
+    }
+    let minRow = Number.MAX_SAFE_INTEGER;
+    let maxRow = -1;
+    nodes.forEach((node) => {
+      const row = Number(node.dataset.row ?? -1);
+      if (Number.isFinite(row) && row >= 0) {
+        minRow = Math.min(minRow, row);
+        maxRow = Math.max(maxRow, row);
+      }
+    });
+    if (maxRow < 0) {
+      matchBoxes = [];
+      return;
+    }
+    const seq = ++matchSeq;
+    try {
+      const hits = await ipc.matchWindow(
+        tabId,
+        query,
+        caseSensitive,
+        mode,
+        minRow,
+        maxRow - minRow + 1,
+      );
+      if (seq !== matchSeq || !findOpen) return;
+      const page = pageEl();
+      if (!page) return;
+      const pageRect = page.getBoundingClientRect();
+      const boxes: Box[] = [];
+      for (const hit of hits.slice(0, MATCH_HIGHLIGHT_MAX)) {
+        const lastRow = Math.min(hit.endRow, maxRow);
+        for (let row = hit.startRow; row <= lastRow; row += 1) {
+          const node = rowNode(row);
+          const text = rowText(row);
+          if (!node || text === undefined || !(node.firstChild instanceof Text)) continue;
+          const from = row === hit.startRow ? Math.min(hit.startUtf16, text.length) : 0;
+          const to = row === hit.endRow ? Math.min(hit.endUtf16, text.length) : text.length;
+          if (to <= from) continue;
+          const range = document.createRange();
+          range.setStart(node.firstChild, from);
+          range.setEnd(node.firstChild, to);
+          for (const rect of range.getClientRects()) {
+            if (rect.width > 0 || rect.height > 0) {
+              boxes.push({
+                left: rect.left - pageRect.left,
+                top: rect.top - pageRect.top,
+                height: rect.height,
+                width: rect.width,
+              });
+            }
+          }
+        }
+      }
+      matchBoxes = boxes;
+    } catch {
+      // 正则语法错误/文档变化等：高亮静默；用户动作路径有 toast 反馈
+      matchBoxes = [];
+    }
+  }
+
   /** 查找下一个：从当前光标起；到文末未命中时从头再试一次。 */
-  async function doFindNext(query: string, caseSensitive: boolean): Promise<void> {
+  async function doFindNext(
+    query: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+  ): Promise<void> {
     if (query.length === 0) return;
     try {
       const head = selection.head;
-      let hit = await ipc.findInEdit(tabId, query, caseSensitive, [head.row, head.utf16]);
-      if (!hit) hit = await ipc.findInEdit(tabId, query, caseSensitive, null);
+      let hit = await ipc.findInEdit(tabId, query, caseSensitive, mode, [head.row, head.utf16]);
+      if (!hit) hit = await ipc.findInEdit(tabId, query, caseSensitive, mode, null);
       if (!hit) {
         toasts.error(`未找到「${query}」`);
         return;
@@ -477,7 +589,12 @@
   }
 
   /** 替换一个：优先替换当前选区起点处的命中，否则替换光标后的第一个；随后选中下一个。 */
-  async function doReplace(query: string, replacement: string, caseSensitive: boolean): Promise<void> {
+  async function doReplace(
+    query: string,
+    replacement: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+  ): Promise<void> {
     if (query.length === 0) return;
     try {
       const start = orderedSelection(selection).start;
@@ -485,6 +602,7 @@
         tabId,
         query,
         caseSensitive,
+        mode,
         [start.row, start.utf16],
         replacement,
       );
@@ -506,24 +624,87 @@
     }
   }
 
-  /** 全部替换（单撤销步）。 */
-  async function doReplaceAll(query: string, replacement: string, caseSensitive: boolean): Promise<void> {
+  /** 全部替换：先预览；命中 =0 提示，=1 直接执行，≥2 弹二次确认（可逐条剔除）。 */
+  async function doReplaceAll(
+    query: string,
+    replacement: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+  ): Promise<void> {
     if (query.length === 0) return;
     try {
-      const outcome = await ipc.replaceAllInEdit(tabId, query, caseSensitive, replacement);
-      if (outcome.replaced === 0) {
+      const preview = await ipc.previewReplaceAll(tabId, query, caseSensitive, mode, replacement);
+      if (preview.total === 0) {
         toasts.error(`未找到「${query}」`);
         return;
       }
+      if (preview.total === 1) {
+        await applyReplaceAll(preview, query, replacement, caseSensitive, mode, null);
+        return;
+      }
+      previewData = preview;
+      previewArgs = { query, replacement, caseSensitive, mode };
+      previewOpen = true;
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[edit] 全部替换预览失败', payload);
+      toasts.error(describeIpcError(payload));
+    }
+  }
+
+  /** 执行「全部替换」（selected = null 全部；数组 = 预览弹窗勾选后的序号）。 */
+  async function applyReplaceAll(
+    preview: ReplacePreview,
+    query: string,
+    replacement: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+    selected: number[] | null,
+  ): Promise<void> {
+    try {
+      const outcome = await ipc.applyReplaceAll(
+        tabId,
+        query,
+        caseSensitive,
+        mode,
+        replacement,
+        selected,
+        preview.stateId,
+      );
       if (outcome.applied) applyOutcome(outcome.applied);
-      // 同上：全部替换后焦点归还编辑器，保证 Ctrl+Z 立即可用
       focusEditorProxy();
-      toasts.show(`已全部替换 ${outcome.replaced} 处`);
+      toasts.show(`已替换 ${outcome.replaced} 处`);
     } catch (error) {
       const payload = toIpcError(error);
       if (import.meta.env.DEV) console.error('[edit] 全部替换失败', payload);
       toasts.error(describeIpcError(payload));
     }
+  }
+
+  /** 预览弹窗确认：关闭并执行（truncated 时前端传 null = 全部替换）。 */
+  function confirmPreview(selected: number[] | null): void {
+    const data = previewData;
+    const args = previewArgs;
+    previewOpen = false;
+    previewData = null;
+    previewArgs = null;
+    if (!data || !args) return;
+    void applyReplaceAll(
+      data,
+      args.query,
+      args.replacement,
+      args.caseSensitive,
+      args.mode,
+      selected,
+    );
+  }
+
+  /** 预览弹窗取消。 */
+  function cancelPreview(): void {
+    previewOpen = false;
+    previewData = null;
+    previewArgs = null;
+    focusEditorProxy();
   }
 
   /** 应用替换结果：回报父组件 + 光标落到后端权威位置。 */
@@ -795,6 +976,32 @@
     lastActionSeq = action.seq;
     handleAction(action.type);
   });
+
+  // 查询条件/渲染窗口/查找条开关变化 → 防抖刷新文档高亮
+  // （version 经 revision prop 传入：滚动换窗、行数据到达、编辑应用都会自增）
+  $effect(() => {
+    const snapshot = liveQuery;
+    void snapshot;
+    void revision;
+    void findOpen;
+    untrack(() => {
+      if (matchTimer) clearTimeout(matchTimer);
+      if (!findOpen) {
+        matchBoxes = [];
+        return;
+      }
+      matchTimer = setTimeout(() => {
+        void refreshMatches();
+      }, 150);
+    });
+  });
+
+  // 卸载时清理高亮防抖定时器
+  $effect(() => {
+    return () => {
+      if (matchTimer) clearTimeout(matchTimer);
+    };
+  });
 </script>
 
 <svelte:window onfocusin={handleFocusIn} />
@@ -807,6 +1014,13 @@
   onmouseup={handleMouseUp}
   onmouseleave={handleMouseUp}
 ></div>
+
+{#each matchBoxes as box, index (index)}
+  <div
+    class="match"
+    style="left: {box.left}px; top: {box.top}px; width: {box.width}px; height: {box.height}px"
+  ></div>
+{/each}
 
 {#each selBoxes as box, index (index)}
   <div
@@ -832,10 +1046,21 @@
     replaceMode={replaceOpen}
     focusSignal={findFocusSeq}
     anchor={getContainer}
-    onFindNext={(q, cs) => void doFindNext(q, cs)}
-    onReplace={(q, r, cs) => void doReplace(q, r, cs)}
-    onReplaceAll={(q, r, cs) => void doReplaceAll(q, r, cs)}
+    onFindNext={(q, cs, mode) => void doFindNext(q, cs, mode)}
+    onReplace={(q, r, cs, mode) => void doReplace(q, r, cs, mode)}
+    onReplaceAll={(q, r, cs, mode) => void doReplaceAll(q, r, cs, mode)}
+    onQueryChange={handleQueryChange}
     onClose={closeFind}
+  />
+{/if}
+
+{#if previewOpen && previewData}
+  <ReplacePreviewDialog
+    total={previewData.total}
+    truncated={previewData.truncated}
+    items={previewData.items}
+    onConfirm={confirmPreview}
+    onCancel={cancelPreview}
   />
 {/if}
 
@@ -860,6 +1085,14 @@
     position: absolute;
     inset: 0;
     cursor: text;
+  }
+
+  .match {
+    position: absolute;
+    z-index: -2;
+    background: rgba(255, 193, 7, 0.38);
+    border-radius: 2px;
+    pointer-events: none;
   }
 
   .selection {

@@ -219,11 +219,23 @@ async function main() {
     check('K8b 对话框已关闭', dialogClosed === true);
     await delay(300);
 
-    // K9 历史面板动作：绑定的待实现动作应给出明确提示
-    currentStep = 'K9 历史面板提示';
+    // K9 历史面板：Ctrl+Shift+H 打开真实面板（阶段 6 已落地），并可关闭
+    currentStep = 'K9 历史面板开关';
     await press('h', 'KeyH', 72, 10); // Ctrl+Shift+H
-    await waitForValue(async () => ((await toastText()).includes('历史记录') ? true : null), 5000);
-    check('K9 Ctrl+Shift+H 提示历史面板待提供', (await toastText()).includes('历史记录'), await toastText());
+    const panelOpened = await waitForValue(async () => {
+      const open = await evalJs(
+        `document.querySelector('[role="dialog"][aria-label="历史记录"]') !== null`,
+      );
+      return open === true ? true : null;
+    }, 5000);
+    await evalJs(`(document.querySelector('[aria-label="关闭历史面板"]')?.click(), true)`);
+    const panelClosed = await waitForValue(async () => {
+      const open = await evalJs(
+        `document.querySelector('[role="dialog"][aria-label="历史记录"]') !== null`,
+      );
+      return open === false ? true : null;
+    }, 5000);
+    check('K9 Ctrl+Shift+H 打开历史面板并可关闭', panelOpened === true && panelClosed === true);
 
     // K10 无标签安全：全部关闭后各快捷键不得崩溃
     currentStep = 'K10 无标签安全';
