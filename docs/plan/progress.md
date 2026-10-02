@@ -110,13 +110,13 @@
 
 **首次推送前待办**：① 推送后检查 CI 首跑（32 位/ARM 兼容检查、MSVC 构建）；② 首个 tag（建议 `v0.0.1-beta`）发布演练；③ 若 ARM64 的 NSIS 打包在 CI 遇到问题，回退方案为该架构改传原始可执行文件（仅需调整 `release.yml` 的产物汇总步骤）。
 
-## 阶段 4：编辑交互层（进行中 🔨）
+## 阶段 4：编辑交互层（已完成 ✅ 2026-10-02）
 
 | 切片 | 内容 | 状态 | 证据 |
 |---|---|---|---|
 | 4a | 编辑命令接线：`toggle_edit`（首次创建编辑文档 + 磁盘基准快照）/ `apply_edits` / `undo_edit` / `redo_edit` / `save_tab` / `save_tab_as` / `reload_tab`；`get_rows` 编辑态供数切换；`EditOp` 反序列化（kind + camelCase）；`EditDoc::percent_at_row`；脏态阻止编码切换（重载为无条件重建，确认由前端负责）；错误码映射（INVALID_POSITION / FILE_CONFLICT / ENCODING_UNREPRESENTABLE / NOT_EDITING / EDIT_DIRTY） | ✅ 完成 | lib **148/148**（新增 9：编辑文档生命周期/撤销重做/保存与冲突/另存为重定向/重载丢弃/脏态拦截/超长行拒绝 + 错误映射 2）；`cargo build` 0 告警 |
 | 4b | 前端编辑 UI：切换入口与脏标记、光标/选区（点击/拖选/Shift+方向键/全选）、输入/删除/回车、IME 隐藏锚点、剪切复制粘贴、Ctrl+S 保存流（编码询问/冲突/.bak）、脏关闭三态确认 | ✅ 完成 | 见「切片 4b 详情」；vitest **47/47**、编辑冒烟 **12/12**、对抗冒烟 **40/40**、cargo **170/170**；截图 `docs/screenshots/phase4b-{edit,abuse}.png` |
-| 4c | 查找/替换（大小写、下一个/替换/全部）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟）、**超长行完整分段渲染（维护者确认）** | 🔨 进行中 | 超长行分段 ✅（100MB 验收 9/9）；查找/替换 ✅ 前后端完成（E2E 14/14：连续替换/全部替换单撤销步/撤销还原/大小写/菜单撤销/另存为/重载）；剩：IME composition E2E |
+| 4c | 查找/替换（大小写、下一个/替换/全部）、另存为 UI、重载 UI、E2E 实测（含 IME composition 模拟）、**超长行完整分段渲染（维护者确认）** | ✅ 完成 | 超长行分段（100MB 验收 9/9）；查找/替换 E2E 14/14；**IME 组合输入 E2E 7/7**（组合显示/候选更新/提交入库/取消无副作用/UTF-8 保存）；截图 phase4c-{longline,find,ime}.png |
 
 > 扩展点预留（维护者要求）：`textfile::source::DocumentSource` 契约已落地——未来解析器/新格式实现该 trait 并在打开流程分派即可接入（AppState 取行与前端渲染零改动）；编辑契约仅绑定文本引擎，解析类文档默认只读。
 
@@ -154,3 +154,9 @@
 - 编辑菜单补全（撤销/重做/剪切/复制/粘贴/全选/查找/替换/另存为）；文件菜单新增重新加载；动作经 `src/lib/edit/actions.ts` 信号通道（seq 去重）从菜单传到编辑层；另存为流程（save 对话框 → 复用编码询问弹窗 → `save_tab_as` → 标签重定向）。后端：AppState find/replace 三方法 + 3 个命令 + `QUERY_TOO_BROAD` 码；`reload_tab` 为无条件重建（丢弃编辑文档），前端负责脏态确认。
 - E2E `scripts/smoke-find.mjs` **14/14**（F1–F14：查找条/替换行/连续替换不区分大小写/全部替换+提示/三次撤销全还原/大小写未找到/命中选中/Esc/菜单撤销/另存为链路/脏态重载）；截图 `docs/screenshots/phase4c-find.png`；smoke-edit 回归 12/12；svelte-check 0/0。
 - 已知：系统原生「另存为」文件选择框无法脚本化，E2E 经 IPC 直调覆盖保存链路，对话框点选由人工核验（已登记）。
+
+### 切片 4c-4 详情（IME 组合输入 E2E）
+
+- `scripts/smoke-ime.mjs` **7/7**：I1 打开并进入编辑 → I2 组合中 preedit 悬浮显示（ni）→ I3 候选更新（你）→ I4 提交入库（你alpha + 脏态 + preedit 消失）→ I5 取消组合无副作用 → I6 保存后磁盘 UTF-8 中文 → I7 截图。
+- 关键发现：本 WebView2 的 CDP 协议面无 `Input.imeCommitComposition`；**组合中的 `Input.insertText` 会被 Blink 路由为“提交当前组合”并触发 `compositionend`**（探针记录完整事件序列：compositionstart → update → beforeinput/input → … → compositionend）；空文本 imeSetComposition 为取消路径。
+- 阶段 4 全部完成：4a 后端接线、4b 交互层、4c 超长行分段 / 查找替换 / 菜单补全 / 另存为 / 重载 / IME 验证。
