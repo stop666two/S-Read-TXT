@@ -1,0 +1,62 @@
+{
+  "tag": "in-process-gpu",
+  "extraArgs": "--in-process-gpu",
+  "generatedAt": "2026-10-02T11:59:52.461Z",
+  "files": 10,
+  "sizeMb": 100,
+  "totals": {
+    "privateMb": 88.3,
+    "workingSetMb": 1331.9
+  },
+  "processes": [
+    {
+      "pid": 13552,
+      "name": "s-read-txt.exe",
+      "role": "app",
+      "privateMb": 4.1,
+      "workingSetMb": 1023.5
+    },
+    {
+      "pid": 6564,
+      "name": "msedgewebview2.exe",
+      "role": "other",
+      "privateMb": 45.7,
+      "workingSetMb": 160.1
+    },
+    {
+      "pid": 19896,
+      "name": "msedgewebview2.exe",
+      "role": "webview-crashpad",
+      "privateMb": 1.4,
+      "workingSetMb": 8
+    },
+    {
+      "pid": 4640,
+      "name": "msedgewebview2.exe",
+      "role": "webview-utility",
+      "privateMb": 7.1,
+      "workingSetMb": 36.8
+    },
+    {
+      "pid": 10888,
+      "name": "msedgewebview2.exe",
+      "role": "webview-utility",
+      "privateMb": 3.2,
+      "workingSetMb": 18.6
+    },
+    {
+      "pid": 13412,
+      "name": "msedgewebview2.exe",
+      "role": "webview-renderer",
+      "privateMb": 26.7,
+      "workingSetMb": 84.8
+    }
+  ],
+  "page": {
+    "jsHeapUsedMb": 2.8,
+    "jsHeapTotalMb": 5.3,
+    "domNodes": 882,
+    "jsEventListeners": 52,
+    "documents": 4
+  }
+}

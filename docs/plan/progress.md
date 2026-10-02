@@ -277,3 +277,28 @@
 - **真实缺陷（全量自检暴露）**：快速连点主题按钮时主题会「回跳」——`persistReader` 的异步响应把较旧快照回灌并覆盖更新的本地选择（主题循环又基于本地状态推导下一步，错误被放大）；修复 = 序号守卫（仅采纳最后一次请求的响应），设置窗口 store 同类场景一并加固。
 - 测试稳定化：`smoke-buttons` C7 改为按期望值轮询（链式运行较慢时固定延时读取会抖动）；`smoke-history` H3b 延长等待（12s，历史重开后建索引 + 恢复）。
 - **全量自检 20/20 通过（191.6s）**：12 项门禁 + 12 套 E2E（含 100MB 长行、多语言、IME、历史、会话、对抗）。
+
+## 阶段 9：启动/内存策略、滚动锚定修复与系统要求（2026-10-02）
+
+### 内存构成分析与策略（维护者拍板：in-process-gpu + 特性裁剪）
+- **构成实测（10×100MiB 标签、专用工作集）**：基线 97.7MiB = 浏览器 31.2 + GPU 25.9 + 渲染器 24.7 + utility 7.0/3.2 + **应用（Rust）仅 4.3** + crashpad 1.4；JS 堆 2.8MB、DOM 884 节点 → 我们的代码/数据结构几乎不占，大头是 WebView2 运行时基线。
+- 变体对照：`--disable-gpu` 80.1（但图片走软件光栅，不利未来 EPUB 内嵌图片）/ `--in-process-gpu` 88.3 / 堆 + 特性裁剪 95.6 / **in-process-gpu + 裁剪 81.9**。维护者要求按「未来格式 + 内嵌图片」重估后选定**后者**。
+- 实施：`main.rs` 启动注入 `--in-process-gpu --disable-features=WinUseBrowserSpellChecker,CalculateNativeWinOcclusion,msWebOOUI,msPdfOOUI --disable-background-networking --disable-component-update --disable-extensions --disable-sync`（外部参数保留；显式 `--in-process-gpu` 时不重复追加）；裁剪项同时强化「完全离线」。
+- 复测：**79.2MiB**（无独立 GPU 进程，GPU 服务并入浏览器）；压力后峰值 105.8MiB（<120 兜底，理想线 >100 为 churn 增长，属可回收的渲染进程内部缓存）。
+
+### 启动策略（维护者拍板：立即显示 + 内置占位）
+- `main.rs`：读 reader.json 主题 → `set_background_color`（浅 #FAF9F7 / 深 #1E1E1E / 护眼 #F5EFE0；system 读窗口明暗）→ **显示之前**应用会话窗口几何（原前端职责迁移，消除可见跳动）→ 立即 `show()`；占位样式 `index.html` 内置（CSP 下内联 <style> 正常，受 `style-src 'unsafe-inline'` 管控）；`main.ts` 挂载前 `replaceChildren()`；App 只保留归还焦点。
+- 度量口径更新（`measure-startup.mjs`）：可见 = 日志「启动→主窗口已显示」；内容就绪 = CDP（`__srt` + 标题）。实测 release 5 次：可见 581–685ms、内容就绪 median 718ms/max 822ms → **PASS**。
+
+### 滚动锚定真实缺陷（压力测试暴露，已修复）
+- 现象：100MB 文件冷态首次远跳停在不复位的 694,384（S5 14/15、漂移 594,384px）。
+- 排查链（探针证据齐全）：10MB 文件正常（内容高 3.4M<Chrome 33.55M 上限）→ 纯 DOM 静态稳定 → 加「跳转后 DOM 重建」复现（`auto`=199,064、`overflow-anchor:none`=100,000）→ 无任何 JS 写入（setter 钩子）→ 根因 **Chromium 滚动锚定 + 应用内反馈放大 6.9 倍**；`--disable-features=ScrollAnchoring` 实测无效（特性名失效）；CSS 注入被 CSP 拦（对照实验曾因此无效）。
+- 修复：`.reader { overflow-anchor: none; }`。验证：首跳精确 100,000；`stress` **11/11**（S5 15/15、漂移全 0、耗时 3078→128ms）。
+
+### 系统要求结论（Win7 问询）
+- 官方证据：Rust 1.78 发布说明（`x86_64-pc-windows-gnu` 等目标最低 Windows 10）；Tauri 2.12.1 MSRV=1.90；`time`/`encoding_rs` 需 1.88、`webview2-com` 需 1.82；微软文档「Edge 对 Win7 支持于 109（2023-01）终止」。
+- 决策：**不支持 Win7/8.1，明确写系统要求 Windows 10 1803+**；不附无法验证的旧运行时包。已同步 README / Release 说明 / known-issues。
+
+### 符号按钮悬浮提示审计（维护者要求）
+- 全量盘点：工具栏 8 键 / 标题栏三键 / 标签关闭 / 查找条（`.*`、`Aa`、`×`）/ 历史面板（关闭、单条删除、清空）/ Toast 关闭 —— 仅**历史面板「关闭」缺失**；已补齐 `title`，查找条关闭提示补注 Esc。
+- 顺带修复测试基建：`smoke-buttons` C8b 链条偶发失败根因 = **CDP 目标出现 ≠ Svelte 已挂载**（高负载时关闭按钮尚未渲染，`?.click()` 静默点空 → 设置窗口残留 → C8b/D12 连锁失败）；加固为先轮询关闭按钮存在的再点击；单跑 **30/30**。

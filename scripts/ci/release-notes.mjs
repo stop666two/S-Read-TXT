@@ -119,10 +119,11 @@ function main() {
   lines.push("");
   lines.push("## 安装说明");
   lines.push("");
-  lines.push("1. 按系统架构下载对应安装包：`x64`（64 位，绝大多数设备）/ `x86`（32 位旧设备）/ `arm64`（Windows on ARM）；");
-  lines.push("2. 安装包为 NSIS 安装程序，未进行代码签名，SmartScreen 可能提示「未知发布者」——请核对 SHA256 校验和后选择「仍要运行」；");
-  lines.push("3. 程序依赖系统 WebView2 运行时（Windows 10/11 通常已预装；缺失时请先从微软官网安装 Evergreen 运行时）；");
-  lines.push("4. 完全离线运行，不联网、不含遥测；所有数据保存在程序目录 `data/` 内。");
+  lines.push("1. **系统要求：Windows 10 1803 及以上（x64 / x86 / ARM64）**；不支持 Windows 7 / 8.1（微软已随 Edge/WebView2 109 于 2023-01 终止对旧系统的支持，本程序工具链亦要求 Windows 10+）；");
+  lines.push("2. 按系统架构下载对应安装包：`x64`（64 位，绝大多数设备）/ `x86`（32 位旧设备）/ `arm64`（Windows on ARM）；");
+  lines.push("3. 安装包为 NSIS 安装程序，未进行代码签名，SmartScreen 可能提示「未知发布者」——请核对 SHA256 校验和后选择「仍要运行」；");
+  lines.push("4. 程序依赖系统 WebView2 运行时（Windows 10/11 通常已预装；缺失时请先从微软官网安装 Evergreen 运行时）；");
+  lines.push("5. 完全离线运行，不联网、不含遥测；所有数据保存在程序目录 `data/` 内。");
   lines.push("");
   lines.push("## 备份提醒");
   lines.push("");

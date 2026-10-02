@@ -1,0 +1,69 @@
+{
+  "tag": "gpu-trimmed",
+  "extraArgs": "--disable-features=WinUseBrowserSpellChecker,CalculateNativeWinOcclusion,msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-networking --disable-component-update --disable-extensions --disable-sync",
+  "generatedAt": "2026-10-02T12:03:23.613Z",
+  "files": 10,
+  "sizeMb": 100,
+  "totals": {
+    "privateMb": 95.6,
+    "workingSetMb": 1350.8
+  },
+  "processes": [
+    {
+      "pid": 5504,
+      "name": "s-read-txt.exe",
+      "role": "app",
+      "privateMb": 4.2,
+      "workingSetMb": 1023.7
+    },
+    {
+      "pid": 15908,
+      "name": "msedgewebview2.exe",
+      "role": "other",
+      "privateMb": 28.9,
+      "workingSetMb": 110.9
+    },
+    {
+      "pid": 17924,
+      "name": "msedgewebview2.exe",
+      "role": "webview-crashpad",
+      "privateMb": 1.4,
+      "workingSetMb": 8
+    },
+    {
+      "pid": 18308,
+      "name": "msedgewebview2.exe",
+      "role": "webview-gpu",
+      "privateMb": 26.7,
+      "workingSetMb": 85.1
+    },
+    {
+      "pid": 3420,
+      "name": "msedgewebview2.exe",
+      "role": "webview-utility",
+      "privateMb": 4.8,
+      "workingSetMb": 30.3
+    },
+    {
+      "pid": 21608,
+      "name": "msedgewebview2.exe",
+      "role": "webview-utility",
+      "privateMb": 3.2,
+      "workingSetMb": 18.7
+    },
+    {
+      "pid": 8284,
+      "name": "msedgewebview2.exe",
+      "role": "webview-renderer",
+      "privateMb": 26.3,
+      "workingSetMb": 74.1
+    }
+  ],
+  "page": {
+    "jsHeapUsedMb": 2.8,
+    "jsHeapTotalMb": 5.3,
+    "domNodes": 884,
+    "jsEventListeners": 52,
+    "documents": 4
+  }
+}

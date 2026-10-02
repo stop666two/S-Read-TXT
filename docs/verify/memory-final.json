@@ -1,0 +1,62 @@
+{
+  "tag": "final",
+  "extraArgs": "",
+  "generatedAt": "2026-10-02T12:15:18.556Z",
+  "files": 10,
+  "sizeMb": 100,
+  "totals": {
+    "privateMb": 79.2,
+    "workingSetMb": 1320.4
+  },
+  "processes": [
+    {
+      "pid": 12144,
+      "name": "s-read-txt.exe",
+      "role": "app",
+      "privateMb": 4.1,
+      "workingSetMb": 1023.4
+    },
+    {
+      "pid": 10704,
+      "name": "msedgewebview2.exe",
+      "role": "other",
+      "privateMb": 41.1,
+      "workingSetMb": 156.8
+    },
+    {
+      "pid": 19624,
+      "name": "msedgewebview2.exe",
+      "role": "webview-crashpad",
+      "privateMb": 1.4,
+      "workingSetMb": 8
+    },
+    {
+      "pid": 6668,
+      "name": "msedgewebview2.exe",
+      "role": "webview-utility",
+      "privateMb": 4.8,
+      "workingSetMb": 30.5
+    },
+    {
+      "pid": 14628,
+      "name": "msedgewebview2.exe",
+      "role": "webview-utility",
+      "privateMb": 3.4,
+      "workingSetMb": 18.8
+    },
+    {
+      "pid": 12536,
+      "name": "msedgewebview2.exe",
+      "role": "webview-renderer",
+      "privateMb": 24.3,
+      "workingSetMb": 82.9
+    }
+  ],
+  "page": {
+    "jsHeapUsedMb": 2.8,
+    "jsHeapTotalMb": 5.5,
+    "domNodes": 905,
+    "jsEventListeners": 52,
+    "documents": 4
+  }
+}
