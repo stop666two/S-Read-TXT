@@ -267,6 +267,8 @@ export const ipc = {
   closeTab: (tabId: number) => invoke<TabsView>('close_tab', { tabId }),
   /** 同步活动标签到后端（点击/快捷键选择后调用）。 */
   setActiveTab: (tabId: number) => invoke<void>('set_active_tab', { tabId }),
+  /** 调整标签展示顺序（拖拽排序；下标记「移除后再插入」语义）。 */
+  reorderTab: (tabId: number, toIndex: number) => invoke<void>('reorder_tab', { tabId, toIndex }),
   /** 打开设置窗口（已存在则聚焦；按需创建；tab 指定初始页签）。 */
   openSettings: (tab?: string) => invoke<void>('open_settings', { tab: tab ?? null }),
   /** 取走设置窗口待打开页签（读取即清空；无待办返回 null）。 */

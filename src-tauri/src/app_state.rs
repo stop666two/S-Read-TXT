@@ -119,6 +119,9 @@ struct Tab {
 /// 应用运行状态。
 pub struct AppState {
     tabs: BTreeMap<u64, Tab>,
+    /// 标签展示顺序（tab_id 列表；拖拽排序修改）。
+    /// 与 BTreeMap 解耦以支持任意展示顺序；新标签追加到末尾。
+    order: Vec<u64>,
     next_tab_id: u64,
     active_tab: Option<u64>,
 }
@@ -134,6 +137,7 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             tabs: BTreeMap::new(),
+            order: Vec::new(),
             next_tab_id: 1,
             active_tab: None,
         }
@@ -174,6 +178,7 @@ impl AppState {
         };
         let info = tab_info(&tab);
         self.tabs.insert(id, tab);
+        self.order.push(id);
         self.active_tab = Some(id);
         Ok((info, false))
     }
@@ -443,19 +448,24 @@ impl AppState {
             .ok_or(AppStateError::NotEditing(tab_id))
     }
 
-    /// 关闭标签；若关闭的是活动标签，则活动标签回落为东侧相邻（无东侧时回落西侧）。
+    /// 关闭标签；若关闭的是活动标签，则活动标签回落为**展示顺序**的东侧相邻
+    /// （无东侧时回落西侧）。
     ///
     /// 返回：`true` 表示确实关闭了一个标签。
     pub fn close(&mut self, tab_id: u64) -> bool {
+        let position = self.order.iter().position(|id| *id == tab_id);
         let removed = self.tabs.remove(&tab_id).is_some();
+        if let Some(position) = position {
+            self.order.remove(position);
+        }
         if removed && self.active_tab == Some(tab_id) {
-            let east = self
-                .tabs
-                .range(tab_id.saturating_add(1)..)
-                .next()
-                .map(|(id, _)| *id);
-            self.active_tab =
-                east.or_else(|| self.tabs.range(..tab_id).next_back().map(|(id, _)| *id));
+            // 移除后 position 恰指向原「东侧相邻」；无东侧则取西侧
+            let east = position.and_then(|index| self.order.get(index).copied());
+            self.active_tab = east.or_else(|| {
+                position
+                    .and_then(|index| index.checked_sub(1))
+                    .and_then(|index| self.order.get(index).copied())
+            });
         }
         removed
     }
@@ -482,9 +492,30 @@ impl AppState {
         self.tabs.get(&tab_id).map(tab_info)
     }
 
-    /// 全部标签信息（按创建顺序）。
+    /// 调整标签展示顺序（拖拽排序）。
+    ///
+    /// 参数：`tab_id` 被移动的标签；`to_index` 目标下标（0 起，按「移除后再插入」语义；
+    /// 越界时收敛到末尾）。
+    /// 错误：标签不存在（`TabNotFound`）。
+    pub fn reorder(&mut self, tab_id: u64, to_index: usize) -> Result<(), AppStateError> {
+        let from = self
+            .order
+            .iter()
+            .position(|id| *id == tab_id)
+            .ok_or(AppStateError::TabNotFound(tab_id))?;
+        let value = self.order.remove(from);
+        let target = to_index.min(self.order.len());
+        self.order.insert(target, value);
+        Ok(())
+    }
+
+    /// 全部标签信息（按展示顺序）。
     pub fn tabs_info(&self) -> Vec<TabInfo> {
-        self.tabs.values().map(tab_info).collect()
+        self.order
+            .iter()
+            .filter_map(|id| self.tabs.get(id))
+            .map(tab_info)
+            .collect()
     }
 
     /// 内部：取标签（不存在报错）。
@@ -588,6 +619,85 @@ mod tests {
         state.open_file(&first, &settings).expect("第一个应成功");
         let result = state.open_file(&second, &settings);
         assert!(matches!(result, Err(AppStateError::MaxTabs { limit: 1 })));
+    }
+
+    /// 拖拽排序：移动后展示顺序按新下标生效；越界收敛到末尾；未知标签报错。
+    #[test]
+    fn reorder_moves_tab_in_display_order() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let a = write_file(dir.path(), "a.txt", "a\n");
+        let b = write_file(dir.path(), "b.txt", "b\n");
+        let c = write_file(dir.path(), "c.txt", "c\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info_a, _) = state.open_file(&a, &settings).expect("打开 a 失败");
+        let (info_b, _) = state.open_file(&b, &settings).expect("打开 b 失败");
+        let (info_c, _) = state.open_file(&c, &settings).expect("打开 c 失败");
+        assert_eq!(
+            state
+                .tabs_info()
+                .iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<_>>(),
+            ["a.txt", "b.txt", "c.txt"]
+        );
+
+        // c 移到最前
+        state.reorder(info_c.tab_id, 0).expect("排序失败");
+        assert_eq!(
+            state
+                .tabs_info()
+                .iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<_>>(),
+            ["c.txt", "a.txt", "b.txt"]
+        );
+
+        // a 移到末尾（越界收敛）
+        state.reorder(info_a.tab_id, 99).expect("排序失败");
+        assert_eq!(
+            state
+                .tabs_info()
+                .iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<_>>(),
+            ["c.txt", "b.txt", "a.txt"]
+        );
+
+        // b 移到中间
+        state.reorder(info_b.tab_id, 1).expect("排序失败");
+        assert_eq!(
+            state
+                .tabs_info()
+                .iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<_>>(),
+            ["c.txt", "b.txt", "a.txt"]
+        );
+
+        assert!(matches!(
+            state.reorder(9999, 0),
+            Err(AppStateError::TabNotFound(9999))
+        ));
+    }
+
+    /// 排序后关闭活动标签：回落按展示顺序取东侧相邻（而非 id 顺序）。
+    #[test]
+    fn close_after_reorder_falls_back_in_display_order() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let a = write_file(dir.path(), "a.txt", "a\n");
+        let b = write_file(dir.path(), "b.txt", "b\n");
+        let c = write_file(dir.path(), "c.txt", "c\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info_a, _) = state.open_file(&a, &settings).expect("打开 a 失败");
+        state.open_file(&b, &settings).expect("打开 b 失败");
+        let (info_c, _) = state.open_file(&c, &settings).expect("打开 c 失败");
+        // 展示顺序：c, a, b；活动 = c
+        state.reorder(info_c.tab_id, 0).expect("排序失败");
+        assert!(state.close(info_c.tab_id));
+        // 按展示顺序东侧相邻 = a（若按 id 顺序会错误回落到 b）
+        assert_eq!(state.active_tab(), Some(info_a.tab_id));
     }
 
     /// 取行窗口：载荷字段与内容正确；未知标签报错。

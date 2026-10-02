@@ -100,6 +100,7 @@ fn main() {
             commands::list_tabs,
             commands::close_tab,
             commands::set_active_tab,
+            commands::reorder_tab,
             commands::open_settings,
             commands::take_settings_tab,
             commands::toggle_edit,

@@ -632,6 +632,20 @@ pub fn set_active_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<
     })
 }
 
+/// 命令：调整标签展示顺序（拖拽排序；下标记「移除后再插入」语义，越界收敛到末尾）。
+#[tauri::command]
+pub fn reorder_tab(
+    tab_id: u64,
+    to_index: u32,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), IpcError> {
+    with_context(LogContext::request(), || {
+        lock_state(&state)?
+            .reorder(tab_id, to_index as usize)
+            .map_err(IpcError::from)
+    })
+}
+
 /// 设置窗口待打开的页签（`open_settings` 写入；设置窗口启动时经 `take_settings_tab` 取走）。
 /// 用进程级静态而非 AppState：设置窗口生命周期与标签状态无关，且值极小。
 static SETTINGS_PENDING_TAB: Mutex<Option<String>> = Mutex::new(None);

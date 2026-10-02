@@ -584,6 +584,38 @@
     pendingClose = { kind: 'tab', tabId };
   }
 
+  /** 右键菜单：关闭其他标签（脏标签保留并计数提示，避免静默丢改动）。 */
+  async function closeOtherTabs(keepId: number): Promise<void> {
+    let skippedDirty = 0;
+    for (const tab of [...tabs.tabs]) {
+      if (tab.tabId === keepId) continue;
+      if (tab.dirty) {
+        skippedDirty += 1;
+        continue;
+      }
+      await tabs.close(tab.tabId);
+    }
+    if (skippedDirty > 0) toasts.show(`已保留 ${skippedDirty} 个有未保存修改的标签`, 'warn');
+  }
+
+  /** 右键菜单：关闭全部标签（脏标签保留并计数提示）。 */
+  async function closeAllTabs(): Promise<void> {
+    let skippedDirty = 0;
+    for (const tab of [...tabs.tabs]) {
+      if (tab.dirty) {
+        skippedDirty += 1;
+        continue;
+      }
+      await tabs.close(tab.tabId);
+    }
+    if (skippedDirty > 0) toasts.show(`已保留 ${skippedDirty} 个有未保存修改的标签`, 'warn');
+  }
+
+  /** 拖拽排序（前端乐观更新；后端失败时 store 自动回读校准）。 */
+  function reorderTab(tabId: number, toIndex: number): void {
+    tabs.reorder(tabId, toIndex);
+  }
+
   /** 逐个保存指定标签（任一取消即中止，返回是否全部完成） */
   async function saveTabsSequentially(tabIds: number[]): Promise<boolean> {
     for (const tabId of tabIds) {
@@ -863,12 +895,15 @@
     onSave={openSaveDialog}
     onSettings={() => void ipc.openSettings()}
   />
-  <TabBar
-    tabs={tabs.tabs}
-    activeId={tabs.activeId}
-    onSelect={(tabId) => tabs.select(tabId)}
-    onClose={(tabId) => void requestCloseTab(tabId)}
-  />
+<TabBar
+  tabs={tabs.tabs}
+  activeId={tabs.activeId}
+  onSelect={(tabId) => tabs.select(tabId)}
+  onClose={(tabId) => void requestCloseTab(tabId)}
+  onCloseOthers={(tabId) => void closeOtherTabs(tabId)}
+  onCloseAll={() => void closeAllTabs()}
+  onReorder={reorderTab}
+/>
   {#if active}
     <ReaderView
       tab={active}

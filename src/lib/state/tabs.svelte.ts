@@ -77,6 +77,29 @@ class TabStore {
     });
   }
 
+  /** 拖拽排序：本地立即生效（响应快），后端失败时回读视图纠正。
+   *
+   *  `toIndex` 语义 = 从列表移除后插入的下标（越界由后端收敛到末尾）。 */
+  reorder(tabId: number, toIndex: number): void {
+    const from = this.tabs.findIndex((tab) => tab.tabId === tabId);
+    if (from < 0) return;
+    const next = [...this.tabs];
+    const [moved] = next.splice(from, 1);
+    next.splice(Math.max(0, Math.min(toIndex, next.length)), 0, moved);
+    this.tabs = next;
+    void ipc.reorderTab(tabId, toIndex).catch((error: unknown) => {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[tabs] 排序同步失败', payload);
+      toasts.error(describeIpcError(payload));
+      void ipc
+        .listTabs()
+        .then((view) => this.applyView(view))
+        .catch(() => {
+          // 回读失败时保持现状（下一次操作会再次校准）
+        });
+    });
+  }
+
   /** 关闭标签：以返回值重建视图（幂等）。 */
   async close(tabId: number): Promise<void> {
     try {
