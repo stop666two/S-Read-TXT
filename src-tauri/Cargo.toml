@@ -46,12 +46,14 @@ regex = "=1.13.1"
 tauri-build = { version = "=2.7.1", features = [] }
 
 [target.'cfg(windows)'.dependencies]
-# Windows 安全/外壳 API：启动时「按需提权」（UAC）。
-# 用途：检测当前进程令牌是否已提权；数据目录不可写且非管理员时以 runas 重启自身。
+# Windows 安全/外壳 API：数据目录权限的一次性初始化（提权助手）。
+# 用途：查询当前用户 SID（ConvertSidToStringSidW）、检测令牌提权状态、
+#       以 runas 拉起提权助手（建目录 + icacls 授权）、启动失败原生消息框。
 # 仅 Windows 编译；GNU 与 MSVC 工具链均由 windows-targets 提供导入库。
 windows-sys = { version = "=0.61.2", features = [
   "Win32_Foundation",
   "Win32_Security",
+  "Win32_Security_Authorization",
   "Win32_System_Registry",
   "Win32_System_Threading",
   "Win32_UI_Shell",

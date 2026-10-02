@@ -73,18 +73,22 @@ fn theme_background_color(theme: Theme, window: &tauri::WebviewWindow) -> tauri:
 }
 
 fn main() {
+    // 提权助手模式最先处理：只创建数据目录并授予当前用户修改权限后立即退出，
+    // 绝不进入 Tauri/WebView2（整体提权运行会破坏 WebView2 子进程的数据目录读写，
+    // 详见 elevation.rs 模块文档）。
+    if let Some(code) = s_read_txt::elevation::maybe_run_prepare_mode() {
+        std::process::exit(code);
+    }
     // WebView2 附加参数必须在任何 WebView 创建之前设置（含内存策略与离线加固项）。
     configure_webview2_extra_args();
     // 日志先行：级别来源 SRT_LOG_LEVEL > settings.json 的 logLevel > 默认 info；
     // 日志初始化失败不阻塞应用（降级为无文件日志）。
     let (startup_dir, _origin) = paths::resolve_data_dir();
-    // 管理员权限按需申请：仅当便携数据目录不可写（如按机器安装到 Program Files）
-    // 且当前非管理员时，以管理员身份重启自身（UAC 提示）。便携运行与「仅为我」安装
-    // 的目录天然可写 → 不打扰用户。用户取消 UAC 后回落到「数据目录引导」对话框流程。
-    match s_read_txt::elevation::maybe_relaunch_elevated(&startup_dir) {
-        s_read_txt::elevation::RelaunchOutcome::Spawned => return, // 已移交提权实例
-        outcome => eprintln!("[s-read-txt] 权限检查：{outcome:?}"),
-    }
+    // 管理员权限按需使用：仅当数据目录不可写（如按机器安装到 Program Files）且当前非管理员时，
+    // 弹一次 UAC，由助手进程完成「创建目录 + 授权当前用户」后立即退出；应用自身始终以普通权限
+    // 运行（WebView2 不受提权影响），此后启动不再提示。用户取消 UAC 或修复失败时，
+    // 回落到前端「数据目录引导」对话框流程（选择可写目录 / 只读运行）。
+    let access_outcome = s_read_txt::elevation::ensure_data_dir_access(&startup_dir);
     // WebView2 用户数据目录重定向到便携 data/webview（默认写 %LOCALAPPDATA%，
     // 违反「数据全部在程序目录」红线；`WEBVIEW2_USER_DATA_FOLDER` 由 WebView2Loader
     // 在创建环境时读取，必须在 Builder 之前设置）。目录不可写时暂不重定向
@@ -109,8 +113,9 @@ fn main() {
         env!("CARGO_PKG_VERSION"),
         startup_dir.display()
     );
+    log::info!(target: "sread::main", "权限检查：{access_outcome:?}");
 
-    tauri::Builder::default()
+    let app_result = tauri::Builder::default()
         // 原生对话框能力（文件选择/目录选择/消息框）
         .plugin(tauri_plugin_dialog::init())
         // 剪贴板能力（复制/剪切/粘贴走 Rust 侧，避免 WebView 的剪贴板权限弹窗）
@@ -205,6 +210,13 @@ fn main() {
             commands::apply_replace_all_in_edit,
             commands::match_window_in_edit
         ])
-        .run(tauri::generate_context!())
-        .expect("Tauri 应用启动失败");
+        .run(tauri::generate_context!());
+    // 启动失败不再无声退出：写日志 + 弹原生错误框（窗口子系统下无控制台，用户需可见反馈）。
+    if let Err(err) = app_result {
+        log::error!(target: "sread::main", "应用启动失败：{err}");
+        s_read_txt::elevation::show_fatal_error(&format!(
+            "S-Read-TXT 启动失败：{err}\n\n详情见程序目录 data/logs/app.log；\n若为「所有用户」安装，请允许启动时的一次管理员权限请求以初始化数据目录。"
+        ));
+        std::process::exit(1);
+    }
 }
