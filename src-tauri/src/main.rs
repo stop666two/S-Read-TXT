@@ -1,16 +1,21 @@
 // S-Read-TXT 主进程入口（src-tauri/src/main.rs）
-// 阶段 1：storage（便携数据目录）+ settings（三类配置）+ logging（文件日志）接入；
+// 阶段 1：storage/settings/logging/history 接入；
 // 每个 IPC 命令携带请求链路上下文（req id），日志可串联同一次调用。
 
 // 发布构建隐藏 Windows 控制台窗口；调试构建保留控制台以便查看日志
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod history;
 mod logging;
 mod settings;
 mod storage;
+mod time_util;
 
-use logging::context::{with_context, LogContext};
 use serde::Serialize;
+
+use history::entry::HistoryEntry;
+use history::store as history_store;
+use logging::context::{with_context, LogContext};
 use settings::store as settings_store;
 use settings::{SettingsSaveRequest, SettingsSnapshot};
 use storage::data_dir;
@@ -117,6 +122,45 @@ fn save_settings(request: SettingsSaveRequest) -> Result<SettingsSnapshot, Strin
     })
 }
 
+/// 命令：读取历史记录（去重 + 修剪 + 时间倒序；必要时自愈压缩文件）。
+#[tauri::command]
+fn get_history() -> Vec<HistoryEntry> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let settings = settings_store::load_app_settings(&dir);
+        history_store::load(&dir, &settings.history)
+    })
+}
+
+/// 命令：删除单条历史（以文件路径为键；返回更新后的列表）。
+#[tauri::command]
+fn remove_history(file_path: String) -> Result<Vec<HistoryEntry>, String> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let settings = settings_store::load_app_settings(&dir);
+        let mut entries = history_store::load(&dir, &settings.history);
+        entries.retain(|entry| entry.path != file_path);
+        history_store::write_all(&dir, &entries).map_err(|err| format!("保存历史失败：{err}"))?;
+        log::info!(
+            target: "sread::ipc",
+            "历史条目已删除（剩余 {} 条）",
+            entries.len()
+        );
+        Ok(entries)
+    })
+}
+
+/// 命令：清空全部历史。
+#[tauri::command]
+fn clear_history() -> Result<(), String> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        history_store::write_all(&dir, &[]).map_err(|err| format!("清空历史失败：{err}"))?;
+        log::info!(target: "sread::ipc", "历史已清空");
+        Ok(())
+    })
+}
+
 fn main() {
     // 日志先行：级别来源 SRT_LOG_LEVEL > settings.json 的 logLevel > 默认 info；
     // 日志初始化失败不阻塞应用（降级为无文件日志）。
@@ -139,7 +183,10 @@ fn main() {
             get_app_info,
             data_dir_status,
             get_settings,
-            save_settings
+            save_settings,
+            get_history,
+            remove_history,
+            clear_history
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
