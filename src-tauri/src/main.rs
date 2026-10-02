@@ -78,6 +78,13 @@ fn main() {
     // 日志先行：级别来源 SRT_LOG_LEVEL > settings.json 的 logLevel > 默认 info；
     // 日志初始化失败不阻塞应用（降级为无文件日志）。
     let (startup_dir, _origin) = paths::resolve_data_dir();
+    // 管理员权限按需申请：仅当便携数据目录不可写（如按机器安装到 Program Files）
+    // 且当前非管理员时，以管理员身份重启自身（UAC 提示）。便携运行与「仅为我」安装
+    // 的目录天然可写 → 不打扰用户。用户取消 UAC 后回落到「数据目录引导」对话框流程。
+    match s_read_txt::elevation::maybe_relaunch_elevated(&startup_dir) {
+        s_read_txt::elevation::RelaunchOutcome::Spawned => return, // 已移交提权实例
+        outcome => eprintln!("[s-read-txt] 权限检查：{outcome:?}"),
+    }
     // WebView2 用户数据目录重定向到便携 data/webview（默认写 %LOCALAPPDATA%，
     // 违反「数据全部在程序目录」红线；`WEBVIEW2_USER_DATA_FOLDER` 由 WebView2Loader
     // 在创建环境时读取，必须在 Builder 之前设置）。目录不可写时暂不重定向

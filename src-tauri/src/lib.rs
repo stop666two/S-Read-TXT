@@ -12,10 +12,12 @@
 //! - `logging`：JSON 行日志 + 轮转 + 请求链路上下文
 //! - `history`：历史记录（JSONL）
 //! - `session`：会话（窗口 + 标签锚点）
+//! - `elevation`：管理员权限（UAC）按需申请（便携数据目录不可写且非管理员时）
 //! - `textfile`：读取引擎（mmap/编码/稀疏索引/文本窗口）
 //! - `time_util`：RFC 3339 时间工具
 
 pub mod app_state;
+pub mod elevation;
 pub mod history;
 pub mod ipc_error;
 pub mod logging;
