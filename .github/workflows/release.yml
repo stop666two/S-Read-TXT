@@ -59,6 +59,8 @@ jobs:
           set -o pipefail
           npm run check 2>&1 | tee check.log
           npx vitest run --reporter=default --reporter=json --outputFile=vitest-report.json 2>&1 | tee vitest.log
+      - name: Rust 格式检查（cargo fmt）
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Rust 全量测试（收集日志）
         shell: bash
         run: |

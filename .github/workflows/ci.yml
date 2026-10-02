@@ -50,6 +50,8 @@ jobs:
           echo "变更文件数：$(wc -l < changed-files.txt)"
       - name: 检查 AGENTS.md / data / 大文件
         run: node scripts/ci/check-hygiene.mjs changed-files.txt
+      - name: 编码与换行自检（UTF-8 无 BOM / LF）
+        run: node scripts/check-encoding.mjs
 
   # 前端：类型 / 可访问性检查 + 单元测试 + 生产构建
   frontend:
@@ -87,6 +89,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      - name: Rust 格式检查（cargo fmt）
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: 运行全部 Rust 测试
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
       - name: 完整构建（release，x64）
