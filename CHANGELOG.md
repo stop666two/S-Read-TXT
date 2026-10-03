@@ -6,6 +6,7 @@
 
 ### 新增
 
+- 测试覆盖补测：新增设置 I/O E2E 套件（迁移/导出/篡改拒绝/重置/注册表，15 项）与覆盖矩阵 docs/verify/coverage-matrix.md；smoke-history 长列表、smoke-tabs 溢出/拖拽取消、字体实际加载断言、离线核查并入 verify-all；Rust 注册表完备性与 bundle 边界补测
 - 大文件双阈值（P0-1）：只读阈值（默认 100MB，超出以只读模式打开）与硬上限（默认 2048MB，超出拒绝打开）分离；超阈值文件状态栏显示「只读」、编辑入口禁用并说明原因、Ctrl+E 拦截提示；设置窗口新增「硬上限」滑块；E2E 套件 `scripts/smoke-limits.mjs`（6 项）
 - 编辑器化扩展（P0 启动）：设计修订并入设计文档 §17（D39–D77）、P0 详细实施计划（11 子任务）、设置规格总表；6 套内置主题令牌（浅色/深色/护眼绿/纸张米黄/高对比/极简灰）+ WCAG AA 对比度校验脚本（scripts/check-theme-contrast.mjs）；主题与欢迎页设计预览稿（docs/design/previews/2026-10-03-themes-and-welcome.html）
 - 工程初始化：Tauri v2 + Svelte 5 脚手架、便携数据目录保护（`.gitignore`/pre-commit 钩子）、MIT 许可证、设计文档与实施计划
