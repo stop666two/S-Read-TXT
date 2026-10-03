@@ -19,8 +19,8 @@
     onOpenFile?: () => void;
     /** 历史面板回调（阶段 6 接线） */
     onHistory?: () => void;
-/** 设置窗口回调（打开独立设置窗口） */
-onSettings?: () => void;
+    /** 设置窗口回调（打开独立设置窗口） */
+    onSettings?: () => void;
     /** 是否处于编辑模式（编辑按钮激活态） */
     editing: boolean;
     /** 是否有未保存修改（保存按钮可用性） */
@@ -105,8 +105,9 @@ onSettings?: () => void;
   >
     <Icon name="palette" />
   </button>
-  <button class="icon-btn" title="设置" aria-label="设置" onclick={() => onSettings?.()}>
+  <button class="icon-btn with-text" title="设置" aria-label="设置" onclick={() => onSettings?.()}>
     <Icon name="settings" />
+    <span>设置</span>
   </button>
 </div>
 
@@ -137,6 +138,14 @@ onSettings?: () => void;
 
   .icon-btn:hover {
     background: var(--hover);
+  }
+
+  /* 带文字的按钮（如「设置」）：图标 + 文本，宽度自适应 */
+  .icon-btn.with-text {
+    width: auto;
+    gap: 5px;
+    padding: 0 8px;
+    font-size: 12.5px;
   }
 
   .icon-btn.active {

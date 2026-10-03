@@ -47,6 +47,8 @@
     onOpenRecent?: (entry: HistoryEntry) => void;
     /** 打开历史记录面板 */
     onOpenHistory?: () => void;
+    /** 打开设置窗口（文件菜单） */
+    onSettings?: () => void;
     /** 是否存在活动标签（重新加载可用性） */
     hasTab: boolean;
   }
@@ -71,6 +73,7 @@
     recent = [],
     onOpenRecent,
     onOpenHistory,
+    onSettings,
     hasTab,
   }: Props = $props();
 
@@ -163,6 +166,7 @@
         <span>历史记录</span>
         <span class="hint">Ctrl+Shift+H</span>
       </button>
+      <button class="item" onclick={() => run(onSettings)}><span>设置…</span></button>
       <div class="separator"></div>
       <button class="item" onclick={() => run(onQuit)}><span>退出</span></button>
     </div>

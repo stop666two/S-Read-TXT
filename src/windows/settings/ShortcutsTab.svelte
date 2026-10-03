@@ -150,16 +150,20 @@
     margin: 0;
     padding: 0;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
+    background: var(--surface);
   }
 
   .row {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 7px 12px;
-    background: var(--surface);
+    padding: 10px 14px;
+  }
+
+  .row:hover {
+    background: color-mix(in srgb, var(--hover) 45%, var(--surface));
   }
 
   .row + .row {
@@ -172,14 +176,15 @@
   }
 
   .combo {
-    min-width: 180px;
-    padding: 4px 10px;
+    min-width: 190px;
+    padding: 5px 12px;
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--base);
     color: var(--ink);
     font-size: 12px;
     cursor: pointer;
+    transition: border-color 90ms ease, color 90ms ease, background-color 90ms ease;
   }
 
   .combo:hover {
@@ -216,13 +221,14 @@
   }
 
   .reset-all {
-    padding: 5px 12px;
+    padding: 6px 14px;
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--surface);
     color: var(--ink);
     font-size: 12px;
     cursor: pointer;
+    transition: border-color 90ms ease, color 90ms ease;
   }
 
   .reset-all:hover {

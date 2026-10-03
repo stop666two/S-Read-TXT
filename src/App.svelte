@@ -878,7 +878,11 @@
 </script>
 
 <div class="shell">
-  <TitleBar title={windowTitle} />
+  <TitleBar
+    title={windowTitle}
+    showSettings
+    onSettings={() => void ipc.openSettings()}
+  />
   <MenuBar
     {themeChoice}
     onThemeChange={setTheme}
@@ -901,6 +905,7 @@
     recent={recentEntries}
     onOpenRecent={(entry) => void historyStore.openEntry(entry)}
     onOpenHistory={() => (historyOpen = true)}
+    onSettings={() => void ipc.openSettings()}
   />
   <ToolBar
     {themeChoice}

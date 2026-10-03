@@ -1,6 +1,7 @@
 <!--
-  SettingsApp — 设置窗口外壳（阶段 5：快捷键页签可用；其余页签待后续阶段填充）。
-  布局：自定义标题栏 + 顶部页签 + 内容区；主题跟随 reader.json（与主窗口观感一致）。
+  SettingsApp — 设置窗口外壳（左导航 + 右内容，视觉方向一）。
+  契约（自动化与外部依赖）：导航容器保留 .tabs、项为 .tab[role="tab"]；
+  内容分组沿用 settings.css 的 .rows / .row / .label / .control / .unit。
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -15,16 +16,24 @@
   import TypographyTab from './TypographyTab.svelte';
   import { settings } from './store.svelte';
 
-  // 设置页共享样式（类名 .rows/.row/.label/.unit 与冒烟脚本约定一致）
+  // 设置页共享样式（类名 .rows/.row/.label/.control/.unit 与冒烟脚本约定一致）
   import './settings.css';
 
-  /** 页签定义（顺序即展示顺序） */
+  /** 页签定义（顺序即导航顺序；图标为 16 分辨率线性 SVG path） */
   const TABS = [
-    { id: 'general', label: '常规' },
-    { id: 'typography', label: '阅读排版' },
-    { id: 'shortcuts', label: '快捷键' },
-    { id: 'history', label: '历史记录' },
-    { id: 'about', label: '关于' },
+    { id: 'general', label: '常规', icon: 'M3 5h10M3 11h10M6 3.4v3.2M11 9.4v3.2' },
+    { id: 'typography', label: '阅读排版', icon: 'M4 4h8M8 4v8M6.2 12h3.6' },
+    {
+      id: 'shortcuts',
+      label: '快捷键',
+      icon: 'M2.8 5.2h10.4v5.6H2.8zM5 7.4h.01M7.2 7.4h.01M9.4 7.4h.01M5 9.4h6',
+    },
+    { id: 'history', label: '历史记录', icon: 'M8 2.8a5.2 5.2 0 1 0 5.2 5.2M8 5.4V8l2 1.4' },
+    {
+      id: 'about',
+      label: '关于',
+      icon: 'M8 2.8a5.2 5.2 0 1 0 0 10.4A5.2 5.2 0 0 0 8 2.8zM8 7.4v4M8 5.2h.01',
+    },
   ] as const;
 
   type TabId = (typeof TABS)[number]['id'];
@@ -57,33 +66,46 @@
 
 <div class="shell">
   <TitleBar title="设置" showMaximize={false} />
-  <div class="tabs" role="tablist" aria-label="设置页签">
-    {#each TABS as item (item.id)}
-      <button
-        class="tab"
-        class:active={tab === item.id}
-        type="button"
-        role="tab"
-        aria-selected={tab === item.id}
-        onclick={() => (tab = item.id)}
-      >
-        {item.label}
-      </button>
-    {/each}
+  <div class="body">
+    <!-- 使用 div 而非 nav：nav 不允许承载 tablist 交互角色（a11y）；类名与角色契约保持不变 -->
+    <div class="tabs" role="tablist" aria-label="设置页签">
+      {#each TABS as item (item.id)}
+        <button
+          class="tab"
+          class:active={tab === item.id}
+          type="button"
+          role="tab"
+          aria-selected={tab === item.id}
+          onclick={() => (tab = item.id)}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d={item.icon}
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span>{item.label}</span>
+        </button>
+      {/each}
+    </div>
+    <main class="content">
+      {#if tab === 'general'}
+        <GeneralTab />
+      {:else if tab === 'typography'}
+        <TypographyTab />
+      {:else if tab === 'shortcuts'}
+        <ShortcutsTab />
+      {:else if tab === 'history'}
+        <HistoryTab />
+      {:else}
+        <AboutTab />
+      {/if}
+    </main>
   </div>
-  <main class="content">
-    {#if tab === 'general'}
-      <GeneralTab />
-    {:else if tab === 'typography'}
-      <TypographyTab />
-    {:else if tab === 'shortcuts'}
-      <ShortcutsTab />
-    {:else if tab === 'history'}
-      <HistoryTab />
-    {:else}
-      <AboutTab />
-    {/if}
-  </main>
   <Toast />
 </div>
 
@@ -96,37 +118,58 @@
     color: var(--ink);
   }
 
-  .tabs {
+  .body {
+    flex: 1;
     display: flex;
+    min-height: 0;
+  }
+
+  .tabs {
+    width: 184px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
     gap: 2px;
-    padding: 8px 12px 0;
+    padding: 14px 10px;
     background: var(--chrome);
-    border-bottom: 1px solid var(--line);
   }
 
   .tab {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
     border: none;
+    border-radius: 8px;
     background: transparent;
     color: var(--muted);
-    padding: 6px 12px;
-    border-radius: 6px 6px 0 0;
-    cursor: pointer;
     font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color 90ms ease,
+      color 90ms ease;
   }
 
   .tab:hover {
     background: var(--hover);
+    color: var(--ink);
   }
 
   .tab.active {
+    background: var(--hover);
     color: var(--ink);
-    background: var(--base);
-    box-shadow: inset 0 -2px 0 var(--accent);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+
+  .tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
   }
 
   .content {
     flex: 1;
     overflow: auto;
-    padding: 16px;
+    padding: 24px 28px;
   }
 </style>
