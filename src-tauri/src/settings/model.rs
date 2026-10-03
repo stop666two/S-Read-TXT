@@ -83,6 +83,25 @@ impl Default for HistorySettings {
     }
 }
 
+/// 启动行为（`settings.json` 的嵌套对象 `startup`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct StartupSettings {
+    /// 启动时恢复上次会话（重新打开标签）
+    pub restore_session: bool,
+    /// 启动时恢复窗口位置与大小
+    pub restore_window: bool,
+}
+
+impl Default for StartupSettings {
+    fn default() -> Self {
+        Self {
+            restore_session: defaults::DEFAULT_STARTUP_RESTORE_SESSION,
+            restore_window: defaults::DEFAULT_STARTUP_RESTORE_WINDOW,
+        }
+    }
+}
+
 /// 主配置（`settings.json`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -103,6 +122,8 @@ pub struct AppSettings {
     pub save_backup_enabled: bool,
     /// 是否显示首启引导（用户勾选「不再显示」后置 `false`）
     pub show_onboarding: bool,
+    /// 启动行为
+    pub startup: StartupSettings,
 }
 
 impl Default for AppSettings {
@@ -115,6 +136,7 @@ impl Default for AppSettings {
             history: HistorySettings::default(),
             save_backup_enabled: defaults::DEFAULT_SAVE_BACKUP_ENABLED,
             show_onboarding: defaults::DEFAULT_SHOW_ONBOARDING,
+            startup: StartupSettings::default(),
         }
     }
 }

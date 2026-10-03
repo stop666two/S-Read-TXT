@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::settings::model::LogLevel;
-use crate::settings::reader::Theme;
+use crate::settings::reader::{TextAlign, Theme};
 
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
 pub const SCHEMA_VERSION: u32 = 1;
@@ -57,8 +57,35 @@ pub const DEFAULT_PAGE_PADDING: u32 = 48;
 pub const PAGE_PADDING_RANGE: (u32, u32) = (0, 240);
 /// 默认阅读区上下留白（px）
 pub const DEFAULT_PAGE_PADDING_Y: u32 = 48;
-/// 上下留白允许范围（px，闭区间）
+/// 阅读区上下留白允许范围（px，闭区间）
 pub const PAGE_PADDING_Y_RANGE: (u32, u32) = (0, 240);
+/// 默认段间距（px；0 表示无额外间距）
+pub const DEFAULT_PARAGRAPH_SPACING: u32 = 0;
+/// 段间距允许范围（px，闭区间）
+pub const PARAGRAPH_SPACING_RANGE: (u32, u32) = (0, 64);
+/// 默认首行缩进（字符数；0 表示不缩进）
+pub const DEFAULT_FIRST_LINE_INDENT: u32 = 0;
+/// 首行缩进允许范围（字符数，闭区间）
+pub const FIRST_LINE_INDENT_RANGE: (u32, u32) = (0, 8);
+/// 默认文字对齐
+pub const DEFAULT_TEXT_ALIGN: TextAlign = TextAlign::Left;
+/// 默认翻页平滑滚动
+pub const DEFAULT_SMOOTH_SCROLL: bool = true;
+
+// ---------- 状态栏与启动行为 ----------
+
+/// 状态栏默认显示文件名与进度
+pub const DEFAULT_STATUS_BAR_SHOW_FILE: bool = true;
+/// 状态栏默认显示阅读百分比
+pub const DEFAULT_STATUS_BAR_SHOW_PERCENT: bool = true;
+/// 状态栏默认显示文件大小
+pub const DEFAULT_STATUS_BAR_SHOW_SIZE: bool = true;
+/// 状态栏默认显示编码切换
+pub const DEFAULT_STATUS_BAR_SHOW_ENCODING: bool = true;
+/// 启动默认恢复上次会话（标签）
+pub const DEFAULT_STARTUP_RESTORE_SESSION: bool = true;
+/// 启动默认恢复窗口位置与大小
+pub const DEFAULT_STARTUP_RESTORE_WINDOW: bool = true;
 
 // ---------- shortcuts.json ----------
 

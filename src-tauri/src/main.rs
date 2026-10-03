@@ -139,8 +139,18 @@ fn main() {
                     }
                 }
                 // 窗口几何恢复：在显示之前应用（避免先显示再跳动的观感）；
-                // 会话缺失/损坏时保持 tauri.conf.json 默认值（居中 1100×760）。
-                let window_state = session_store::load(&startup_dir).window;
+                // 会话缺失/损坏时保持 tauri.conf.json 默认值（居中 1100×760）；
+                // 启动行为设置可关闭恢复（关闭后使用默认几何）。
+                let restore_window =
+                    s_read_txt::settings::store::load_app_settings(&startup_dir)
+                        .startup
+                        .restore_window;
+                let window_state = if restore_window {
+                    session_store::load(&startup_dir).window
+                } else {
+                    log::info!(target: "sread::main", "启动设置：不恢复窗口几何（使用默认）");
+                    Default::default()
+                };
                 if window_state.maximized {
                     if let Err(err) = window.maximize() {
                         log::warn!(target: "sread::main", "恢复窗口最大化失败：{err}");
@@ -196,6 +206,10 @@ fn main() {
             commands::reorder_tab,
             commands::open_settings,
             commands::take_settings_tab,
+    commands::list_fonts,
+    commands::import_font,
+    commands::remove_font,
+    commands::read_font_data,
             commands::toggle_edit,
             commands::apply_edits,
             commands::undo_edit,

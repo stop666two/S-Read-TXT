@@ -15,11 +15,12 @@ use serde::Serialize;
 use tauri::State;
 
 use s_read_txt::app_state::{AppState, RowsPayload, TabInfo};
+use s_read_txt::fonts::{self, FontEntry};
 use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
     IpcError, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING, CODE_INVALID_POSITION,
-    CODE_SESSION_SAVE, CODE_TAB_NOT_FOUND,
+    CODE_IO, CODE_SESSION_SAVE, CODE_TAB_NOT_FOUND,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -827,4 +828,38 @@ pub fn take_settings_tab() -> Option<String> {
         .lock()
         .ok()
         .and_then(|mut guard| guard.take())
+}
+
+/// 命令：列出已导入的自定义字体（数据目录 `fonts/`）。
+#[tauri::command]
+pub fn list_fonts() -> Result<Vec<FontEntry>, IpcError> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    fonts::list_fonts(&dir)
+        .map_err(|err| IpcError::new(CODE_IO, format!("读取字体目录失败：{err}")))
+}
+
+/// 命令：导入字体文件（复制到数据目录 `fonts/`；重名自动唯一化）。
+#[tauri::command]
+pub fn import_font(path: String) -> Result<FontEntry, IpcError> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    let entry = fonts::import_font(&dir, std::path::Path::new(&path))?;
+    log::info!(target: "sread::ipc", "字体已导入：{}", entry.file_name);
+    Ok(entry)
+}
+
+/// 命令：删除已导入字体。
+#[tauri::command]
+pub fn remove_font(file_name: String) -> Result<(), IpcError> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    fonts::remove_font(&dir, &file_name)?;
+    log::info!(target: "sread::ipc", "字体已删除：{file_name}");
+    Ok(())
+}
+
+/// 命令：读取字体字节（Base64 编码；前端经 FontFace 动态加载，用后由浏览器管理）。
+#[tauri::command]
+pub fn read_font_data(file_name: String) -> Result<String, IpcError> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    let bytes = fonts::read_font_bytes(&dir, &file_name)?;
+    Ok(fonts::base64_encode(&bytes))
 }

@@ -9,6 +9,7 @@
 use serde::Serialize;
 
 use crate::app_state::AppStateError;
+use crate::fonts::FontError;
 use crate::textfile::editing::edit_doc::EditError;
 use crate::textfile::editing::save::SaveError;
 use crate::textfile::session::TextFileError;
@@ -47,6 +48,14 @@ pub const CODE_QUERY_TOO_BROAD: &str = "QUERY_TOO_BROAD";
 pub const CODE_INVALID_REGEX: &str = "INVALID_REGEX";
 /// 预览后文档发生变化（需重新查找/预览）
 pub const CODE_SEARCH_STALE: &str = "SEARCH_STALE";
+/// 字体格式不支持
+pub const CODE_FONT_UNSUPPORTED: &str = "FONT_UNSUPPORTED";
+/// 字体文件过大
+pub const CODE_FONT_TOO_LARGE: &str = "FONT_TOO_LARGE";
+/// 字体文件不存在
+pub const CODE_FONT_NOT_FOUND: &str = "FONT_NOT_FOUND";
+/// 字体文件名为非法值
+pub const CODE_FONT_INVALID_NAME: &str = "FONT_INVALID_NAME";
 /// 内部错误（锁中毒等）
 pub const CODE_INTERNAL: &str = "INTERNAL";
 
@@ -119,6 +128,31 @@ impl From<EditError> for IpcError {
             EditError::StaleSearch => {
                 Self::new(CODE_SEARCH_STALE, "文档已变化，请重新执行查找/替换")
             }
+        }
+    }
+}
+
+impl From<FontError> for IpcError {
+    fn from(err: FontError) -> Self {
+        match err {
+            FontError::Unsupported(name) => Self::new(
+                CODE_FONT_UNSUPPORTED,
+                format!("不支持的字体格式：{name}（仅支持 ttf / otf / woff / woff2）"),
+            ),
+            FontError::TooLarge {
+                size_bytes,
+                limit_bytes,
+            } => Self::new(
+                CODE_FONT_TOO_LARGE,
+                format!(
+                    "字体文件过大：{:.1} MB（上限 {:.1} MB）",
+                    size_bytes as f64 / 1_048_576.0,
+                    limit_bytes as f64 / 1_048_576.0
+                ),
+            ),
+            FontError::NotFound => Self::new(CODE_FONT_NOT_FOUND, "字体文件不存在"),
+            FontError::InvalidName => Self::new(CODE_FONT_INVALID_NAME, "字体文件名为非法值"),
+            FontError::Io(err) => Self::new(CODE_IO, format!("字体操作失败：{err}")),
         }
     }
 }

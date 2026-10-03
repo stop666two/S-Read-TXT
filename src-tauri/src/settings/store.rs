@@ -171,6 +171,17 @@ fn normalize_reader(settings: &mut ReaderSettings) {
         .typography
         .page_padding_y
         .clamp(min_pad_y, max_pad_y);
+    let (min_para, max_para) = defaults::PARAGRAPH_SPACING_RANGE;
+    settings.typography.paragraph_spacing = settings
+        .typography
+        .paragraph_spacing
+        .clamp(min_para, max_para);
+    let (min_indent, max_indent) = defaults::FIRST_LINE_INDENT_RANGE;
+    settings.typography.first_line_indent = settings
+        .typography
+        .first_line_indent
+        .clamp(min_indent, max_indent);
+    settings.typography.text_align = settings.typography.text_align.normalized();
 }
 
 /// 快捷键归一：版本对齐；丢弃未知动作与空绑定（记日志）。
@@ -269,7 +280,7 @@ mod tests {
         let dir = data_dir();
         std::fs::write(
             reader_settings_path(dir.path()),
-            br#"{"theme":"neon","typography":{"fontFamily":"   ","fontSize":100,"lineHeight":0.5,"contentWidth":10,"pagePadding":1000,"pagePaddingY":999}}"#,
+            br#"{"theme":"neon","typography":{"fontFamily":"   ","fontSize":100,"lineHeight":0.5,"contentWidth":10,"pagePadding":1000,"pagePaddingY":999,"paragraphSpacing":999,"firstLineIndent":99,"textAlign":"diagonal"},"statusBar":{"showSize":true,"showEncoding":false}}"#,
         )
         .expect("写配置失败");
         let loaded = load_reader_settings(dir.path());
@@ -280,6 +291,16 @@ mod tests {
         assert_eq!(loaded.typography.content_width, 320);
         assert_eq!(loaded.typography.page_padding, 240);
         assert_eq!(loaded.typography.page_padding_y, 240);
+        assert_eq!(loaded.typography.paragraph_spacing, 64);
+        assert_eq!(loaded.typography.first_line_indent, 8);
+        assert_eq!(
+            loaded.typography.text_align,
+            crate::settings::reader::TextAlign::Left
+        );
+        assert!(loaded.status_bar.show_size);
+        assert!(!loaded.status_bar.show_encoding, "显式 false 应保留");
+        assert!(loaded.status_bar.show_file_name, "缺失字段取默认 true");
+        assert!(loaded.status_bar.show_percent, "缺失字段取默认 true");
     }
 
     /// 旧版 reader.json（无 pagePaddingY 字段）加载 → 取默认 48（向后兼容）。
@@ -296,6 +317,19 @@ mod tests {
         assert_eq!(
             loaded.typography.page_padding_y,
             defaults::DEFAULT_PAGE_PADDING_Y
+        );
+        assert_eq!(
+            loaded.typography.paragraph_spacing,
+            defaults::DEFAULT_PARAGRAPH_SPACING
+        );
+        assert_eq!(
+            loaded.typography.first_line_indent,
+            defaults::DEFAULT_FIRST_LINE_INDENT
+        );
+        assert!(loaded.typography.smooth_scroll);
+        assert_eq!(
+            loaded.status_bar,
+            crate::settings::reader::StatusBarSettings::default()
         );
     }
 

@@ -18,6 +18,7 @@
 
 pub mod app_state;
 pub mod elevation;
+pub mod fonts;
 pub mod history;
 pub mod ipc_error;
 pub mod logging;
