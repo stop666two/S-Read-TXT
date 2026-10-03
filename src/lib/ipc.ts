@@ -9,7 +9,7 @@ import { t } from './i18n/runtime';
 export interface AppInfo {
   version: string;
   dataDir: string;
-  dataDirOrigin: 'portable' | 'envOverride' | 'runtimeOverride';
+  dataDirOrigin: 'portable' | 'envOverride' | 'runtimeOverride' | 'persisted';
 }
 
 /** 数据目录状态（data_dir_status / set_data_dir 返回体；与 Rust DataDirStatus 对齐）。 */
@@ -20,8 +20,10 @@ export interface DataDirStatus {
   writable: boolean;
   /** 不可写原因（可写时为 null/缺省） */
   message?: string | null;
-  /** 目录来源：便携 / 环境变量覆盖 / 会话级运行时覆盖 */
-  origin: 'portable' | 'envOverride' | 'runtimeOverride';
+  /** 目录来源：便携 / 环境变量覆盖 / 会话级运行时覆盖 / 持久化指针 */
+  origin: 'portable' | 'envOverride' | 'runtimeOverride' | 'persisted';
+  /** 持久化指针目标（程序目录 config.json；未设置时为 null/缺省） */
+  persisted?: string | null;
 }
 
 /** 单项文本行（与 Rust textfile::window::RowText 对齐）。 */
@@ -308,6 +310,18 @@ export type ResetScope =
   | { kind: 'field'; id: string };
 
 /** 磁盘占用分项（与 Rust `DiskUsageItem` 对应）。 */
+/** 数据目录迁移结果（与 Rust MigrationReport 对齐）。 */
+export interface MigrationReport {
+  /** 成功复制文件数 */
+  copiedFiles: number;
+  /** 成功复制字节数 */
+  copiedBytes: number;
+  /** 被占用而跳过的文件数（不影响迁移生效） */
+  skipped: number;
+  /** 原目录是否已同步清理（false = 延迟到下次启动） */
+  oldRemoved: boolean;
+}
+
 export interface DiskUsageItem {
   key: 'logs' | 'webview' | 'fonts' | 'backups' | 'files' | 'others';
   bytes: number;
@@ -503,6 +517,10 @@ export const ipc = {
   resetSettings: (scope: ResetScope) => invoke<SettingsSnapshot>('reset_settings', { scope }),
   getDiskUsage: () => invoke<DiskUsageReport>('get_disk_usage'),
   clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
+  /** 迁移数据目录（复制校验后写指针；需重启生效）。 */
+  migrateDataDir: (target: string) => invoke<MigrationReport>('migrate_data_dir', { target }),
+  /** 重启应用（迁移后立即生效；当前进程退出并由新进程接管）。 */
+  restartApp: () => invoke<void>('restart_app'),
   /** 默认快捷键表（设置界面「恢复默认」用）。 */
   getDefaultShortcuts: () => invoke<Record<string, string>>('get_default_shortcuts'),
   /** 历史记录（去重剪枝后、时间倒序）。 */

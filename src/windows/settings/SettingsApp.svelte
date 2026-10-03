@@ -12,8 +12,9 @@
   import { setLocale, t } from '../../lib/i18n/index.svelte';
   import { ipc } from '../../lib/ipc';
   import AboutTab from './AboutTab.svelte';
-  import BackupSection from './BackupSection.svelte';
-  import DiskSection from './DiskSection.svelte';
+import BackupSection from './BackupSection.svelte';
+import DataSection from './DataSection.svelte';
+import DiskSection from './DiskSection.svelte';
   import HistoryTab from './HistoryTab.svelte';
   import RegistryPage from './RegistryPage.svelte';
   import ShortcutsTab from './ShortcutsTab.svelte';
@@ -129,8 +130,9 @@
       {#if tab === 'general'}
         <RegistryPage groups={['app.basic', 'app.startup']} {query} />
         {#if !searchActive}
-          <BackupSection />
-          <DiskSection />
+    <BackupSection />
+    <DiskSection />
+    <DataSection />
         {/if}
       {:else if tab === 'typography'}
         <RegistryPage groups={['reader.basic', 'reader.typography', 'reader.statusBar']} {query} />
