@@ -48,6 +48,7 @@ const only = onlyArg >= 0 && process.argv[onlyArg + 1] ? process.argv[onlyArg + 
 /** 检查步骤定义（cmd 全为受控字符串；shell 执行以便直接用 npm/npx） */
 const steps = [
   { name: '编码自检', cmd: 'node scripts/check-encoding.mjs', cwd: root, env: process.env, timeout: 60_000 },
+  { name: '快捷键动作对齐', cmd: 'node scripts/check-shortcut-parity.mjs', cwd: root, env: process.env, timeout: 30_000 },
   { name: 'svelte-check', cmd: 'npm run check', cwd: root, env: process.env, timeout: 300_000 },
   { name: 'vitest 单测', cmd: 'npx vitest run', cwd: root, env: process.env, timeout: 300_000 },
   { name: 'cargo fmt 检查', cmd: 'cargo fmt --check', cwd: tauriDir, env: buildEnv, timeout: 120_000 },

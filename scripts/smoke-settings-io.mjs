@@ -4,7 +4,8 @@
 //   E1–E10 命令链（页面内真实 invoke）：
 //     E1 导出落盘结构校验；E2–E4 三类篡改拒绝（范围 / 未知字段 / 类型）；
 //     E5 合法导入生效 + `*.import-bak`；E6–E8 重置单项 / 分组 / 全部；
-//     E9 注册表内容断言；E10 未知项拒绝。
+//     E9 注册表内容断言；E10 未知项拒绝；
+//     E11–E13 快捷键独立导入/导出（P0-9）：导出结构 / 导入生效 / 未知动作拒绝。
 // 依赖：debug 构建（npm run tauri build -- --debug --no-bundle）。
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -361,6 +362,52 @@ try {
     String(await evalMain2(`document.querySelector('.empty .open-btn')?.textContent ?? ''`))
       .trim()
       .includes('Open'),
+  );
+
+  // E11–E13：快捷键独立导入/导出（P0-9）
+  const shortcutExportPath = join(work, 'shortcuts-export.json');
+  const shortcutExportBytes = await evalMain2(
+    `(async () => await window.__TAURI_INTERNALS__.invoke('export_shortcuts', { path: ${JSON.stringify(shortcutExportPath)} }))()`,
+  );
+  let shortcutBundle = null;
+  try {
+    shortcutBundle = JSON.parse(readFileSync(shortcutExportPath, 'utf8'));
+  } catch {
+    shortcutBundle = null;
+  }
+  chk(
+    'E11 快捷键导出（格式字段 + 15 项）',
+    typeof shortcutExportBytes === 'number' &&
+      shortcutBundle?.bundleVersion === 1 &&
+      Object.keys(shortcutBundle?.bindings ?? {}).length === 15,
+    `bytes=${shortcutExportBytes} keys=${shortcutBundle ? Object.keys(shortcutBundle.bindings).length : 'null'}`,
+  );
+
+  if (shortcutBundle) {
+    shortcutBundle.bindings.openFile = 'Ctrl+Shift+O';
+    writeFileSync(shortcutExportPath, JSON.stringify(shortcutBundle), 'utf8');
+  }
+  const shortcutImportResult = await evalMain2(
+    `(async () => { try { await window.__TAURI_INTERNALS__.invoke('import_shortcuts', { path: ${JSON.stringify(shortcutExportPath)} }); return 'OK'; } catch (error) { return 'ERR:' + JSON.stringify(error); } })()`,
+  );
+  const shortcutBindingAfter = await evalMain2(
+    `(async () => { const s = await window.__TAURI_INTERNALS__.invoke('get_settings'); return s.shortcuts.bindings.openFile; })()`,
+  );
+  chk(
+    'E12 快捷键导入生效（openFile→Ctrl+Shift+O）',
+    String(shortcutImportResult) === 'OK' && shortcutBindingAfter === 'Ctrl+Shift+O',
+    `result=${shortcutImportResult} openFile=${shortcutBindingAfter}`,
+  );
+
+  const badShortcutPath = join(work, 'shortcuts-bad.json');
+  writeFileSync(badShortcutPath, JSON.stringify({ bindings: { bogus: 'Ctrl+B' } }), 'utf8');
+  const shortcutBadImport = await evalMain2(
+    `(async () => { try { await window.__TAURI_INTERNALS__.invoke('import_shortcuts', { path: ${JSON.stringify(badShortcutPath)} }); return 'OK'; } catch (error) { return 'ERR:' + JSON.stringify(error); } })()`,
+  );
+  chk(
+    'E13 未知动作拒绝且提示动作名',
+    String(shortcutBadImport).includes('bogus'),
+    String(shortcutBadImport).slice(0, 90),
   );
 
   console.log(`\n设置导入/导出/重置/迁移套件：通过 ${passed}/${passed + failed}`);
