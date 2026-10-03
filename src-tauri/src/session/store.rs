@@ -10,9 +10,8 @@ use std::path::{Path, PathBuf};
 
 use crate::session::model::{
     SessionState, DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, MAX_WINDOW_DIMENSION,
-    MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH,
+    MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, SESSION_SCHEMA_VERSION,
 };
-use crate::settings::defaults;
 use crate::storage::json_io;
 
 /// 会话文件名
@@ -37,7 +36,7 @@ pub fn save(dir: &Path, state: &SessionState) -> io::Result<()> {
 
 /// 归一：版本对齐；窗口尺寸越界回退默认；剔除空路径标签；活动下标收敛到有效范围。
 fn normalize(state: &mut SessionState) {
-    state.schema_version = defaults::SCHEMA_VERSION;
+    state.schema_version = SESSION_SCHEMA_VERSION;
 
     if !(MIN_WINDOW_WIDTH..=MAX_WINDOW_DIMENSION).contains(&state.window.width) {
         state.window.width = DEFAULT_WINDOW_WIDTH;

@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{Emitter, State};
 
 use s_read_txt::app_state::{AppState, RowsPayload, TabInfo};
 use s_read_txt::fonts::{self, FontEntry};
@@ -20,14 +20,17 @@ use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
     IpcError, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING, CODE_INVALID_POSITION,
-    CODE_IO, CODE_SESSION_SAVE, CODE_TAB_NOT_FOUND,
+    CODE_IO, CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET,
+    CODE_TAB_NOT_FOUND,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
 use s_read_txt::session::model::SessionState;
 use s_read_txt::session::store as session_store;
+use s_read_txt::settings::registry::{self, SettingSpec};
+use s_read_txt::settings::reset::{self as settings_reset, ResetScope};
 use s_read_txt::settings::store as settings_store;
-use s_read_txt::settings::{SettingsSaveRequest, SettingsSnapshot};
+use s_read_txt::settings::{bundle, SettingsSaveRequest, SettingsSnapshot};
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::paths::{self, DataDirOrigin};
 use s_read_txt::textfile::editing::edit_doc::{EditApplied, EditOp};
@@ -199,6 +202,62 @@ pub fn save_settings(request: SettingsSaveRequest) -> Result<SettingsSnapshot, I
         log::info!(target: "sread::ipc", "配置已保存");
         Ok(settings_store::load_snapshot(&dir))
     })
+}
+
+/// 设置变更广播事件名（主窗口与设置窗口监听后热刷新）。
+const EVENT_SETTINGS_CHANGED: &str = "srt://settings-changed";
+
+/// 命令：导出全部配置为 JSON 包（写入用户选择的文件路径；返回写入字节数）。
+#[tauri::command]
+pub fn export_settings(path: String) -> Result<u64, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let bytes = bundle::export_to_file(&dir, Path::new(&path))
+            .map_err(|message| IpcError::new(CODE_SETTINGS_EXPORT, message))?;
+        log::info!(target: "sread::ipc", "配置已导出：{path}（{bytes} 字节）");
+        Ok(bytes)
+    })
+}
+
+/// 命令：从 JSON 包导入配置（强校验 + 备份 + 失败回滚）；成功后广播设置变更事件。
+#[tauri::command]
+pub fn import_settings(app: tauri::AppHandle, path: String) -> Result<SettingsSnapshot, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        bundle::import_from_file(&dir, Path::new(&path))
+            .map_err(|message| IpcError::new(CODE_SETTINGS_IMPORT, message))?;
+        log::info!(target: "sread::ipc", "配置已导入：{path}");
+        let _ = app.emit(
+            EVENT_SETTINGS_CHANGED,
+            serde_json::json!({ "kind": "import" }),
+        );
+        Ok(settings_store::load_snapshot(&dir))
+    })
+}
+
+/// 命令：重置设置（全部 / 分组 / 单项）；成功后广播设置变更事件。
+#[tauri::command]
+pub fn reset_settings(
+    app: tauri::AppHandle,
+    scope: ResetScope,
+) -> Result<SettingsSnapshot, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        settings_reset::reset_scope(&dir, &scope)
+            .map_err(|message| IpcError::new(CODE_SETTINGS_RESET, message))?;
+        log::info!(target: "sread::ipc", "设置已重置：{scope:?}");
+        let _ = app.emit(
+            EVENT_SETTINGS_CHANGED,
+            serde_json::json!({ "kind": "reset" }),
+        );
+        Ok(settings_store::load_snapshot(&dir))
+    })
+}
+
+/// 命令：设置项注册表（设置界面动态生成与搜索索引的唯一元数据源）。
+#[tauri::command]
+pub fn get_settings_registry() -> Vec<SettingSpec> {
+    with_context(LogContext::request(), || registry::SPECS.to_vec())
 }
 
 /// 命令：默认快捷键表（动作 id → 组合键；设置界面「恢复默认」的唯一真源）。

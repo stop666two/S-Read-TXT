@@ -6,12 +6,20 @@
 //! - `shortcuts`：快捷键覆盖表模型
 //! - `defaults`：默认值与取值范围（与 `docs/configuration.md` 同步）
 //! - `store`：载入/保存/归一/自愈备份，以及快捷键生效表合并
+//! - `registry`：设置项注册表（界面生成 / 导入校验 / 重置作用域的唯一元数据源）
+//! - `migrate`：schema 版本迁移框架（迁移前备份、失败保留原文件）
+//! - `bundle`：配置导出/导入（严格校验 + 备份 + 失败回滚）
+//! - `reset`：设置重置（全部 / 分组 / 单项）
 //!
 //! IPC 载荷见 [`SettingsSnapshot`]（返回）与 [`SettingsSaveRequest`]（保存入参）。
 
+pub mod bundle;
 pub mod defaults;
+pub mod migrate;
 pub mod model;
 pub mod reader;
+pub mod registry;
+pub mod reset;
 pub mod shortcuts;
 pub mod store;
 

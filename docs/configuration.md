@@ -11,6 +11,7 @@
 | （运行时）| 不可写引导中选择的目录：经命令 `set_data_dir` 设置，会话级生效（重启后重新探测）；设置/历史/会话/日志全部改路 | 路径字符串 | 绝对路径且可写 | 否 | 未设置 | `D:\srt-data` |
 | `SRT_LOG_LEVEL` | 覆盖日志级别（优先于 settings.json 的 `logLevel`；空白/非法值忽略并回退） | 枚举字符串 | `error` / `warn` / `info` / `debug`（大小写不敏感） | 否 | 未设置（读取 settings.logLevel） | `debug` |
 | `SRT_NO_ELEVATION` | 跳过启动时的提权初始化（存在即生效）。默认行为：数据目录不可写且当前非管理员时，首次启动弹一次 UAC，由助手模式（`--prepare-data-dir` / `--grant-sid`）创建目录并 `icacls` 授予当前用户修改权限后立即退出；应用本体始终以普通权限运行，此后零提示。本变量用于不希望任何 UAC 提示的用户与自动化测试 | 开关（存在即跳过） | 任意非空值（约定 `1`） | 否 | 未设置（允许一次性提权初始化） | `1` |
+| `SRT_MSYS_BIN` | 仅自检脚本（`scripts/verify-all.mjs`）使用：MSYS2 工具链目录（防旧 DLL 遮蔽）；未设置时自动从 PATH 探测以 `ucrt64\bin` 结尾的条目（CI 无需） | 路径字符串 | 绝对路径 | 否 | 未设置（自动探测） | 按实际安装位置 |
 
 说明：
 - 应用**不读取** `.env` 文件；环境变量由启动环境（终端、快捷方式）提供。
@@ -23,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `1` | `1` | 配置格式版本；将来迁移依据 |
+| `schemaVersion` | number | 固定 `2` | `2` | 配置格式版本（当前 v2；启动自动迁移旧版，见 §2.7） |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
 | `maxFileSizeMB` | number | 1–2048 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
 | `hardLimitMB` | number | 100–16384 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
@@ -39,7 +40,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `1` | `1` | 格式版本 |
+| `schemaVersion` | number | 固定 `2` | `2` | 配置格式版本（当前 v2；启动自动迁移旧版，见 §2.7） |
 | `theme` | string | `light`/`dark`/`eye`/`system` | `system` | 主题；`system` 跟随系统明暗解析 |
 | `typography.fontFamily` | string | 系统字体名 或 `custom:<文件名>` | `Microsoft YaHei` | 正文主字体；`custom:` 前缀指向 `data/fonts/` 中导入的自定义字体 |
 | `typography.fontSize` | number | 8–72（px） | `16` | 正文字号 |
@@ -62,7 +63,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `1` | `1` | 格式版本 |
+| `schemaVersion` | number | 固定 `2` | `2` | 配置格式版本（当前 v2；启动自动迁移旧版，见 §2.7） |
 | `bindings` | object | 动作 id → 组合键字符串 | 见下表 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
 
 组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`）。
@@ -85,7 +86,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `1` | `1` | 格式版本 |
+| `schemaVersion` | number | 固定 `1` | `1` | 会话格式版本（独立于设置 schema：会话结构变更时递增，迁移在会话模块内提供） |
 | `window.x` / `window.y` | number \| null | 屏幕坐标或 `null` | `null`（居中） | 窗口位置；`null` 或越界（按当前显示器判定）时居中 |
 | `window.width` / `window.height` | number | 720–16384 | `1100×760` | 窗口尺寸；低于最小值/高于上限时回退默认（防手改配置导致窗口不可用） |
 | `window.maximized` | boolean | `true`/`false` | `false` | 是否最大化启动 |
@@ -114,6 +115,42 @@
 
 - `app.log`：JSON 行格式；字段：`time`（RFC 3339 带时区）、`level`（error/warn/info/debug，RFC 5424 命名）、`module`、`message`、`tab`/`req`（链路标识，可选）。
 - 轮转：单文件 5MB，保留 3 份（`app.log`、`app.log.1`、`app.log.2`）。
+
+### 2.7 配置迁移与导入/导出（P0-2）
+
+**schema 版本（当前 v2）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件：
+
+| 情况 | 行为 |
+|---|---|
+| 版本低于当前 | 依次应用迁移链 → 写回前备份为 `<文件名>.v<旧版本>.bak`（同目录） |
+| 版本等于当前 | 不写文件 |
+| 版本高于当前（未来版本） | 保持原文件不动（加载层回退默认；换回新版应用即恢复） |
+| JSON 无法解析 | 保持原文件不动（加载层另行备份 `.corrupt-<纳秒>` 并回退默认） |
+| 迁移失败 | 保持原文件不动（原因写日志） |
+
+**命令**：
+
+| 命令 | 作用 |
+|---|---|
+| `export_settings(path)` | 导出全部配置为 JSON 包到指定路径（原子写；返回写入字节数） |
+| `import_settings(path)` | 导入 JSON 包：强校验 → 备份现有配置（`*.import-bak`）→ 依次写入；任一步失败自动回滚已写文件 |
+| `reset_settings(scope)` | 重置设置，`scope` 三态：`{"kind":"all"}` / `{"kind":"group","name":"reader.typography"}` / `{"kind":"field","id":"app.maxTabs"}` |
+| `get_settings_registry()` | 设置项注册表（id / group / label / kind），设置界面动态生成与搜索的唯一元数据源 |
+
+导入包结构（`bundleVersion = 1`）：
+
+```json
+{
+  "bundleVersion": 1,
+  "schemaVersion": 2,
+  "exportedAt": "2026-10-03T00:00:00.000Z",
+  "app": { "…": "settings.json 原文" },
+  "reader": { "…": "reader.json 原文" },
+  "shortcuts": { "…": "shortcuts.json 原文（仅覆盖项）" }
+}
+```
+
+导入校验规则：顶层与配置段内的未知字段一律拒绝并给出字段路径；数值 / 枚举 / 类型按注册表范围强校验（**越界拒绝**而非裁剪）；快捷键动作必须在白名单内；文件大小上限 8MB；旧版本包先走迁移链；缺失字段按默认值补齐。
 
 ## 3. `src-tauri/tauri.conf.json` 字段说明
 

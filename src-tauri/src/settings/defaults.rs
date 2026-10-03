@@ -6,7 +6,8 @@ use crate::settings::model::LogLevel;
 use crate::settings::reader::{TextAlign, Theme};
 
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
-pub const SCHEMA_VERSION: u32 = 1;
+/// v2：新增 `hardLimitMB` / `startup` / `statusBar` / 排版扩展等字段（字段补齐式迁移，见 `settings::migrate`）。
+pub const SCHEMA_VERSION: u32 = 2;
 
 // ---------- settings.json ----------
 

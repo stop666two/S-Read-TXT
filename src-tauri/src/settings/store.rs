@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(loaded, settings);
         let raw = std::fs::read_to_string(app_settings_path(dir.path())).expect("读取失败");
         assert!(
-            raw.contains("\"schemaVersion\": 1"),
+            raw.contains(&format!("\"schemaVersion\": {}", defaults::SCHEMA_VERSION)),
             "保存应写入当前 schemaVersion：{raw}"
         );
     }
@@ -272,7 +272,7 @@ mod tests {
         )
         .expect("写配置失败");
         let loaded = load_app_settings(dir.path());
-        assert_eq!(loaded.schema_version, 1);
+        assert_eq!(loaded.schema_version, defaults::SCHEMA_VERSION);
         assert_eq!(loaded.log_level, crate::settings::model::LogLevel::Info);
         assert_eq!(loaded.max_file_size_mb, 1);
         assert_eq!(loaded.max_tabs, 200);

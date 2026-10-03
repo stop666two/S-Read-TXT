@@ -28,6 +28,12 @@ pub const CODE_INVALID_ENCODING: &str = "INVALID_ENCODING";
 pub const CODE_IO: &str = "IO";
 /// 配置保存失败
 pub const CODE_CONFIG_SAVE: &str = "CONFIG_SAVE";
+/// 配置导出失败（写入导出文件）
+pub const CODE_SETTINGS_EXPORT: &str = "SETTINGS_EXPORT";
+/// 配置导入失败（校验 / 读取 / 写入 / 回滚）
+pub const CODE_SETTINGS_IMPORT: &str = "SETTINGS_IMPORT";
+/// 设置重置失败（未知项 / 未知分组 / 保存失败）
+pub const CODE_SETTINGS_RESET: &str = "SETTINGS_RESET";
 /// 历史保存失败
 pub const CODE_HISTORY_SAVE: &str = "HISTORY_SAVE";
 /// 会话保存失败

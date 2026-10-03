@@ -6,8 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::settings::defaults;
-
 /// 默认窗口宽度（px；与 `tauri.conf.json` 的 `width` 保持一致）
 pub const DEFAULT_WINDOW_WIDTH: u32 = 1100;
 /// 默认窗口高度（px；与 `tauri.conf.json` 的 `height` 保持一致）
@@ -18,6 +16,8 @@ pub const MIN_WINDOW_WIDTH: u32 = 720;
 pub const MIN_WINDOW_HEIGHT: u32 = 480;
 /// 窗口尺寸上限（px；防御手改配置导致窗口不可用的异常值）
 pub const MAX_WINDOW_DIMENSION: u32 = 16384;
+/// 会话配置格式版本（独立于设置 schema：会话结构变更时递增并在会话模块内提供迁移）
+pub const SESSION_SCHEMA_VERSION: u32 = 1;
 
 /// 窗口状态。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -76,7 +76,7 @@ impl Default for SessionTab {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SessionState {
-    /// 配置格式版本（保存时写入当前 [`defaults::SCHEMA_VERSION`]）
+    /// 会话格式版本（保存时写入当前 [`SESSION_SCHEMA_VERSION`]）
     pub schema_version: u32,
     /// 窗口状态
     pub window: WindowState,
@@ -89,7 +89,7 @@ pub struct SessionState {
 impl Default for SessionState {
     fn default() -> Self {
         Self {
-            schema_version: defaults::SCHEMA_VERSION,
+            schema_version: SESSION_SCHEMA_VERSION,
             window: WindowState::default(),
             active_tab_index: 0,
             tabs: Vec::new(),

@@ -115,6 +115,11 @@ fn main() {
     );
     log::info!(target: "sread::main", "权限检查：{access_outcome:?}");
 
+    // 配置版本迁移：老版配置文件升级到当前 schema（先备份、失败保留原文件）。
+    for (name, status) in s_read_txt::settings::migrate::migrate_all(&startup_dir) {
+        log::info!(target: "sread::main", "配置迁移检查：{name} → {status:?}");
+    }
+
     let app_result = tauri::Builder::default()
         // 原生对话框能力（文件选择/目录选择/消息框）
         .plugin(tauri_plugin_dialog::init())
@@ -189,6 +194,10 @@ fn main() {
             commands::set_data_dir,
             commands::get_settings,
             commands::save_settings,
+            commands::export_settings,
+            commands::import_settings,
+            commands::reset_settings,
+            commands::get_settings_registry,
             commands::get_default_shortcuts,
             commands::get_history,
             commands::remove_history,
