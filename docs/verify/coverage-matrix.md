@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 334（312 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 88；E2E 24 套 ≈390 项；verify-all 27 步。
+- 计数口径：Rust 334（312 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 88；E2E 25 套 ≈406 项；verify-all 28 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -11,6 +11,7 @@
 | smoke-edit | 12 | 编辑基础：输入/撤销/保存/脏标记/编码弹窗 |
 | smoke-find | 19 | 查找替换：大小写/正则/预览剔除/撤销/高亮/菜单 |
 | smoke-batch | 16 | 批量序号（P1-1）：菜单入口/默认预览（跳空行）/零填充与前后缀/行范围/模板/应用+单撤销/超限错误就地展示/BATCH_INVALID |
+| smoke-lineops | 16 | 行操作（P1-2）：菜单入口/默认操作预览/排序预览与应用/单撤销/去重保留末次/缩进参数/末尾换行（文件级）/参数错误就地展示/LINE_OP_INVALID/Esc/截图 |
 | smoke-ime | 7 | 输入法组合：preedit/候选/提交/取消/保存 |
 | smoke-i18n | 27 | 8 语言渲染/查找/替换/编码往返/切换 |
 | smoke-titlebar | 10 | 标题栏：拖拽/三键/双击/最小化/主题/齿轮入口 |
@@ -51,6 +52,7 @@
 | save_tab / save_tab_as / reload_tab | smoke-edit；smoke-find F12/F14；smoke-shortcuts K12 |
 | find_in_edit / replace_in_edit / replace_all_in_edit | smoke-find F1–F14；smoke-i18n I5；Rust search
 | preview_batch_numbering / apply_batch_numbering | smoke-batch B1–B12；Rust batch 18 项 + app_state 2 项 | 测试 |
+| preview_line_op / apply_line_op | smoke-lineops L1–L13；Rust line_ops 15 项 + app_state 1 项 | 测试 |
 | preview_replace_all_in_edit / apply_replace_all_in_edit / match_window_in_edit | smoke-find F15–F19；smoke-i18n 高亮 |
 | export_settings / import_settings / reset_settings / get_settings_registry | **smoke-settings-io E1–E10 + L1–L4（语言持久化）**；**smoke-settings-v2 V1–V10（搜索/单项·分组·全部重置/导入导出按钮/语言下拉/折叠）**；Rust bundle 11 项 / reset 5 项 / registry 7 项 |
 
@@ -118,3 +120,4 @@
 - 2026-10-03 覆盖补测批次：新增 smoke-settings-io（15 项）、smoke-history 长列表（+2）、smoke-tabs 溢出/拖拽取消（+3）、smoke-settings 字体加载断言（+1）、offline-check 并入 verify-all；Rust 新增 7 项（注册表完备性/边界、bundle 边界 4 项、locale 变体）。
 - 修复随本轮：S13a 过期断言（标签改名）、H8 种子数据 `encoding` 字段类型。
 - 2026-10-03 P1-1：批量插入/序号（编辑引擎 10 格式/5 范围/模板/容量预检；IPC 两命令 + BATCH_INVALID；编辑菜单入口与弹窗；smoke-batch 16/16 并入 verify-all）。
+- 2026-10-03 P1-2：行操作套件（引擎 26 种 + 编辑器设置节 v4 + IPC 两命令 + 编辑菜单入口与按族参数弹窗；smoke-lineops 16/16 并入 verify-all）。
