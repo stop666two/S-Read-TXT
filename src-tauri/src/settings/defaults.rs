@@ -15,7 +15,8 @@ use crate::settings::reader::{BackgroundFill, TextAlign};
 /// v4–v6：编辑器行操作/多光标/剪贴板设置节（字段补齐式）。
 /// v7：新增查找与正则设置节（find/regex）。
 /// v8：新增辅助编辑设置节（editor.insert / autoPairs / cleanup，P1-7）。
-pub const SCHEMA_VERSION: u32 = 8;
+/// v9：新增查找多文件开关与并发数（find.multifile*，P1-8）。
+pub const SCHEMA_VERSION: u32 = 9;
 
 // ---------- settings.json ----------
 
@@ -216,6 +217,12 @@ pub const DEFAULT_FIND_SCOPE: FindScope = FindScope::Document;
 pub const DEFAULT_FIND_HISTORY_LIMIT: u32 = 50;
 /// 查找历史条数范围（闭区间）
 pub const FIND_HISTORY_LIMIT_RANGE: (u32, u32) = (0, 1_000);
+/// 默认是否启用多文件（工作区）搜索
+pub const DEFAULT_FIND_MULTIFILE_ENABLED: bool = true;
+/// 默认多文件搜索并发数（同时扫描的只读标签数）
+pub const DEFAULT_FIND_MULTIFILE_CONCURRENCY: u32 = 4;
+/// 多文件搜索并发数允许范围（闭区间）
+pub const FIND_MULTIFILE_CONCURRENCY_RANGE: (u32, u32) = (1, 16);
 /// 默认高亮颜色（空串 = 跟随主题内置色；F-11）
 pub const DEFAULT_FIND_HIGHLIGHT_COLOR: &str = "";
 /// 默认正则超时（毫秒；F-03）

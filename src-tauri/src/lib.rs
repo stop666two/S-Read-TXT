@@ -31,3 +31,4 @@ pub mod settings;
 pub mod storage;
 pub mod textfile;
 pub mod time_util;
+pub mod workspace_scan;

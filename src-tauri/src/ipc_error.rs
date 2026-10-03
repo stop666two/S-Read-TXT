@@ -69,6 +69,8 @@ pub const CODE_INVALID_REGEX: &str = "INVALID_REGEX";
 pub const CODE_SEARCH_STALE: &str = "SEARCH_STALE";
 /// 正则扫描超时（已中断，内容未修改）
 pub const CODE_REGEX_TIMEOUT: &str = "REGEX_TIMEOUT";
+/// 多文件搜索已禁用（设置 `app.find.multifileEnabled = false`）
+pub const CODE_MULTIFILE_DISABLED: &str = "MULTIFILE_DISABLED";
 /// 字体格式不支持
 pub const CODE_FONT_UNSUPPORTED: &str = "FONT_UNSUPPORTED";
 /// 字体文件过大

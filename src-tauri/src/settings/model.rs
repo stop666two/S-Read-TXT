@@ -223,6 +223,10 @@ pub struct FindSettings {
     pub history_limit: u32,
     /// 匹配高亮颜色（空串 = 跟随主题内置色）
     pub highlight_color: String,
+    /// 是否启用多文件（工作区）搜索
+    pub multifile_enabled: bool,
+    /// 多文件搜索并发数（同时扫描的只读标签数，1–16）
+    pub multifile_concurrency: u32,
 }
 
 impl Default for FindSettings {
@@ -237,6 +241,8 @@ impl Default for FindSettings {
             default_scope: defaults::DEFAULT_FIND_SCOPE,
             history_limit: defaults::DEFAULT_FIND_HISTORY_LIMIT,
             highlight_color: defaults::DEFAULT_FIND_HIGHLIGHT_COLOR.to_string(),
+            multifile_enabled: defaults::DEFAULT_FIND_MULTIFILE_ENABLED,
+            multifile_concurrency: defaults::DEFAULT_FIND_MULTIFILE_CONCURRENCY,
         }
     }
 }

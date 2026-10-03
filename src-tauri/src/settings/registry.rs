@@ -535,6 +535,20 @@ pub const SPECS: &[SettingSpec] = &[
         kind: SettingKind::Color,
     },
     SettingSpec {
+        id: "app.find.multifileEnabled",
+        group: "app.find",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.find.multifileConcurrency",
+        group: "app.find",
+        kind: SettingKind::Number {
+            min: defaults::FIND_MULTIFILE_CONCURRENCY_RANGE.0 as f64,
+            max: defaults::FIND_MULTIFILE_CONCURRENCY_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
         id: "app.regex.timeoutMs",
         group: "app.regex",
         kind: SettingKind::Number {

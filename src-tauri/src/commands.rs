@@ -1009,6 +1009,72 @@ pub fn count_matches_in_edit(
     })
 }
 
+/// 命令：跨标签（工作区）搜索（设置 `app.find.multifileEnabled` 关闭时报错）。
+#[tauri::command]
+pub fn search_workspace(
+    query: String,
+    case_sensitive: bool,
+    mode: Option<String>,
+    whole_word: Option<bool>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<s_read_txt::app_state::WorkspaceSearchResponse, IpcError> {
+    with_context(LogContext::request(), || {
+        let mode = parse_search_mode(mode)?;
+        let settings = current_app_settings();
+        if !settings.find.multifile_enabled {
+            return Err(IpcError::new(
+                s_read_txt::ipc_error::CODE_MULTIFILE_DISABLED,
+                "多文件搜索已在设置中关闭（app.find.multifileEnabled）",
+            ));
+        }
+        let timeout = search_timeout(mode, &settings);
+        lock_state(&state)?
+            .search_workspace(
+                &query,
+                case_sensitive,
+                mode,
+                whole_word.unwrap_or(false),
+                timeout,
+                settings.find.multifile_concurrency,
+                settings.hard_limit_mb,
+            )
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：跨标签（工作区）替换（仅编辑态标签；逐文件单撤销步）。
+#[tauri::command]
+pub fn replace_workspace(
+    query: String,
+    case_sensitive: bool,
+    mode: Option<String>,
+    whole_word: Option<bool>,
+    replacement: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<s_read_txt::app_state::WorkspaceReplaceResponse, IpcError> {
+    with_context(LogContext::request(), || {
+        let mode = parse_search_mode(mode)?;
+        let settings = current_app_settings();
+        if !settings.find.multifile_enabled {
+            return Err(IpcError::new(
+                s_read_txt::ipc_error::CODE_MULTIFILE_DISABLED,
+                "多文件搜索已在设置中关闭（app.find.multifileEnabled）",
+            ));
+        }
+        let timeout = search_timeout(mode, &settings);
+        lock_state(&state)?
+            .replace_workspace(
+                &query,
+                case_sensitive,
+                mode,
+                whole_word.unwrap_or(false),
+                &replacement,
+                timeout,
+            )
+            .map_err(IpcError::from)
+    })
+}
+
 /// 命令：替换一个命中（从 `from` 起）并返回结果与「新落点起的下一个命中」。
 #[tauri::command]
 pub fn replace_in_edit(

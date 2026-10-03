@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `8` | `8` | 配置格式版本（当前 v8；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `9` | `9` | 配置格式版本（当前 v9；启动自动迁移旧版，见 §2.7） |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
 | `maxFileSizeMB` | number | 1–2048 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
 | `hardLimitMB` | number | 100–16384 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
@@ -69,6 +69,8 @@
 | `find.defaultScope` | string | `document`/`selection`/`rowRange` | `document` | 查找范围默认（F-09） |
 | `find.historyLimit` | number | 0–1000 | `50` | 查找历史条数（0=禁用；F-10） |
 | `find.highlightColor` | string | 空 / #RGB / #RRGGBB / #RRGGBBAA / rgb() / rgba() | 空 | 匹配高亮颜色（空=跟随主题；F-11） |
+| `find.multifileEnabled` | boolean | — | `true` | 多文件（工作区）搜索开关（F-12；关闭后命令报 MULTIFILE_DISABLED） |
+| `find.multifileConcurrency` | number | 1–16 | `4` | 多文件搜索并发数（同时扫描的只读标签数；F-13） |
 | `regex.timeoutMs` | number | 50–5000 | `500` | 正则扫描超时（毫秒；超时中断并提示，F-03/F-04） |
 | `regex.library` | array | 字符串数组（≤200 条、单条 ≤512 字符、逐项正则编译校验） | `[]` | 常用正则库（F-14） |
 
@@ -162,7 +164,7 @@
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v8）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`）：
+**schema 版本（当前 v9）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`）：
 
 | 情况 | 行为 |
 |---|---|

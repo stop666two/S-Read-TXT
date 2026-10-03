@@ -187,6 +187,8 @@ fn normalize_find(settings: &mut AppSettings) {
     find.default_scope = find.default_scope.normalized();
     let (min_history, max_history) = defaults::FIND_HISTORY_LIMIT_RANGE;
     find.history_limit = find.history_limit.clamp(min_history, max_history);
+    let (min_mf, max_mf) = defaults::FIND_MULTIFILE_CONCURRENCY_RANGE;
+    find.multifile_concurrency = find.multifile_concurrency.clamp(min_mf, max_mf);
     find.highlight_color = normalize_color(&find.highlight_color);
     let regex = &mut settings.regex;
     let (min_timeout, max_timeout) = defaults::REGEX_TIMEOUT_MS_RANGE;

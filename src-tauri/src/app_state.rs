@@ -33,6 +33,67 @@ use crate::textfile::editing::search::{
 use crate::textfile::encoding::FileEncoding;
 use crate::textfile::filter::{FilterError, FilterQuery, FilterResult};
 use crate::textfile::session::{FileSession, TextFileError};
+use crate::workspace_scan::{self, FileScanOutcome, WorkspaceHit};
+
+/// 工作区单文件搜索结果（IPC 序列化；`matches` 受单文件上限截断，`total` 为完整计数）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceFileResult {
+    /// 标签 id（前端用于跳转）
+    pub tab_id: u64,
+    /// 文件名（展示）
+    pub name: String,
+    /// 文件绝对路径
+    pub path: String,
+    /// 是否处于编辑态（决定能否参与跨文件替换）
+    pub editing: bool,
+    /// 命中列表（按行序；单文件上限见 `workspace_scan`）
+    pub matches: Vec<WorkspaceHit>,
+    /// 命中总数（完整计数，20 万上限）
+    pub total: u64,
+    /// 总数达上限被截断
+    pub truncated: bool,
+    /// 扫描超时（保留已得命中）
+    pub timed_out: bool,
+    /// 单文件错误（如非法正则 / 打开失败）
+    pub error: Option<String>,
+}
+
+/// 工作区搜索响应。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSearchResponse {
+    /// 按标签展示顺序的文件结果
+    pub files: Vec<WorkspaceFileResult>,
+    /// 全部命中总数
+    pub total_matches: u64,
+    /// 任一文件达上限
+    pub truncated: bool,
+}
+
+/// 工作区单文件替换结果。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceReplaceFile {
+    /// 标签 id
+    pub tab_id: u64,
+    /// 已替换命中数
+    pub replaced: usize,
+    /// 出错说明（该文件未替换）
+    pub error: Option<String>,
+}
+
+/// 工作区替换响应。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceReplaceResponse {
+    /// 逐文件结果（仅编辑态标签）
+    pub files: Vec<WorkspaceReplaceFile>,
+    /// 全部替换总数
+    pub total_replaced: usize,
+    /// 因只读/未进入编辑态而跳过的标签数
+    pub skipped: u32,
+}
 use crate::textfile::source::DocumentSource;
 use crate::textfile::window::RowText;
 
@@ -366,6 +427,209 @@ impl AppState {
             timeout_ms,
         };
         Ok(doc.count_request(&request)?)
+    }
+
+    /// 跨标签（工作区）搜索：编辑态复用编辑引擎流式扫描；只读标签逐行扫描。
+    ///
+    /// `concurrency` 控制只读标签的并行扫描数（1–16）；编辑态标签在锁内顺序扫描
+    /// （需保持对编辑文档的独占借用）。返回按标签展示顺序排列的文件结果。
+    pub fn search_workspace(
+        &self,
+        query: &str,
+        case_sensitive: bool,
+        mode: SearchMode,
+        whole_word: bool,
+        timeout_ms: Option<u32>,
+        concurrency: u32,
+        max_size_mb: u32,
+    ) -> Result<WorkspaceSearchResponse, AppStateError> {
+        let request = SearchRequest {
+            query,
+            case_sensitive,
+            mode,
+            whole_word,
+            timeout_ms,
+        };
+        let cap = workspace_scan::WORKSPACE_FILE_MATCH_CAP;
+        // （展示序号，标签 id，文件结果）；序号用于最后恢复标签展示顺序。
+        let mut results: Vec<(usize, u64, WorkspaceFileResult)> = Vec::new();
+        type ReadonlyJob = (
+            usize,
+            u64,
+            String,
+            Option<crate::textfile::encoding::FileEncoding>,
+        );
+        let mut readonly_jobs: Vec<ReadonlyJob> = Vec::new();
+        for (index, tab_id) in self.order.iter().enumerate() {
+            let Some(tab) = self.tabs.get(tab_id) else {
+                continue;
+            };
+            let path = tab.session.path().to_string_lossy().into_owned();
+            let name = tab
+                .session
+                .path()
+                .file_name()
+                .map(|value| value.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone());
+            if tab.editing {
+                let Some(doc) = tab.edit.as_ref() else {
+                    continue;
+                };
+                let outcome = workspace_scan::scan_edit_doc(doc, &request, cap)?;
+                results.push((
+                    index,
+                    *tab_id,
+                    WorkspaceFileResult {
+                        tab_id: *tab_id,
+                        name,
+                        path,
+                        editing: true,
+                        matches: outcome.matches,
+                        total: outcome.total,
+                        truncated: outcome.truncated,
+                        timed_out: outcome.timed_out,
+                        error: None,
+                    },
+                ));
+            } else {
+                readonly_jobs.push((index, *tab_id, path, tab.session.encoding_override()));
+            }
+        }
+        // 只读标签：独立打开句柄 + 受限并发扫描（编辑文档受锁保护，不参与并行）。
+        if !readonly_jobs.is_empty() {
+            let queue =
+                std::sync::Mutex::new(std::collections::VecDeque::from(readonly_jobs.clone()));
+            let done: std::sync::Mutex<Vec<(usize, u64, Result<FileScanOutcome, String>)>> =
+                std::sync::Mutex::new(Vec::new());
+            let worker_count = (concurrency.clamp(1, 16) as usize).min(readonly_jobs.len());
+            std::thread::scope(|scope| {
+                for _ in 0..worker_count {
+                    scope.spawn(|| loop {
+                        let job = queue.lock().expect("队列锁中毒").pop_front();
+                        let Some((index, tab_id, path, encoding)) = job else {
+                            break;
+                        };
+                        let outcome = match FileSession::open(
+                            std::path::Path::new(&path),
+                            encoding,
+                            max_size_mb,
+                        ) {
+                            Ok(session) => {
+                                workspace_scan::scan_file_session(&session, &request, cap)
+                            }
+                            Err(err) => Err(err.to_string()),
+                        };
+                        done.lock()
+                            .expect("结果锁中毒")
+                            .push((index, tab_id, outcome));
+                    });
+                }
+            });
+            let mut done = done.into_inner().expect("结果锁中毒");
+            done.sort_by_key(|(index, _, _)| *index);
+            for (index, tab_id, outcome) in done {
+                let (name, path) = readonly_jobs
+                    .iter()
+                    .find(|(job_index, _, _, _)| *job_index == index)
+                    .map(|(_, _, path, _)| {
+                        let file = std::path::Path::new(path)
+                            .file_name()
+                            .map(|value| value.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| path.clone());
+                        (file, path.clone())
+                    })
+                    .unwrap_or_default();
+                let file = match outcome {
+                    Ok(outcome) => WorkspaceFileResult {
+                        tab_id,
+                        name,
+                        path,
+                        editing: false,
+                        matches: outcome.matches,
+                        total: outcome.total,
+                        truncated: outcome.truncated,
+                        timed_out: outcome.timed_out,
+                        error: None,
+                    },
+                    Err(message) => WorkspaceFileResult {
+                        tab_id,
+                        name,
+                        path,
+                        editing: false,
+                        matches: Vec::new(),
+                        total: 0,
+                        truncated: false,
+                        timed_out: false,
+                        error: Some(message),
+                    },
+                };
+                results.push((index, tab_id, file));
+            }
+        }
+        results.sort_by_key(|(index, _, _)| *index);
+        let total_matches = results.iter().map(|(_, _, file)| file.total).sum();
+        let truncated = results.iter().any(|(_, _, file)| file.truncated);
+        Ok(WorkspaceSearchResponse {
+            files: results.into_iter().map(|(_, _, file)| file).collect(),
+            total_matches,
+            truncated,
+        })
+    }
+
+    /// 跨标签（工作区）替换：仅编辑态标签；逐文件一次替换（各自单撤销步）。
+    ///
+    /// 返回逐文件结果与跳过（只读/未进入编辑态）的标签数；单文件失败不影响其余标签。
+    pub fn replace_workspace(
+        &mut self,
+        query: &str,
+        case_sensitive: bool,
+        mode: SearchMode,
+        whole_word: bool,
+        replacement: &str,
+        timeout_ms: Option<u32>,
+    ) -> Result<WorkspaceReplaceResponse, AppStateError> {
+        let request = SearchRequest {
+            query,
+            case_sensitive,
+            mode,
+            whole_word,
+            timeout_ms,
+        };
+        let mut files = Vec::new();
+        let mut skipped = 0u32;
+        let mut total_replaced = 0usize;
+        for tab_id in self.order.clone() {
+            let Some(tab) = self.tabs.get_mut(&tab_id) else {
+                continue;
+            };
+            if !tab.editing {
+                skipped += 1;
+                continue;
+            }
+            let Some(doc) = tab.edit.as_mut() else {
+                continue;
+            };
+            match doc.replace_all_request(&request, replacement) {
+                Ok(outcome) => {
+                    total_replaced += outcome.replaced;
+                    files.push(WorkspaceReplaceFile {
+                        tab_id,
+                        replaced: outcome.replaced,
+                        error: None,
+                    });
+                }
+                Err(err) => files.push(WorkspaceReplaceFile {
+                    tab_id,
+                    replaced: 0,
+                    error: Some(err.to_string()),
+                }),
+            }
+        }
+        Ok(WorkspaceReplaceResponse {
+            files,
+            total_replaced,
+            skipped,
+        })
     }
 
     /// 替换一个命中（从 `from` 起）并返回应用结果与「新落点起的下一个命中」。
