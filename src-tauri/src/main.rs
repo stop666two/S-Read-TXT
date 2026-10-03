@@ -120,6 +120,11 @@ fn main() {
         log::info!(target: "sread::main", "配置迁移检查：{name} → {status:?}");
     }
 
+    // 迁移后的原目录延迟清理（上次迁移时被占用；此刻 WebView2 尚未启动）。
+    if let Some(old_dir) = s_read_txt::storage::migrate_dir::cleanup_pending(&startup_dir) {
+        log::info!(target: "sread::main", "迁移残留已清理：{}", old_dir.display());
+    }
+
     let app_result = tauri::Builder::default()
         // 原生对话框能力（文件选择/目录选择/消息框）
         .plugin(tauri_plugin_dialog::init())
@@ -202,6 +207,8 @@ fn main() {
             commands::import_shortcuts,
             commands::get_disk_usage,
             commands::clear_cache,
+            commands::migrate_data_dir,
+            commands::restart_app,
             commands::get_default_shortcuts,
             commands::get_history,
             commands::remove_history,

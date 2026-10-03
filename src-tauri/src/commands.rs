@@ -20,8 +20,8 @@ use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
     IpcError, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING, CODE_INVALID_POSITION,
-    CODE_INVALID_SCOPE, CODE_IO, CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT,
-    CODE_SETTINGS_RESET, CODE_TAB_NOT_FOUND,
+    CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT,
+    CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET, CODE_TAB_NOT_FOUND,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -33,6 +33,7 @@ use s_read_txt::settings::reset::{self as settings_reset, ResetScope};
 use s_read_txt::settings::store as settings_store;
 use s_read_txt::settings::{bundle, shortcut_io, SettingsSaveRequest, SettingsSnapshot};
 use s_read_txt::storage::data_dir;
+use s_read_txt::storage::migrate_dir::{self as migrate_dir, MigrationReport};
 use s_read_txt::storage::paths::{self, DataDirOrigin};
 use s_read_txt::textfile::editing::edit_doc::{EditApplied, EditOp};
 use s_read_txt::textfile::editing::search::{
@@ -63,8 +64,10 @@ pub struct DataDirStatus {
     writable: bool,
     /// 不可写原因（可写时为 None；供前端提示与日志回溯）
     message: Option<String>,
-    /// 数据目录来源（portable / envOverride）
+    /// 数据目录来源（portable / envOverride / runtimeOverride / persisted）
     origin: DataDirOrigin,
+    /// 持久化指针目标（程序目录 `config.json`；未设置时为 None）
+    persisted: Option<String>,
 }
 
 /// 获取应用状态锁（中毒视为内部错误）。
@@ -111,6 +114,12 @@ pub fn get_app_info() -> AppInfo {
     })
 }
 
+/// 读取迁移指针目标（状态展示用；不可读时为 None）。
+fn persisted_dir_text() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    paths::read_pointer(&exe).map(|dir| dir.to_string_lossy().into_owned())
+}
+
 /// 命令：探测数据目录可写性（启动自检与「目录不可写」引导流程的数据源）。
 ///
 /// 返回：Ok(DataDirStatus)——即使不可写也返回 Ok，由前端依据 `writable`
@@ -126,6 +135,7 @@ pub fn data_dir_status() -> DataDirStatus {
                 writable: true,
                 message: None,
                 origin,
+                persisted: persisted_dir_text(),
             },
             Err(err) => {
                 // 重要事件：不可写会导致数据无法持久化，进入日志便于排查
@@ -139,6 +149,7 @@ pub fn data_dir_status() -> DataDirStatus {
                     writable: false,
                     message: Some(err.to_string()),
                     origin,
+                    persisted: persisted_dir_text(),
                 }
             }
         }
@@ -171,6 +182,7 @@ pub fn set_data_dir(dir: String) -> DataDirStatus {
                     writable: true,
                     message: None,
                     origin: DataDirOrigin::RuntimeOverride,
+                    persisted: persisted_dir_text(),
                 }
             }
             Err(err) => DataDirStatus {
@@ -178,8 +190,53 @@ pub fn set_data_dir(dir: String) -> DataDirStatus {
                 writable: false,
                 message: Some(err.to_string()),
                 origin: DataDirOrigin::RuntimeOverride,
+                persisted: persisted_dir_text(),
             },
         }
+    })
+}
+
+/// 命令：迁移数据目录到指定位置（P0-10；复制校验 → 写指针 → 清理原目录）。
+///
+/// 说明：成功后需重启应用方可完全生效（指针在启动时读取）；
+///       原目录被占用时延迟清理（下次启动自动重试，见 `migrate_dir::cleanup_pending`）。
+#[tauri::command]
+pub fn migrate_data_dir(target: String) -> Result<MigrationReport, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let exe = std::env::current_exe()
+            .map_err(|err| IpcError::new(CODE_IO, format!("无法定位程序路径：{err}")))?;
+        let pointer = paths::pointer_path(&exe);
+        let report = migrate_dir::migrate_data_dir(&dir, Path::new(&target), &pointer)
+            .map_err(|err| IpcError::new(CODE_MIGRATE_FAILED, format!("迁移失败：{err}")))?;
+        log::info!(
+            target: "sread::storage",
+            "数据目录已迁移：{} → {}（复制 {} 文件/{} 字节，跳过 {}，原目录已清理：{}）",
+            dir.display(),
+            target,
+            report.copied_files,
+            report.copied_bytes,
+            report.skipped,
+            report.old_removed
+        );
+        Ok(report)
+    })
+}
+
+/// 命令：重启应用（数据目录迁移完成后立即生效；先拉起新进程再退出当前进程）。
+///
+/// 说明：不去等待新进程（旧进程退出即释放旧目录句柄）；直接退出可能跳过
+///       WebView2 优雅清理（缓存可重建，无数据风险）。
+#[tauri::command]
+pub fn restart_app() -> Result<(), IpcError> {
+    with_context(LogContext::request(), || {
+        let exe = std::env::current_exe()
+            .map_err(|err| IpcError::new(CODE_IO, format!("无法定位程序路径：{err}")))?;
+        std::process::Command::new(exe)
+            .spawn()
+            .map_err(|err| IpcError::new(CODE_IO, format!("重启失败：{err}")))?;
+        log::info!(target: "sread::main", "用户请求重启应用（数据目录迁移生效）");
+        std::process::exit(0);
     })
 }
 

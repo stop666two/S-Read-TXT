@@ -71,8 +71,7 @@ pub fn import_from_file(dir: &Path, path: &str) -> Result<(), String> {
             meta.len()
         ));
     }
-    let text =
-        std::fs::read_to_string(path).map_err(|err| format!("读取快捷键文件失败：{err}"))?;
+    let text = std::fs::read_to_string(path).map_err(|err| format!("读取快捷键文件失败：{err}"))?;
     let value: Value =
         serde_json::from_str(&text).map_err(|err| format!("快捷键文件不是合法 JSON：{err}"))?;
     let bindings = parse_bindings(&value)?;
@@ -204,7 +203,12 @@ mod tests {
         import_from_file(dir.path(), &import_path.to_string_lossy()).expect("导入失败");
 
         let saved = store::load_shortcuts(dir.path());
-        assert_eq!(saved.bindings.len(), 1, "覆盖项应被整体替换：{:?}", saved.bindings);
+        assert_eq!(
+            saved.bindings.len(),
+            1,
+            "覆盖项应被整体替换：{:?}",
+            saved.bindings
+        );
         assert_eq!(saved.bindings["openFile"], "Ctrl+Shift+O");
         let effective = store::effective_bindings(&saved.bindings);
         assert_eq!(effective["closeTab"], "Ctrl+W", "未列出动作应回默认");
@@ -216,7 +220,8 @@ mod tests {
         let dir = data_dir();
         let before = store::load_shortcuts(dir.path());
         let import_path = dir.path().join("bad.json");
-        std::fs::write(&import_path, r#"{ "bindings": { "bogus": "Ctrl+B" } }"#).expect("写文件失败");
+        std::fs::write(&import_path, r#"{ "bindings": { "bogus": "Ctrl+B" } }"#)
+            .expect("写文件失败");
         let err = import_from_file(dir.path(), &import_path.to_string_lossy()).expect_err("应拒绝");
         assert!(err.contains("bogus"), "错误应包含动作名：{err}");
         assert_eq!(store::load_shortcuts(dir.path()).bindings, before.bindings);
@@ -235,7 +240,10 @@ mod tests {
             let path = dir.path().join("case.json");
             std::fs::write(&path, body).expect("写文件失败");
             let err = import_from_file(dir.path(), &path.to_string_lossy()).expect_err("应拒绝");
-            assert!(err.contains(expected), "预期错误含「{expected}」，实际：{err}");
+            assert!(
+                err.contains(expected),
+                "预期错误含「{expected}」，实际：{err}"
+            );
         }
 
         let big = dir.path().join("big.json");

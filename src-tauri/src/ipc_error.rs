@@ -37,6 +37,8 @@ pub const CODE_SETTINGS_RESET: &str = "SETTINGS_RESET";
 
 /// 缓存清理范围未知（`clear_cache` 的 scope 非法）
 pub const CODE_INVALID_SCOPE: &str = "INVALID_SCOPE";
+/// 数据目录迁移失败（P0-10）
+pub const CODE_MIGRATE_FAILED: &str = "MIGRATE_FAILED";
 /// 历史保存失败
 pub const CODE_HISTORY_SAVE: &str = "HISTORY_SAVE";
 /// 会话保存失败
