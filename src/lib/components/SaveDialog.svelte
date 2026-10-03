@@ -4,6 +4,8 @@
   设计依据：需求 §6.2 / D19「保存每次询问编码（默认保持原编码）」。
 -->
 <script lang="ts">
+  import { t } from '../i18n/index.svelte';
+
   interface Props {
     /** 是否显示 */
     open: boolean;
@@ -51,15 +53,15 @@
       class="dialog"
       role="dialog"
       aria-modal="true"
-      aria-label="保存文件"
+      aria-label={t('save.title')}
       tabindex="-1"
       onkeydown={handleKeydown}
     >
-      <h2>保存文件</h2>
+      <h2>{t('save.title')}</h2>
       <label class="field">
-        <span>目标编码</span>
+        <span>{t('save.targetEncoding')}</span>
         <select bind:value={choice}>
-          <option value="">保持当前编码（{currentEncoding}）</option>
+          <option value="">{t('save.keepCurrent', { encoding: currentEncoding })}</option>
           {#each encodings as encoding (encoding)}
             <option value={encoding}>{encoding}</option>
           {/each}
@@ -67,11 +69,11 @@
       </label>
       <label class="check">
         <input type="checkbox" bind:checked={backup} />
-        <span>写入 .bak 备份（覆盖磁盘上前一次内容）</span>
+        <span>{t('save.backup')}</span>
       </label>
       <div class="actions">
-        <button class="btn" type="button" onclick={onCancel}>取消</button>
-        <button class="btn primary" type="button" onclick={confirm}>保存</button>
+        <button class="btn" type="button" onclick={onCancel}>{t('common.cancel')}</button>
+        <button class="btn primary" type="button" onclick={confirm}>{t('common.save')}</button>
       </div>
     </div>
   </div>

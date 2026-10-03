@@ -5,6 +5,7 @@
   截断（truncated）：命中超过列举上限时仅展示汇总，只能整体替换。
 -->
 <script lang="ts">
+  import { t } from '../i18n/index.svelte';
   import type { ReplacePreviewItem } from '../ipc';
 
   interface Props {
@@ -78,7 +79,7 @@
     class="dialog"
     role="dialog"
     aria-modal="true"
-    aria-label="全部替换预览"
+    aria-label={t('replacePreview.aria')}
     tabindex="-1"
     onkeydown={(event) => {
       if (event.key === 'Escape') {
@@ -87,11 +88,12 @@
       }
     }}
   >
-    <h2>全部替换确认</h2>
+    <h2>{t('replacePreview.title')}</h2>
     <p class="summary">
-      共命中 <strong>{total}</strong> 处{truncated ? '' : `，已勾选 ${selectedCount} 处`}。
       {#if truncated}
-        命中过多，仅列出前 {items.length} 条；未列出的命中将一并替换。
+        {t('replacePreview.summaryTruncated', { total, shown: items.length })}
+      {:else}
+        {t('replacePreview.summarySelected', { total, selected: selectedCount })}
       {/if}
     </p>
 
@@ -103,13 +105,13 @@
             <input
               type="checkbox"
               checked={!excluded.has(item.index)}
-              aria-label={`替换第 ${item.startRow + 1} 行`}
+              aria-label={t('replacePreview.checkAria', { row: item.startRow + 1 })}
               onchange={() => toggle(item.index)}
             />
           {/if}
           <div class="body">
             <div class="line">
-              <span class="no">第 {item.startRow + 1} 行</span>
+              <span class="no">{t('replacePreview.lineNo', { row: item.startRow + 1 })}</span>
               {#if parts}
                 <span class="text">{parts.before}<mark class="old">{parts.hit}</mark>{parts.after}</span>
               {:else}
@@ -117,7 +119,7 @@
               {/if}
             </div>
             <div class="line replacement">
-              <span class="no">替换为</span>
+              <span class="no">{t('replacePreview.replacementLabel')}</span>
               <span class="text"><mark class="new">{item.replacementText}</mark></span>
             </div>
           </div>
@@ -127,18 +129,20 @@
 
     <div class="actions">
       {#if !truncated}
-        <button class="btn" type="button" onclick={selectAll}>全选</button>
-        <button class="btn" type="button" onclick={excludeAll}>全不选</button>
+        <button class="btn" type="button" onclick={selectAll}>{t('replacePreview.selectAll')}</button>
+        <button class="btn" type="button" onclick={excludeAll}>{t('replacePreview.selectNone')}</button>
       {/if}
       <span class="spacer"></span>
-      <button class="btn" type="button" onclick={onCancel}>取消</button>
+      <button class="btn" type="button" onclick={onCancel}>{t('common.cancel')}</button>
       <button
         class="btn primary"
         type="button"
         disabled={!truncated && selectedCount === 0}
         onclick={confirm}
       >
-        {truncated ? `全部替换 ${total} 处` : `替换已选 ${selectedCount} 处`}
+        {truncated
+          ? t('replacePreview.confirmAll', { total })
+          : t('replacePreview.confirmSelected', { selected: selectedCount })}
       </button>
     </div>
   </div>
@@ -180,10 +184,6 @@
     font-size: 13px;
     line-height: 1.6;
     color: var(--muted);
-  }
-
-  .summary strong {
-    color: var(--ink);
   }
 
   .list {

@@ -5,6 +5,7 @@
   定位：fixed 相对视口（锚定阅读容器右上角），容器内部滚动不影响位置。
 -->
 <script lang="ts">
+  import { t } from '../i18n/index.svelte';
   import type { SearchMode } from '../ipc';
 
   interface Props {
@@ -99,15 +100,15 @@
   class="find-bar"
   style="top: {position.top}px; right: {position.right}px"
   role="search"
-  aria-label="查找与替换"
+  aria-label={t('find.aria')}
 >
   <div class="row">
     <input
       bind:this={findInput}
       bind:value={query}
       class="input"
-      placeholder="查找内容"
-      aria-label="查找内容"
+      placeholder={t('find.query')}
+      aria-label={t('find.query')}
       spellcheck="false"
       onkeydown={handleKeydown}
     />
@@ -115,8 +116,8 @@
       class="icon"
       class:on={mode === 'regex'}
       aria-pressed={mode === 'regex'}
-      title="正则表达式（Rust regex 语法；替换支持 $1 捕获展开）"
-      aria-label="正则表达式"
+      title={t('find.regexHint')}
+      aria-label={t('find.regex')}
       onclick={() => (mode = mode === 'regex' ? 'literal' : 'regex')}
     >
       .*
@@ -125,8 +126,8 @@
       class="icon"
       class:on={caseSensitive}
       aria-pressed={caseSensitive}
-      title="区分大小写"
-      aria-label="区分大小写"
+      title={t('find.caseSensitive')}
+      aria-label={t('find.caseSensitive')}
       onclick={() => (caseSensitive = !caseSensitive)}
     >
       Aa
@@ -136,17 +137,17 @@
       disabled={query.length === 0}
       onclick={() => onFindNext(query, caseSensitive, mode)}
     >
-      下一个
+      {t('find.next')}
     </button>
-    <button class="icon" title="关闭（Esc）" aria-label="关闭查找" onclick={onClose}>×</button>
+    <button class="icon" title={t('find.closeHint')} aria-label={t('find.close')} onclick={onClose}>×</button>
   </div>
   {#if replaceMode}
     <div class="row">
       <input
         bind:value={replacement}
         class="input"
-        placeholder="替换为"
-        aria-label="替换为"
+        placeholder={t('find.replacement')}
+        aria-label={t('find.replacement')}
         spellcheck="false"
         onkeydown={handleKeydown}
       />
@@ -155,14 +156,14 @@
         disabled={query.length === 0}
         onclick={() => onReplace(query, replacement, caseSensitive, mode)}
       >
-        替换
+        {t('find.replace')}
       </button>
       <button
         class="action"
         disabled={query.length === 0}
         onclick={() => onReplaceAll(query, replacement, caseSensitive, mode)}
       >
-        全部替换
+        {t('find.replaceAll')}
       </button>
     </div>
   {/if}

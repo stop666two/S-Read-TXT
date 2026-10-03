@@ -4,6 +4,8 @@
   交互：选择可写目录（推荐；仅本次运行有效）或仅本次只读运行（不保存任何数据）。
 -->
 <script lang="ts">
+  import { t } from '../i18n/index.svelte';
+
   interface Props {
     /** 不可写目录（展示给用户定位问题） */
     dir: string;
@@ -33,20 +35,20 @@
 
 <div class="ddl-backdrop">
   <div class="ddl" role="alertdialog" aria-modal="true" aria-labelledby="ddl-title">
-    <h2 id="ddl-title">数据目录不可写</h2>
-    <p class="ddl-line">程序目录无法写入，历史记录、设置与会话将无法保存：</p>
+    <h2 id="ddl-title">{t('dataDir.title')}</h2>
+    <p class="ddl-line">{t('dataDir.line')}</p>
     <p class="ddl-dir">{dir}</p>
     {#if message}
       <p class="ddl-msg">{message}</p>
     {/if}
     <p class="ddl-line">
-      请选择一个可写目录（<strong>仅本次运行有效</strong>；若程序目录恢复可写，下次启动会自动回到便携模式）。
+      {t('dataDir.chooseHint1')}<strong>{t('dataDir.chooseHintStrong')}</strong>{t('dataDir.chooseHint2')}
     </p>
     <div class="ddl-actions">
       <button class="ddl-primary" onclick={() => void choose()} disabled={busy}>
-        {busy ? '处理中…' : '选择可写目录（推荐）'}
+        {busy ? t('dataDir.busy') : t('dataDir.choose')}
       </button>
-      <button class="ddl-secondary" onclick={onSkip} disabled={busy}>仅本次只读运行</button>
+      <button class="ddl-secondary" onclick={onSkip} disabled={busy}>{t('dataDir.skip')}</button>
     </div>
   </div>
 </div>

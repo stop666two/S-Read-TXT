@@ -4,6 +4,7 @@
   清空（二次确认）。数据源为共享 store（historyStore）。
 -->
 <script lang="ts">
+  import { i18n, t } from '../i18n/index.svelte';
   import { formatBytes } from '../format';
   import type { HistoryEntry } from '../ipc';
   import { historyStore } from '../state/history.svelte';
@@ -81,7 +82,7 @@
   function formatTime(iso: string): string {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return iso;
-    return date.toLocaleString('zh-CN', {
+    return date.toLocaleString(i18n.locale, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -106,17 +107,17 @@
       if (event.target === event.currentTarget) onClose();
     }}
   >
-    <div class="panel" role="dialog" aria-modal="false" aria-label="历史记录">
+    <div class="panel" role="dialog" aria-modal="false" aria-label={t('history.title')}>
       <header class="head">
-        <h2>历史记录</h2>
+        <h2>{t('history.title')}</h2>
         <input
           class="search"
           type="search"
-          placeholder="搜索文件名或路径"
-          aria-label="搜索历史记录"
+          placeholder={t('history.search')}
+          aria-label={t('history.searchAria')}
           bind:value={query}
         />
-        <button class="icon" title="关闭历史面板" aria-label="关闭历史面板" onclick={onClose}>
+        <button class="icon" title={t('history.close')} aria-label={t('history.close')} onclick={onClose}>
           <Icon name="close" size={14} />
         </button>
       </header>
@@ -128,7 +129,7 @@
       >
         {#if filtered.length === 0}
           <p class="empty">
-            {historyStore.entries.length === 0 ? '暂无历史记录' : '没有匹配的记录'}
+            {historyStore.entries.length === 0 ? t('history.empty') : t('history.noMatch')}
           </p>
         {:else}
           <div class="phantom" style="height: {filtered.length * ITEM_HEIGHT}px;">
@@ -151,8 +152,8 @@
                   <span class="name">{entry.name}</span>
                   <button
                     class="del"
-                    aria-label={`删除历史：${entry.name}`}
-                    title="删除这条记录"
+                    aria-label={t('history.deleteAria', { name: entry.name })}
+                    title={t('history.deleteHint')}
                     onclick={(event) => {
                       event.stopPropagation();
                       void historyStore.remove(entry.path);
@@ -164,8 +165,8 @@
                 <div class="row2">{entry.path}</div>
                 <div class="row3">
                   {formatBytes(entry.size)} · {formatTime(entry.openedAt)} · {entry.lastPercent > 0
-                    ? `读到 ${Math.round(entry.lastPercent)}%`
-                    : '未记录进度'}
+                    ? t('history.progress', { percent: Math.round(entry.lastPercent) })
+                    : t('history.noProgress')}
                 </div>
               </div>
             {/each}
@@ -174,13 +175,13 @@
       </div>
 
       <footer class="foot">
-        <span class="count">共 {filtered.length} 条（显示 {historyStore.entries.length} 条中）</span>
+        <span class="count">{t('history.count', { filtered: filtered.length, total: historyStore.entries.length })}</span>
         <button
           class="clear"
           disabled={historyStore.entries.length === 0}
           onclick={() => (confirmClear = true)}
         >
-          清空历史
+          {t('history.clear')}
         </button>
       </footer>
     </div>
@@ -189,9 +190,9 @@
 
 <ConfirmDialog
   open={confirmClear}
-  title="清空历史记录"
-  message="将删除全部历史记录与阅读进度，且不可恢复。继续吗？"
-  confirmLabel="清空"
+  title={t('history.clearTitle')}
+  message={t('history.clearMessage')}
+  confirmLabel={t('history.clearConfirm')}
   onConfirm={() => {
     confirmClear = false;
     void historyStore.clear();

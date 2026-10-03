@@ -68,6 +68,76 @@ export const en: Record<MessageKey, string> = {
   'onboarding.dontShow': "Don't show again",
   'onboarding.start': 'Get started',
 
+  // ---------- Common ----------
+  'common.cancel': 'Cancel',
+  'common.save': 'Save',
+
+  // ---------- Find bar ----------
+  'find.aria': 'Find and replace',
+  'find.query': 'Find',
+  'find.regex': 'Regular expression',
+  'find.regexHint':
+    'Regular expression (Rust regex syntax; replacements support $1 capture expansion)',
+  'find.caseSensitive': 'Match case',
+  'find.next': 'Next',
+  'find.close': 'Close find',
+  'find.closeHint': 'Close (Esc)',
+  'find.replacement': 'Replace with',
+  'find.replace': 'Replace',
+  'find.replaceAll': 'Replace all',
+
+  // ---------- Save dialog ----------
+  'save.title': 'Save file',
+  'save.targetEncoding': 'Target encoding',
+  'save.keepCurrent': 'Keep current encoding ({encoding})',
+  'save.backup': 'Write a .bak backup (overwrites the previous on-disk content)',
+
+  // ---------- Unsaved dialog ----------
+  'unsaved.discard': "Don't save",
+
+  // ---------- Data folder dialog ----------
+  'dataDir.title': 'Data folder not writable',
+  'dataDir.line':
+    'The program folder is not writable, so history, settings and session cannot be saved:',
+  'dataDir.chooseHint1': 'Choose a writable folder (',
+  'dataDir.chooseHintStrong': 'effective for this session only',
+  'dataDir.chooseHint2':
+    '); once the program folder is writable again, the next launch returns to portable mode.',
+  'dataDir.busy': 'Working…',
+  'dataDir.choose': 'Choose writable folder (recommended)',
+  'dataDir.skip': 'Read-only for this session',
+
+  // ---------- Replace-all preview ----------
+  'replacePreview.aria': 'Replace-all preview',
+  'replacePreview.title': 'Confirm replace all',
+  'replacePreview.summarySelected': '{total} matches found, {selected} selected.',
+  'replacePreview.summaryTruncated':
+    '{total} matches found. Too many to list; only the first {shown} are listed. Unlisted matches will also be replaced.',
+  'replacePreview.checkAria': 'Replace row {row}',
+  'replacePreview.lineNo': 'Row {row}',
+  'replacePreview.replacementLabel': 'Replace with',
+  'replacePreview.selectAll': 'Select all',
+  'replacePreview.selectNone': 'Select none',
+  'replacePreview.confirmAll': 'Replace all {total}',
+  'replacePreview.confirmSelected': 'Replace {selected} selected',
+
+  // ---------- History panel ----------
+  'history.title': 'History',
+  'history.search': 'Search file name or path',
+  'history.searchAria': 'Search history',
+  'history.close': 'Close history panel',
+  'history.empty': 'No history yet',
+  'history.noMatch': 'No matching records',
+  'history.deleteAria': 'Delete history: {name}',
+  'history.deleteHint': 'Delete this record',
+  'history.progress': 'Read {percent}%',
+  'history.noProgress': 'No progress recorded',
+  'history.count': '{filtered} of {total} shown',
+  'history.clear': 'Clear history',
+  'history.clearTitle': 'Clear history',
+  'history.clearMessage': 'This deletes all history and reading progress permanently. Continue?',
+  'history.clearConfirm': 'Clear',
+
   // ---------- Menu bar ----------
   'menu.aria': 'Main menu',
   'menu.file': 'File',

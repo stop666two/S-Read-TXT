@@ -3,6 +3,8 @@
   用于：外部修改冲突（覆盖/取消）等破坏性操作的二次确认。
 -->
 <script lang="ts">
+  import { t } from '../i18n/index.svelte';
+
   interface Props {
     /** 是否显示 */
     open: boolean;
@@ -24,7 +26,7 @@
     title,
     message,
     confirmLabel,
-    cancelLabel = '取消',
+    cancelLabel,
     onConfirm,
     onCancel,
   }: Props = $props();
@@ -36,7 +38,7 @@
       <h2>{title}</h2>
       <p>{message}</p>
       <div class="actions">
-        <button class="btn" type="button" onclick={onCancel}>{cancelLabel}</button>
+        <button class="btn" type="button" onclick={onCancel}>{cancelLabel ?? t('common.cancel')}</button>
         <button class="btn danger" type="button" onclick={onConfirm}>{confirmLabel}</button>
       </div>
     </div>

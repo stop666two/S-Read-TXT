@@ -4,6 +4,8 @@
   设计依据：设计 D19「脏关闭弹窗（保存/不保存/取消）」。
 -->
 <script lang="ts">
+  import { t } from '../i18n/index.svelte';
+
   interface Props {
     /** 是否显示 */
     open: boolean;
@@ -31,9 +33,9 @@
       <h2>{title}</h2>
       <p>{message}</p>
       <div class="actions">
-        <button class="btn" type="button" onclick={onCancel}>取消</button>
-        <button class="btn danger" type="button" onclick={onDiscard}>不保存</button>
-        <button class="btn primary" type="button" onclick={onSave}>保存</button>
+        <button class="btn" type="button" onclick={onCancel}>{t('common.cancel')}</button>
+        <button class="btn danger" type="button" onclick={onDiscard}>{t('unsaved.discard')}</button>
+        <button class="btn primary" type="button" onclick={onSave}>{t('common.save')}</button>
       </div>
     </div>
   </div>
