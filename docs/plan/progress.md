@@ -367,3 +367,4 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - **P0-11 验收（完成）**：全量自检 26 步首跑 29/31（fmt + T5 断言两个测试侧问题当场修复并复验，修复后重跑）；红线复测：NSIS **1.97MiB**、启动可见 max 666ms/就绪 median 792ms、内存 10×100MiB 打开后 82.8MiB/压力峰 106.9MiB（<120）；stress 11/11。**P0 全部完成**（P0-1…P0-10）。
 - **发布形态补充（维护者要求，完成）**：①审计确认应用本体**零注册表写入、零持久化环境变量写入**（两处 `set_var` 仅进程内存；系统主题仅只读注册表）；②新增 `scripts/make-portable.mjs`（exe+WebView2Loader.dll+LICENSE+便携说明 → `S-Read-TXT_<版本>_<架构>-portable.zip`，实测 2.43MiB、解压即用、数据落解压目录、可整体搬迁）；③release.yml 三架构构建新增便携版打包与产物上传；汇总与发布说明改为「安装版+便携版」双形态（README 新增形态对照表与零注册表说明）；④安装版目录已含 WebView2Loader.dll，可整体复制使用。
 - **验收修复（P0-11 续）**：①迁移校验竞态修复（改为「以复制记录为准」，migrate 13/13 两连跑稳定）；②smoke-settings S11c 偶发失败加固（重开设置窗后等待行渲染再点击），48/48。
+- **P0-11 验收收官**：修复后最终全量自检 **31/31 通过（678.3s）**；红线：NSIS 1.97MiB、启动可见 max 666ms/就绪 median 792ms、内存打开后 82.8MiB/压力峰 106.9MiB（<120）；stress 11/11；**P0 全部完成，待维护者验收演示与推送授权**。
