@@ -22,6 +22,7 @@ use crate::textfile::editing::batch::{
     BatchError, BatchNumberingConfig, BatchNumberingOutcome, BatchPreview,
 };
 use crate::textfile::editing::edit_doc::{EditApplied, EditDoc, EditError, EditOp};
+use crate::textfile::editing::line_ops::{LineOpConfig, LineOpError, LineOpOutcome, LineOpPreview};
 use crate::textfile::editing::save::{
     save_doc, snapshot_of, DiskSnapshot, SaveError, SaveOptions, SaveOutcome,
 };
@@ -57,6 +58,9 @@ pub enum AppStateError {
     /// 批量插入/序号错误（透传）
     #[error(transparent)]
     Batch(#[from] BatchError),
+    /// 行操作错误（透传）
+    #[error(transparent)]
+    LineOp(#[from] LineOpError),
     /// 保存链错误（透传）
     #[error(transparent)]
     Save(#[from] SaveError),
@@ -537,6 +541,26 @@ impl AppState {
         Ok(doc.apply_batch_numbering(config)?)
     }
 
+    /// 预览行操作（P1-2；仅编辑标签）。
+    pub fn preview_line_op(
+        &self,
+        tab_id: u64,
+        config: &LineOpConfig,
+    ) -> Result<LineOpPreview, AppStateError> {
+        let doc = self.edit_doc(tab_id)?;
+        Ok(doc.preview_line_op(config)?)
+    }
+
+    /// 执行行操作（单次编辑 = 单撤销步；仅编辑标签）。
+    pub fn apply_line_op(
+        &mut self,
+        tab_id: u64,
+        config: &LineOpConfig,
+    ) -> Result<LineOpOutcome, AppStateError> {
+        let doc = self.edit_doc_mut(tab_id)?;
+        Ok(doc.apply_line_op(config)?)
+    }
+
     /// 只读访问标签的编辑文档（未进入编辑时报 `NotEditing`）。
     fn edit_doc(&self, tab_id: u64) -> Result<&EditDoc, AppStateError> {
         self.tab(tab_id)?
@@ -777,6 +801,57 @@ mod tests {
                 .row_text(0)
                 .as_deref(),
             Some("aa")
+        );
+    }
+
+    /// 测试用行操作配置（其余字段取默认值）。
+    fn test_line_op_config(op: crate::textfile::editing::line_ops::LineOp) -> LineOpConfig {
+        LineOpConfig {
+            op,
+            ..LineOpConfig::default()
+        }
+    }
+
+    /// 行操作：未编辑守卫 + 编辑后排序经状态层贯通与单撤销。
+    #[test]
+    fn line_op_through_state_and_undo() {
+        use crate::textfile::editing::line_ops::LineOp;
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "lines-a.txt", "b\na\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let config = test_line_op_config(LineOp::Sort);
+        assert!(matches!(
+            state.preview_line_op(info.tab_id, &config),
+            Err(AppStateError::NotEditing(_))
+        ));
+        state
+            .toggle_edit(info.tab_id, &settings)
+            .expect("进入编辑失败");
+        let preview = state
+            .preview_line_op(info.tab_id, &config)
+            .expect("预览失败");
+        assert_eq!(preview.affected_rows, 2);
+        let outcome = state.apply_line_op(info.tab_id, &config).expect("执行失败");
+        assert_eq!(outcome.affected, 2);
+        assert!(outcome.applied.as_ref().expect("应有应用结果").dirty);
+        assert_eq!(
+            state
+                .edit_doc(info.tab_id)
+                .expect("文档存在")
+                .row_text(0)
+                .as_deref(),
+            Some("a")
+        );
+        state.undo_edit(info.tab_id).expect("撤销失败");
+        assert_eq!(
+            state
+                .edit_doc(info.tab_id)
+                .expect("文档存在")
+                .row_text(0)
+                .as_deref(),
+            Some("b")
         );
     }
 

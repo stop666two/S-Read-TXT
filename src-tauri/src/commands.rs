@@ -42,6 +42,7 @@ use s_read_txt::textfile::editing::batch::{
     BatchNumberingConfig, BatchNumberingOutcome, BatchPreview,
 };
 use s_read_txt::textfile::editing::edit_doc::{EditApplied, EditOp};
+use s_read_txt::textfile::editing::line_ops::{LineOpConfig, LineOpOutcome, LineOpPreview};
 use s_read_txt::textfile::editing::search::{
     FindHit, ReplaceAllOutcome, ReplaceNextOutcome, ReplacePreview, SearchMode, PREVIEW_LIST_CAP,
 };
@@ -269,6 +270,32 @@ pub fn apply_batch_numbering(
     with_context(LogContext::request(), || {
         let mut app_state = lock_state(&state)?;
         Ok(app_state.apply_batch_numbering(tab_id, &config)?)
+    })
+}
+
+/// 命令：预览行操作（仅编辑标签）。
+#[tauri::command]
+pub fn preview_line_op(
+    tab_id: u64,
+    config: LineOpConfig,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<LineOpPreview, IpcError> {
+    with_context(LogContext::request(), || {
+        let app_state = lock_state(&state)?;
+        Ok(app_state.preview_line_op(tab_id, &config)?)
+    })
+}
+
+/// 命令：执行行操作（单次编辑 = 单撤销步；仅编辑标签）。
+#[tauri::command]
+pub fn apply_line_op(
+    tab_id: u64,
+    config: LineOpConfig,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<LineOpOutcome, IpcError> {
+    with_context(LogContext::request(), || {
+        let mut app_state = lock_state(&state)?;
+        Ok(app_state.apply_line_op(tab_id, &config)?)
     })
 }
 

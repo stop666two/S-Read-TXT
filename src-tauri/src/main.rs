@@ -237,6 +237,8 @@ fn main() {
             commands::set_encoding,
             commands::preview_batch_numbering,
             commands::apply_batch_numbering,
+            commands::preview_line_op,
+            commands::apply_line_op,
             commands::list_encodings,
             commands::list_tabs,
             commands::close_tab,
