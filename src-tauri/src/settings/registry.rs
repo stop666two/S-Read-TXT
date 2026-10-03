@@ -52,12 +52,10 @@ pub enum SettingKind {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingSpec {
-    /// 稳定点分 id（配置文件 JSON 路径）
+    /// 稳定点分 id（配置文件 JSON 路径；前端据此解析语言包键 `setting.<id>`）
     pub id: &'static str,
-    /// 分组（设置界面分组与重置作用域；命名与配置段对齐）
+    /// 分组（设置界面分组与重置作用域；语言包键 `settingGroup.<group>`）
     pub group: &'static str,
-    /// 中文标签（界面展示与搜索）
-    pub label: &'static str,
     /// 类型与范围
     pub kind: SettingKind,
 }
@@ -68,7 +66,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "app.logLevel",
         group: "app.basic",
-        label: "日志级别",
         kind: SettingKind::Enum {
             values: &["error", "warn", "info", "debug"],
         },
@@ -76,7 +73,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "app.locale",
         group: "app.basic",
-        label: "界面语言",
         kind: SettingKind::Enum {
             values: &["zh-CN", "en"],
         },
@@ -84,7 +80,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "app.maxFileSizeMB",
         group: "app.basic",
-        label: "只读阈值（MB）",
         kind: SettingKind::Number {
             min: defaults::MAX_FILE_SIZE_MB_RANGE.0 as f64,
             max: defaults::MAX_FILE_SIZE_MB_RANGE.1 as f64,
@@ -94,7 +89,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "app.hardLimitMB",
         group: "app.basic",
-        label: "硬上限（MB）",
         kind: SettingKind::Number {
             min: defaults::HARD_LIMIT_MB_RANGE.0 as f64,
             max: defaults::HARD_LIMIT_MB_RANGE.1 as f64,
@@ -104,7 +98,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "app.maxTabs",
         group: "app.basic",
-        label: "标签数量上限",
         kind: SettingKind::Number {
             min: defaults::MAX_TABS_RANGE.0 as f64,
             max: defaults::MAX_TABS_RANGE.1 as f64,
@@ -114,20 +107,17 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "app.saveBackupEnabled",
         group: "app.basic",
-        label: "首次保存生成备份",
         kind: SettingKind::Bool,
     },
     SettingSpec {
         id: "app.showOnboarding",
         group: "app.basic",
-        label: "显示首启引导",
         kind: SettingKind::Bool,
     },
     // ---------- settings.json / 历史 ----------
     SettingSpec {
         id: "app.history.maxEntries",
         group: "app.history",
-        label: "历史保留条数",
         kind: SettingKind::Number {
             min: defaults::HISTORY_MAX_ENTRIES_RANGE.0 as f64,
             max: defaults::HISTORY_MAX_ENTRIES_RANGE.1 as f64,
@@ -137,7 +127,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "app.history.retentionDays",
         group: "app.history",
-        label: "历史保留天数",
         kind: SettingKind::Number {
             min: defaults::HISTORY_RETENTION_DAYS_RANGE.0 as f64,
             max: defaults::HISTORY_RETENTION_DAYS_RANGE.1 as f64,
@@ -148,20 +137,17 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "app.startup.restoreSession",
         group: "app.startup",
-        label: "启动恢复上次会话",
         kind: SettingKind::Bool,
     },
     SettingSpec {
         id: "app.startup.restoreWindow",
         group: "app.startup",
-        label: "启动恢复窗口位置",
         kind: SettingKind::Bool,
     },
     // ---------- reader.json / 主题 ----------
     SettingSpec {
         id: "reader.theme",
         group: "reader.basic",
-        label: "主题",
         kind: SettingKind::Enum {
             values: &["light", "dark", "eye", "system"],
         },
@@ -170,13 +156,11 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "reader.typography.fontFamily",
         group: "reader.typography",
-        label: "正文字体",
         kind: SettingKind::Text { max_len: 200 },
     },
     SettingSpec {
         id: "reader.typography.fontSize",
         group: "reader.typography",
-        label: "字号（px）",
         kind: SettingKind::Number {
             min: defaults::FONT_SIZE_RANGE.0 as f64,
             max: defaults::FONT_SIZE_RANGE.1 as f64,
@@ -186,7 +170,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "reader.typography.lineHeight",
         group: "reader.typography",
-        label: "行高倍数",
         kind: SettingKind::Number {
             min: defaults::LINE_HEIGHT_RANGE.0 as f64,
             max: defaults::LINE_HEIGHT_RANGE.1 as f64,
@@ -196,7 +179,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "reader.typography.contentWidth",
         group: "reader.typography",
-        label: "正文限宽（px）",
         kind: SettingKind::Number {
             min: defaults::CONTENT_WIDTH_RANGE.0 as f64,
             max: defaults::CONTENT_WIDTH_RANGE.1 as f64,
@@ -206,7 +188,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "reader.typography.pagePadding",
         group: "reader.typography",
-        label: "左右页边距（px）",
         kind: SettingKind::Number {
             min: defaults::PAGE_PADDING_RANGE.0 as f64,
             max: defaults::PAGE_PADDING_RANGE.1 as f64,
@@ -216,7 +197,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "reader.typography.pagePaddingY",
         group: "reader.typography",
-        label: "上下留白（px）",
         kind: SettingKind::Number {
             min: defaults::PAGE_PADDING_Y_RANGE.0 as f64,
             max: defaults::PAGE_PADDING_Y_RANGE.1 as f64,
@@ -226,7 +206,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "reader.typography.paragraphSpacing",
         group: "reader.typography",
-        label: "段间距（px）",
         kind: SettingKind::Number {
             min: defaults::PARAGRAPH_SPACING_RANGE.0 as f64,
             max: defaults::PARAGRAPH_SPACING_RANGE.1 as f64,
@@ -236,7 +215,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "reader.typography.firstLineIndent",
         group: "reader.typography",
-        label: "首行缩进（字符）",
         kind: SettingKind::Number {
             min: defaults::FIRST_LINE_INDENT_RANGE.0 as f64,
             max: defaults::FIRST_LINE_INDENT_RANGE.1 as f64,
@@ -246,7 +224,6 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "reader.typography.textAlign",
         group: "reader.typography",
-        label: "文字对齐",
         kind: SettingKind::Enum {
             values: &["left", "justify"],
         },
@@ -254,39 +231,33 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "reader.typography.smoothScroll",
         group: "reader.typography",
-        label: "平滑翻页",
         kind: SettingKind::Bool,
     },
     // ---------- reader.json / 状态栏 ----------
     SettingSpec {
         id: "reader.statusBar.showFileName",
         group: "reader.statusBar",
-        label: "状态栏：文件名与进度",
         kind: SettingKind::Bool,
     },
     SettingSpec {
         id: "reader.statusBar.showPercent",
         group: "reader.statusBar",
-        label: "状态栏：阅读百分比",
         kind: SettingKind::Bool,
     },
     SettingSpec {
         id: "reader.statusBar.showSize",
         group: "reader.statusBar",
-        label: "状态栏：文件大小",
         kind: SettingKind::Bool,
     },
     SettingSpec {
         id: "reader.statusBar.showEncoding",
         group: "reader.statusBar",
-        label: "状态栏：编码切换",
         kind: SettingKind::Bool,
     },
     // ---------- shortcuts.json ----------
     SettingSpec {
         id: "shortcuts.bindings",
         group: "shortcuts",
-        label: "快捷键绑定",
         kind: SettingKind::Shortcuts,
     },
 ];
@@ -433,7 +404,6 @@ mod tests {
                 spec.id
             );
             assert!(!spec.group.is_empty(), "空分组：{}", spec.id);
-            assert!(!spec.label.is_empty(), "空标签：{}", spec.id);
             if let SettingKind::Number { min, max, .. } = spec.kind {
                 assert!(min <= max, "范围倒挂：{}", spec.id);
             }
@@ -443,10 +413,10 @@ mod tests {
     /// 查询助手：按 id 与按分组。
     #[test]
     fn lookup_helpers_work() {
-        assert_eq!(
-            spec_by_id("app.maxTabs").expect("存在").label,
-            "标签数量上限"
-        );
+        assert!(matches!(
+            spec_by_id("app.maxTabs").expect("存在").kind,
+            SettingKind::Number { integer: true, .. }
+        ));
         assert!(spec_by_id("app.notExist").is_none());
         assert_eq!(specs_in_group("reader.typography").count(), 10);
         assert_eq!(specs_in_group("no.such.group").count(), 0);
