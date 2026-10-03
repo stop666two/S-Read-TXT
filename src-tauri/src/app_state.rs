@@ -955,6 +955,16 @@ impl AppState {
             .map_err(AppStateError::from)
     }
 
+    /// 将标签全文换行符统一为 `target`（仅编辑态；单撤销步；≤32MB）。
+    pub fn convert_eol(
+        &mut self,
+        tab_id: u64,
+        target: crate::textfile::eol::EolTarget,
+    ) -> Result<crate::textfile::editing::edit_doc::EolConvertOutcome, AppStateError> {
+        let doc = self.edit_doc_mut(tab_id)?;
+        Ok(doc.convert_eol(target)?)
+    }
+
     /// 只读访问标签的编辑文档（未进入编辑时报 `NotEditing`）。
     fn edit_doc(&self, tab_id: u64) -> Result<&EditDoc, AppStateError> {
         self.tab(tab_id)?

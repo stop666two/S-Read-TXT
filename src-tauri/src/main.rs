@@ -273,10 +273,11 @@ fn main() {
             commands::preview_replace_all_in_edit,
             commands::apply_replace_all_in_edit,
             commands::match_window_in_edit,
-    commands::search_workspace,
-    commands::replace_workspace,
-    commands::document_stats,
-    commands::selection_stats
+            commands::search_workspace,
+            commands::replace_workspace,
+            commands::document_stats,
+            commands::selection_stats,
+            commands::convert_eol,
         ])
         .run(tauri::generate_context!());
     // 启动失败不再无声退出：写日志 + 弹原生错误框（窗口子系统下无控制台，用户需可见反馈）。

@@ -30,6 +30,9 @@ use crate::textfile::mmap::MappedFile;
 use crate::textfile::session::TextFileError;
 use crate::textfile::window::RowText;
 
+/// 换行符转换的全文档预算（32MB；超出拒绝，避免整文档重建超限）。
+pub const EOL_CONVERT_MAX_BYTES: u64 = 32 * 1024 * 1024;
+
 /// 编辑引擎错误。
 #[derive(Debug, thiserror::Error)]
 pub enum EditError {
@@ -71,6 +74,24 @@ pub enum EditError {
     /// 正则扫描超时（已中断，内容未修改；超时可配 `app.regex.timeoutMs`）
     #[error("正则执行超时，已中断，未修改内容")]
     RegexTimeout,
+    /// 换行符转换超限（全文档重建受内存预算保护）
+    #[error("文件过大，无法执行换行符转换（{size_bytes} 字节，上限 {limit_mb} MB）")]
+    EolConvertTooLarge {
+        /// 实际大小（字节）
+        size_bytes: u64,
+        /// 允许上限（MB）
+        limit_mb: u32,
+    },
+}
+
+/// 换行符转换结果（`convert_eol`）。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EolConvertOutcome {
+    /// 归一化处理的换行处数（0 = 无需修改）
+    pub replacements: u64,
+    /// 应用结果（无操作时为 `None`）
+    pub applied: Option<EditApplied>,
 }
 
 /// 编辑操作（位置坐标为「应用前」的文档状态）。
@@ -344,6 +365,109 @@ impl EditDoc {
     /// 主导换行符风格（打开时检测；换行符转换成功后更新）。
     pub fn eol(&self) -> crate::textfile::eol::EolStyle {
         self.eol
+    }
+
+    /// 将全文档换行符统一为 `target`（单撤销步；≤ [`EOL_CONVERT_MAX_BYTES`]）。
+    ///
+    /// 实现路径：收集全文（片段解码）→ 归一化换行 → 一次全文档 `Replace`，
+    /// 完全复用编辑机制（撤销/树/长行段表/状态号自动维护）。
+    /// 返回归一化处理的换行处数（0 = 文本已是目标风格，无操作）。
+    pub fn convert_eol(
+        &mut self,
+        target: crate::textfile::eol::EolTarget,
+    ) -> Result<EolConvertOutcome, EditError> {
+        self.convert_eol_with(target, EOL_CONVERT_MAX_BYTES)
+    }
+
+    /// 上限可注入版本（测试用；`max_bytes` 为全文档预算）。
+    pub(crate) fn convert_eol_with(
+        &mut self,
+        target: crate::textfile::eol::EolTarget,
+        max_bytes: u64,
+    ) -> Result<EolConvertOutcome, EditError> {
+        if self.byte_len() > max_bytes {
+            return Err(EditError::EolConvertTooLarge {
+                size_bytes: self.byte_len(),
+                limit_mb: (max_bytes / (1024 * 1024)) as u32,
+            });
+        }
+        let mut text = String::new();
+        for piece in &self.pieces {
+            let from = piece.off;
+            let to = piece.off + piece.len;
+            text.push_str(&self.decode_slice(piece, from, to));
+        }
+        // 先归一到 \n，再展开为目标风格；与原文相同则短路（含已是目标风格）。
+        let unified = text.replace("\r\n", "\n").replace('\r', "\n");
+        let converted = match target {
+            crate::textfile::eol::EolTarget::Lf => unified.clone(),
+            crate::textfile::eol::EolTarget::CrLf => unified.replace('\n', "\r\n"),
+            crate::textfile::eol::EolTarget::Cr => unified.replace('\n', "\r"),
+        };
+        if converted == text {
+            return Ok(EolConvertOutcome {
+                replacements: 0,
+                applied: None,
+            });
+        }
+        let replacements = unified.matches('\n').count() as u64;
+        // 不走 EditOp 坐标层：全文档「含末尾换行」的替换在行坐标模型中不可表达
+        // （末尾换行单元不属于任何行范围；line_ops 在同类边界采用回退策略）。
+        // 直接重建为单一新增片段，并手工登记一个撤销步骤（预算与裁剪同 apply 路径）。
+        let old_len = self.byte_len();
+        let old_pieces = self.pieces.len() as u64;
+        let snapshot = self.take_snapshot(0);
+        let added_start = self.added.len() as u64;
+        self.added.extend_from_slice(converted.as_bytes());
+        self.pieces = vec![Piece {
+            source: PieceSource::Added,
+            off: added_start,
+            len: converted.len() as u64,
+        }];
+        self.metas = vec![count_units(
+            &self.added,
+            FileEncoding::Utf8,
+            added_start,
+            added_start + converted.len() as u64,
+            false,
+        )];
+        self.redo_stack.clear();
+        self.rebuild_trees();
+        self.trailing_newline = self.doc_ends_with_newline();
+        self.rebuild_long_rows_initial();
+        self.state_id = self.next_state_id;
+        self.next_state_id += 1;
+        self.eol = match target {
+            crate::textfile::eol::EolTarget::Lf => crate::textfile::eol::EolStyle::Lf,
+            crate::textfile::eol::EolTarget::CrLf => crate::textfile::eol::EolStyle::CrLf,
+            crate::textfile::eol::EolTarget::Cr => crate::textfile::eol::EolStyle::Cr,
+        };
+        let mut step = snapshot;
+        step.cost_bytes = old_len
+            .saturating_add(converted.len() as u64)
+            .saturating_add(16 * (old_pieces + 1));
+        self.undo_cost += step.cost_bytes;
+        self.undo_stack.push(step);
+        self.trim_undo();
+        Ok(EolConvertOutcome {
+            replacements,
+            applied: Some(self.applied(0, (0, 0))),
+        })
+    }
+
+    /// 依当前片段构成重算 `eol`（撤销/重做后调用）：
+    /// 仍含原文片段 → 以原文检测为准；全部为新增缓冲 → 以缓冲内容检测。
+    /// （混合历史的精确风格以「原文/全新增」两端近似，展示语义足够。）
+    fn recompute_eol(&mut self) {
+        let has_original = self
+            .pieces
+            .iter()
+            .any(|piece| matches!(piece.source, PieceSource::Original));
+        self.eol = if has_original {
+            crate::textfile::eol::detect(self.original.bytes(), self.encoding)
+        } else {
+            crate::textfile::eol::detect(&self.added, FileEncoding::Utf8)
+        };
     }
 
     /// 文档是否以换行结尾（行操作「确保换行结尾」依据）。
@@ -1136,6 +1260,7 @@ impl EditDoc {
         let for_redo = self.swap_state(step);
         self.redo_stack.push(for_redo);
         self.rebuild_trees();
+        self.recompute_eol();
         Some(self.applied(touched, (touched, 0)))
     }
 
@@ -1147,6 +1272,7 @@ impl EditDoc {
         self.undo_cost += for_undo.cost_bytes;
         self.undo_stack.push(for_undo);
         self.rebuild_trees();
+        self.recompute_eol();
         Some(self.applied(touched, (touched, 0)))
     }
 
@@ -2174,6 +2300,79 @@ mod tests {
     }
 
     /// 越界解析错误：批次原子（失败不改变状态）。
+    #[test]
+    fn convert_eol_roundtrip_and_undo() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let path = dir.path().join("e.txt");
+        std::fs::write(&path, "a\nb\nc\n").expect("写文件");
+        let mut doc = EditDoc::open(&path, None, 10).expect("打开");
+        assert_eq!(doc.eol(), crate::textfile::eol::EolStyle::Lf);
+        let before = doc.byte_len();
+
+        let out = doc
+            .convert_eol(crate::textfile::eol::EolTarget::CrLf)
+            .expect("转 CRLF");
+        assert_eq!(out.replacements, 3);
+        assert!(out.applied.is_some());
+        assert!(doc.is_dirty());
+        assert_eq!(doc.eol(), crate::textfile::eol::EolStyle::CrLf);
+        assert_eq!(doc.byte_len(), before + 3);
+        let rows: Vec<String> = (0..doc.rows_total())
+            .filter_map(|row| doc.row_text(row))
+            .collect();
+        assert_eq!(rows, vec!["a", "b", "c"]);
+
+        doc.undo().expect("撤销");
+        assert!(!doc.is_dirty());
+        assert_eq!(doc.eol(), crate::textfile::eol::EolStyle::Lf);
+        assert_eq!(doc.byte_len(), before);
+
+        let out = doc
+            .convert_eol(crate::textfile::eol::EolTarget::Lf)
+            .expect("已是 LF");
+        assert_eq!(out.replacements, 0);
+        assert!(out.applied.is_none());
+    }
+
+    /// 混合风格归一为 LF（CRLF 与孤立 CR 均处理），撤销后恢复 Mixed。
+    #[test]
+    fn convert_eol_mixed_to_lf_and_back() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let path = dir.path().join("m.txt");
+        std::fs::write(&path, "a\r\nb\rc\nd\r\n").expect("写文件");
+        let mut doc = EditDoc::open(&path, None, 10).expect("打开");
+        assert_eq!(doc.eol(), crate::textfile::eol::EolStyle::Mixed);
+
+        let out = doc
+            .convert_eol(crate::textfile::eol::EolTarget::Lf)
+            .expect("归一 LF");
+        assert_eq!(out.replacements, 4);
+        assert_eq!(doc.eol(), crate::textfile::eol::EolStyle::Lf);
+        let rows: Vec<String> = (0..doc.rows_total())
+            .filter_map(|row| doc.row_text(row))
+            .collect();
+        assert_eq!(rows, vec!["a", "b", "c", "d"]);
+
+        doc.undo().expect("撤销");
+        assert_eq!(doc.eol(), crate::textfile::eol::EolStyle::Mixed);
+    }
+
+    /// 超出预算：拒绝且内容/脏标记不变。
+    #[test]
+    fn convert_eol_over_budget_is_rejected_without_change() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let path = dir.path().join("big.txt");
+        std::fs::write(&path, "a\nb\nc\n").expect("写文件");
+        let mut doc = EditDoc::open(&path, None, 10).expect("打开");
+        let before = doc.byte_len();
+        let err = doc
+            .convert_eol_with(crate::textfile::eol::EolTarget::CrLf, 4)
+            .expect_err("应超限");
+        assert!(matches!(err, EditError::EolConvertTooLarge { .. }));
+        assert_eq!(doc.byte_len(), before);
+        assert!(!doc.is_dirty());
+    }
+
     #[test]
     fn resolve_errors() {
         let (_dir, mut doc) = open_doc(b"ab\ncd", None);

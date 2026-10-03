@@ -23,9 +23,9 @@ use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
     IpcError, CODE_BACKGROUND_INVALID, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING,
-    CODE_INVALID_POSITION, CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_SESSION_SAVE,
-    CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET, CODE_TAB_NOT_FOUND,
-    CODE_THEME_INVALID,
+    CODE_INVALID_EOL, CODE_INVALID_POSITION, CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED,
+    CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET,
+    CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -1312,6 +1312,31 @@ pub fn selection_stats(
                 (to_row, to_utf16),
                 s_read_txt::stats::SELECTION_STATS_MAX_CHARS,
             )
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：将标签全文换行符统一为 `lf` / `crlf` / `cr`（仅编辑态；≤32MB，单撤销步）。
+#[tauri::command]
+pub fn convert_eol(
+    tab_id: u64,
+    target: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<s_read_txt::textfile::editing::edit_doc::EolConvertOutcome, IpcError> {
+    with_context(LogContext::request(), || {
+        let target = match target.as_str() {
+            "lf" => s_read_txt::textfile::eol::EolTarget::Lf,
+            "crlf" => s_read_txt::textfile::eol::EolTarget::CrLf,
+            "cr" => s_read_txt::textfile::eol::EolTarget::Cr,
+            other => {
+                return Err(IpcError::new(
+                    CODE_INVALID_EOL,
+                    format!("未知换行符：{other}"),
+                ))
+            }
+        };
+        lock_state(&state)?
+            .convert_eol(tab_id, target)
             .map_err(IpcError::from)
     })
 }

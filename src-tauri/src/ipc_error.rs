@@ -69,6 +69,10 @@ pub const CODE_INVALID_REGEX: &str = "INVALID_REGEX";
 pub const CODE_SEARCH_STALE: &str = "SEARCH_STALE";
 /// 正则扫描超时（已中断，内容未修改）
 pub const CODE_REGEX_TIMEOUT: &str = "REGEX_TIMEOUT";
+/// 换行符转换超限（全文档重建超预算）
+pub const CODE_EOL_CONVERT_TOO_LARGE: &str = "EOL_CONVERT_TOO_LARGE";
+/// 未知换行符目标值
+pub const CODE_INVALID_EOL: &str = "INVALID_EOL";
 /// 多文件搜索已禁用（设置 `app.find.multifileEnabled = false`）
 pub const CODE_MULTIFILE_DISABLED: &str = "MULTIFILE_DISABLED";
 /// 字体格式不支持
@@ -159,6 +163,13 @@ impl From<EditError> for IpcError {
             EditError::RegexTimeout => {
                 Self::new(CODE_REGEX_TIMEOUT, "正则执行超时，已中断，未修改内容")
             }
+            EditError::EolConvertTooLarge {
+                size_bytes,
+                limit_mb,
+            } => Self::new(
+                CODE_EOL_CONVERT_TOO_LARGE,
+                format!("文件过大，无法执行换行符转换（{size_bytes} 字节，上限 {limit_mb} MB）"),
+            ),
         }
     }
 }

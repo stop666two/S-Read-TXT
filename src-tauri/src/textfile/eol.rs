@@ -41,6 +41,30 @@ impl EolStyle {
     }
 }
 
+/// 换行符转换目标。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[allow(clippy::upper_case_acronyms)]
+pub enum EolTarget {
+    /// `\n`
+    Lf,
+    /// `\r\n`
+    CrLf,
+    /// `\r`
+    Cr,
+}
+
+impl EolTarget {
+    /// 目标换行串。
+    pub fn sequence(self) -> &'static str {
+        match self {
+            Self::Lf => "\n",
+            Self::CrLf => "\r\n",
+            Self::Cr => "\r",
+        }
+    }
+}
+
 /// 在文件前 [`EOL_SCAN_BYTES`] 字节内统计换行风格并判定主导风格。
 ///
 /// 判定规则：无换行 → `Unknown`；超过一种 → `Mixed`；否则为唯一风格。
