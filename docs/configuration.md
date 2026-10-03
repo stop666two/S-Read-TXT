@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `9` | `9` | 配置格式版本（当前 v9；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `10` | `10` | 配置格式版本（当前 v10；启动自动迁移旧版，见 §2.7） |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
 | `maxFileSizeMB` | number | 1–2048 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
 | `hardLimitMB` | number | 100–16384 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
@@ -36,6 +36,13 @@
 | `locale` | string | `zh-CN` / `en` | `zh-CN` | 界面语言（BCP 47 标签；未知值归一为默认；即时切换） |
 | `startup.restoreSession` | boolean | `true`/`false` | `true` | 启动时恢复上次会话（标签与阅读位置） |
 | `startup.restoreWindow` | boolean | `true`/`false` | `true` | 启动时恢复窗口位置与大小；关闭后使用默认几何（居中 1100×760） |
+| `status.items` | string[] | 白名单 id | `["lineCol","counts","progress","size","encoding","eol","modified"]` | 状态栏显示项与顺序（可选：`lineCol`/`counts`/`words`/`progress`/`size`/`encoding`/`eol`/`modified`） |
+| `status.countMode` | string | `grapheme`/`codepoint`/`byte` | `grapheme` | 字数统计口径（字素簇/码点/字节） |
+| `status.tabWidth` | number | 1–16 | `4` | Tab 字符的显示宽度 |
+| `status.clickableGoto` | boolean | `true`/`false` | `true` | 行列信息可点击跳转（输入行号） |
+| `status.clickableEncoding` | boolean | `true`/`false` | `true` | 编码可点击切换 |
+| `status.clickableEol` | boolean | `true`/`false` | `true` | 换行符可点击切换（LF/CRLF/CR） |
+| `status.emptySelectionText` | string | ≤16 字符 | `未选择` | 未选择文本时的状态栏提示 |
 | `editor.lines.defaultScope` | string | `all`/`currentLine`/`rowRange`/`nonEmpty`/`selection` | `all` | 行操作弹窗的默认作用范围 |
 | `editor.lines.sortMode` | string | `lex`/`natural`/`length` | `lex` | 默认排序方式：字典序 / 自然排序（数字按数值）/ 按长度 |
 | `editor.lines.dedupeMode` | string | `keepFirst`/`keepLast` | `keepFirst` | 去重规则：保留首次 / 保留末次 |
@@ -164,7 +171,7 @@
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v9）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`）：
+**schema 版本（当前 v10）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节）：
 
 | 情况 | 行为 |
 |---|---|

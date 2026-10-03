@@ -615,7 +615,7 @@ export type SettingKind =
   | { type: 'text'; maxLen: number }
   | { type: 'shortcuts' }
   | { type: 'color' }
-  | { type: 'stringList'; maxItems: number; maxChars: number };
+  | { type: 'stringList'; maxItems: number; maxChars: number; allowed?: string[] };
 
 /** 设置项元数据（与 Rust `SettingSpec` 对应；标签/描述由前端按 `setting.<id>` 解析语言包）。 */
 export interface SettingSpec {

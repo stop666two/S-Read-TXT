@@ -22,6 +22,10 @@
     maxItems: number;
     /** 单项字符上限（来自注册表 kind.maxChars） */
     maxChars: number;
+    /** 可选白名单（来自注册表 kind.allowed；存在时用下拉选择代替自由输入） */
+    allowed?: string[];
+    /** 白名单选项的标签键前缀（如 `setting.enum.status.items`；缺省直接显示 id） */
+    optionPrefix?: string;
     /** 提交回调（整表） */
     onCommit: (value: string[]) => void;
     /** 行级「恢复默认」回调（提供时显示按钮） */
@@ -29,8 +33,18 @@
     /** 恢复按钮的无障碍标签 */
     resetLabel?: string;
   }
-  let { label, desc, value, setting, maxItems, maxChars, onCommit, onReset, resetLabel }: Props =
+  let { label, desc, value, setting, maxItems, maxChars, allowed, optionPrefix, onCommit, onReset, resetLabel }: Props =
     $props();
+
+  /** 白名单模式下取选项标签（缺失时回退原始 id）。 */
+  function optionLabel(id: string): string {
+    return optionPrefix ? t(`${optionPrefix}.${id}` as never) : id;
+  }
+
+  /** 当前值不在白名单时的兜底选项（理论上归一后不会出现）。 */
+  function unknownOption(item: string): boolean {
+    return allowed !== undefined && !allowed.includes(item);
+  }
 
   /** 本地列表（以 props 为初值；提交后经父级快照回流保持同步，重置也可同步）。 */
   // svelte-ignore state_referenced_locally
@@ -88,16 +102,32 @@
   <div class="list">
     {#each items as item, index (index)}
       <div class="item">
-        <input
-          class="text"
-          type="text"
-          data-setting={`${setting}.${index}`}
-          maxlength={maxChars}
-          value={item}
-          aria-label={`${label} ${index + 1}`}
-          spellcheck="false"
-          onchange={(event) => updateItem(index, event.currentTarget.value)}
-        />
+        {#if allowed}
+          <select
+            class="text"
+            data-setting={`${setting}.${index}`}
+            aria-label={`${label} ${index + 1}`}
+            onchange={(event) => updateItem(index, event.currentTarget.value)}
+          >
+            {#if unknownOption(item)}
+              <option value={item} selected>{item}</option>
+            {/if}
+            {#each allowed as option (option)}
+              <option value={option} selected={item === option}>{optionLabel(option)}</option>
+            {/each}
+          </select>
+        {:else}
+          <input
+            class="text"
+            type="text"
+            data-setting={`${setting}.${index}`}
+            maxlength={maxChars}
+            value={item}
+            aria-label={`${label} ${index + 1}`}
+            spellcheck="false"
+            onchange={(event) => updateItem(index, event.currentTarget.value)}
+          />
+        {/if}
         <button
           class="mini"
           type="button"
@@ -203,6 +233,10 @@
 
   .text:focus {
     border-color: var(--accent);
+  }
+
+  select.text {
+    cursor: default;
   }
 
   .mini {

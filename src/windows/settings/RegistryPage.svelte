@@ -300,6 +300,8 @@ import StringListRow from './parts/StringListRow.svelte';
                 setting={spec.id}
                 maxItems={spec.kind.maxItems}
                 maxChars={spec.kind.maxChars}
+                allowed={spec.kind.allowed}
+                optionPrefix={`setting.enum.${spec.id.split('.').slice(-2).join('.')}`}
                 onCommit={(value) => commit(spec, value)}
                 onReset={() => applyScope({ kind: 'field', id: spec.id })}
                 resetLabel={t('settings.resetField')}
