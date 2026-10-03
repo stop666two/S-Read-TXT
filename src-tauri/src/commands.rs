@@ -938,6 +938,23 @@ pub fn reload_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabI
     })
 }
 
+/// 读取当前应用设置（目录解析失败/文件损坏时回退默认——与启动路径一致）。
+fn current_app_settings() -> s_read_txt::settings::model::AppSettings {
+    let (dir, _origin) = paths::resolve_data_dir();
+    s_read_txt::settings::store::load_app_settings(&dir)
+}
+
+/// 查找操作的超时：仅正则模式生效（字面扫描不受毫秒级超时影响）。
+fn search_timeout(
+    mode: SearchMode,
+    settings: &s_read_txt::settings::model::AppSettings,
+) -> Option<u32> {
+    match mode {
+        SearchMode::Regex => Some(settings.regex.timeout_ms),
+        SearchMode::Literal => None,
+    }
+}
+
 /// 命令：在编辑文档中查找（标准/正则；不环绕；`from` = 显示行 UTF-16 坐标，None 从头）。
 #[tauri::command]
 pub fn find_in_edit(
@@ -945,13 +962,49 @@ pub fn find_in_edit(
     query: String,
     case_sensitive: bool,
     mode: Option<String>,
+    whole_word: Option<bool>,
     from: Option<(u64, u64)>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Option<FindHit>, IpcError> {
     with_context(LogContext::request(), || {
         let mode = parse_search_mode(mode)?;
+        let timeout = search_timeout(mode, &current_app_settings());
         lock_state(&state)?
-            .find_in_tab(tab_id, &query, case_sensitive, mode, from)
+            .find_in_tab(
+                tab_id,
+                &query,
+                case_sensitive,
+                mode,
+                whole_word.unwrap_or(false),
+                timeout,
+                from,
+            )
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：统计命中总数（计数显示；超过 20 万处仅报截断标志）。
+#[tauri::command]
+pub fn count_matches_in_edit(
+    tab_id: u64,
+    query: String,
+    case_sensitive: bool,
+    mode: Option<String>,
+    whole_word: Option<bool>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<s_read_txt::textfile::editing::search::MatchCount, IpcError> {
+    with_context(LogContext::request(), || {
+        let mode = parse_search_mode(mode)?;
+        let timeout = search_timeout(mode, &current_app_settings());
+        lock_state(&state)?
+            .count_in_tab(
+                tab_id,
+                &query,
+                case_sensitive,
+                mode,
+                whole_word.unwrap_or(false),
+                timeout,
+            )
             .map_err(IpcError::from)
     })
 }
@@ -963,14 +1016,25 @@ pub fn replace_in_edit(
     query: String,
     case_sensitive: bool,
     mode: Option<String>,
+    whole_word: Option<bool>,
     from: Option<(u64, u64)>,
     replacement: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Option<ReplaceNextOutcome>, IpcError> {
     with_context(LogContext::request(), || {
         let mode = parse_search_mode(mode)?;
+        let timeout = search_timeout(mode, &current_app_settings());
         lock_state(&state)?
-            .replace_next_in_tab(tab_id, &query, case_sensitive, mode, from, &replacement)
+            .replace_next_in_tab(
+                tab_id,
+                &query,
+                case_sensitive,
+                mode,
+                whole_word.unwrap_or(false),
+                timeout,
+                from,
+                &replacement,
+            )
             .map_err(IpcError::from)
     })
 }
@@ -985,16 +1049,20 @@ pub fn replace_all_in_edit(
     query: String,
     case_sensitive: bool,
     mode: Option<String>,
+    whole_word: Option<bool>,
     replacement: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<ReplaceAllOutcome, IpcError> {
     with_context(LogContext::request(), || {
         let mode = parse_search_mode(mode)?;
+        let timeout = search_timeout(mode, &current_app_settings());
         let outcome = lock_state(&state)?.replace_all_in_tab(
             tab_id,
             &query,
             case_sensitive,
             mode,
+            whole_word.unwrap_or(false),
+            timeout,
             &replacement,
         )?;
         log::info!(
@@ -1014,17 +1082,21 @@ pub fn preview_replace_all_in_edit(
     query: String,
     case_sensitive: bool,
     mode: Option<String>,
+    whole_word: Option<bool>,
     replacement: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<ReplacePreview, IpcError> {
     with_context(LogContext::request(), || {
         let mode = parse_search_mode(mode)?;
+        let timeout = search_timeout(mode, &current_app_settings());
         lock_state(&state)?
             .preview_replace_all_in_tab(
                 tab_id,
                 &query,
                 case_sensitive,
                 mode,
+                whole_word.unwrap_or(false),
+                timeout,
                 &replacement,
                 PREVIEW_LIST_CAP,
             )
@@ -1040,6 +1112,7 @@ pub fn apply_replace_all_in_edit(
     query: String,
     case_sensitive: bool,
     mode: Option<String>,
+    whole_word: Option<bool>,
     replacement: String,
     selected: Option<Vec<usize>>,
     expect_state_id: u64,
@@ -1047,6 +1120,7 @@ pub fn apply_replace_all_in_edit(
 ) -> Result<ReplaceAllOutcome, IpcError> {
     with_context(LogContext::request(), || {
         let mode = parse_search_mode(mode)?;
+        let timeout = search_timeout(mode, &current_app_settings());
         // 防御：下标排序去重（二分查找前置条件；前端正常已保证有序）
         let mut list = selected;
         if let Some(values) = &mut list {
@@ -1058,6 +1132,8 @@ pub fn apply_replace_all_in_edit(
             &query,
             case_sensitive,
             mode,
+            whole_word.unwrap_or(false),
+            timeout,
             &replacement,
             list.as_deref(),
             expect_state_id,
@@ -1080,16 +1156,50 @@ pub fn match_window_in_edit(
     query: String,
     case_sensitive: bool,
     mode: Option<String>,
+    whole_word: Option<bool>,
     start_row: u64,
     count: u64,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Vec<FindHit>, IpcError> {
     with_context(LogContext::request(), || {
         let mode = parse_search_mode(mode)?;
+        let timeout = search_timeout(mode, &current_app_settings());
         lock_state(&state)?
-            .match_window_in_tab(tab_id, &query, case_sensitive, mode, start_row, count)
+            .match_window_in_tab(
+                tab_id,
+                &query,
+                case_sensitive,
+                mode,
+                whole_word.unwrap_or(false),
+                timeout,
+                start_row,
+                count,
+            )
             .map_err(IpcError::from)
     })
+}
+
+/// 命令：读取查找历史（最新在前；上限取自 `app.find.historyLimit`，0 = 空）。
+#[tauri::command]
+pub fn list_find_history() -> Vec<String> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    let limit = current_app_settings().find.history_limit;
+    s_read_txt::find_history::list(&dir, limit)
+}
+
+/// 命令：记录一条查找历史（去重置顶、按上限截断；返回最新列表）。
+#[tauri::command]
+pub fn add_find_history(query: String) -> Vec<String> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    let limit = current_app_settings().find.history_limit;
+    s_read_txt::find_history::add(&dir, limit, &query)
+}
+
+/// 命令：清空查找历史（返回空列表）。
+#[tauri::command]
+pub fn clear_find_history() -> Vec<String> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    s_read_txt::find_history::clear(&dir)
 }
 
 /// 命令：同步活动标签（前端点击/快捷键选择后调用；标签不存在报错）。

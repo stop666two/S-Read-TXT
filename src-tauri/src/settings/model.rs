@@ -154,6 +154,112 @@ impl Default for StartupSettings {
     }
 }
 
+/// 查找范围默认值（`app.find.defaultScope`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FindScope {
+    /// 全文
+    Document,
+    /// 选区（进入查找时存在选中文本）
+    Selection,
+    /// 行区间（由查找条指定行号范围）
+    RowRange,
+    /// 未知取值（向前兼容；载入时归一为默认）
+    Unknown,
+}
+
+/// 手写反序列化：宽容未知/别名取值（`all`→全文、`range`→行区间），其余归 `Unknown`。
+impl<'de> Deserialize<'de> for FindScope {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.trim().to_ascii_lowercase().as_str() {
+            "document" | "all" => Self::Document,
+            "selection" | "selected" => Self::Selection,
+            "rowrange" | "row-range" | "range" => Self::RowRange,
+            _ => Self::Unknown,
+        })
+    }
+}
+
+impl Default for FindScope {
+    fn default() -> Self {
+        defaults::DEFAULT_FIND_SCOPE
+    }
+}
+
+impl FindScope {
+    /// 归一：`Unknown` 回退默认（全文），其余原样。
+    pub fn normalized(self) -> Self {
+        if self == Self::Unknown {
+            defaults::DEFAULT_FIND_SCOPE
+        } else {
+            self
+        }
+    }
+}
+
+/// 查找与替换设置（`settings.json` 的嵌套对象 `find`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FindSettings {
+    /// 默认区分大小写
+    pub case_sensitive: bool,
+    /// 默认全词匹配（仅字面模式生效）
+    pub whole_word: bool,
+    /// 循环查找：到达文末后从文首继续
+    pub wrap_around: bool,
+    /// 高亮全部匹配
+    pub highlight_all: bool,
+    /// 显示匹配计数
+    pub match_count: bool,
+    /// 替换前预览确认
+    pub replace_preview: bool,
+    /// 查找范围默认值
+    pub default_scope: FindScope,
+    /// 查找历史条数上限（0 = 不留历史）
+    pub history_limit: u32,
+    /// 匹配高亮颜色（空串 = 跟随主题内置色）
+    pub highlight_color: String,
+}
+
+impl Default for FindSettings {
+    fn default() -> Self {
+        Self {
+            case_sensitive: defaults::DEFAULT_FIND_CASE_SENSITIVE,
+            whole_word: defaults::DEFAULT_FIND_WHOLE_WORD,
+            wrap_around: defaults::DEFAULT_FIND_WRAP_AROUND,
+            highlight_all: defaults::DEFAULT_FIND_HIGHLIGHT_ALL,
+            match_count: defaults::DEFAULT_FIND_MATCH_COUNT,
+            replace_preview: defaults::DEFAULT_FIND_REPLACE_PREVIEW,
+            default_scope: defaults::DEFAULT_FIND_SCOPE,
+            history_limit: defaults::DEFAULT_FIND_HISTORY_LIMIT,
+            highlight_color: defaults::DEFAULT_FIND_HIGHLIGHT_COLOR.to_string(),
+        }
+    }
+}
+
+/// 正则设置（`settings.json` 的嵌套对象 `regex`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RegexSettings {
+    /// 单次扫描超时（毫秒；超时中断并提示，不修改内容）
+    pub timeout_ms: u32,
+    /// 常用正则库（逐项编译校验；可增删改排序）
+    pub library: Vec<String>,
+}
+
+impl Default for RegexSettings {
+    fn default() -> Self {
+        Self {
+            timeout_ms: defaults::DEFAULT_REGEX_TIMEOUT_MS,
+            library: Vec::new(),
+        }
+    }
+}
+
 /// 主配置（`settings.json`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -185,6 +291,10 @@ pub struct AppSettings {
     pub startup: StartupSettings,
     /// 编辑器默认值（行操作等）
     pub editor: EditorSettings,
+    /// 查找与替换默认值
+    pub find: FindSettings,
+    /// 正则设置
+    pub regex: RegexSettings,
 }
 
 impl Default for AppSettings {
@@ -201,6 +311,8 @@ impl Default for AppSettings {
             locale: defaults::DEFAULT_LOCALE,
             startup: StartupSettings::default(),
             editor: EditorSettings::default(),
+            find: FindSettings::default(),
+            regex: RegexSettings::default(),
         }
     }
 }

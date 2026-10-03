@@ -66,6 +66,7 @@ const STEPS: &[(u32, MigrationStep)] = &[
     (3, v3_to_v4),
     (4, v4_to_v5),
     (5, v5_to_v6),
+    (6, v6_to_v7),
 ];
 
 /// v1 → v2：字段补齐式迁移（无结构变换）。
@@ -79,6 +80,9 @@ fn v4_to_v5(_value: &mut Value) {}
 
 /// v5 → v6：`editor.clipboard` 节新增（字段补齐由 serde 默认值完成）。
 fn v5_to_v6(_value: &mut Value) {}
+
+/// v6→v7：新增查找与正则设置节（`find`/`regex`）；字段由 serde 默认值补齐，无需改写。
+fn v6_to_v7(_value: &mut Value) {}
 
 /// v2 → v3：主题 id 体系升级——旧内置「护眼（米黄）」`eye` 迁移为 `paper-cream`。
 /// 对不含 `theme` 字段的配置（settings.json / shortcuts.json）为空操作。

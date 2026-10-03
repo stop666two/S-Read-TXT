@@ -68,6 +68,9 @@ pub enum EditError {
     /// 预览后文档发生变化（状态号不一致），需重新查找（防御性）
     #[error("文档已变化，请重新执行查找/替换")]
     StaleSearch,
+    /// 正则扫描超时（已中断，内容未修改；超时可配 `app.regex.timeoutMs`）
+    #[error("正则执行超时，已中断，未修改内容")]
+    RegexTimeout,
 }
 
 /// 编辑操作（位置坐标为「应用前」的文档状态）。

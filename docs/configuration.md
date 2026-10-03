@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `6` | `6` | 配置格式版本（当前 v6；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `7` | `7` | 配置格式版本（当前 v7；启动自动迁移旧版，见 §2.7） |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
 | `maxFileSizeMB` | number | 1–2048 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
 | `hardLimitMB` | number | 100–16384 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
@@ -52,12 +52,23 @@
 | `editor.multiCursor.maxCount` | number | 2–10000 整数 | `1000` | 多光标数量上限（性能保护） |
 | `editor.clipboard.historyLimit` | number | 0–5000 整数 | `200` | 剪贴板历史上限（0 = 禁用；新条目置顶、重复去重、单条最长 10 万字符） |
 | `editor.clipboard.persist` | boolean | `true`/`false` | `true` | 是否持久化到 `data/clipboard-history.json`（关闭时仅进程内会话内存） |
+| `find.caseSensitive` | boolean | `true`/`false` | `false` | 查找默认区分大小写（F-01） |
+| `find.wholeWord` | boolean | `true`/`false` | `false` | 查找默认全词匹配（`\b` 边界；F-02） |
+| `find.wrapAround` | boolean | `true`/`false` | `true` | 循环查找：到文末从文首继续（F-05） |
+| `find.highlightAll` | boolean | `true`/`false` | `true` | 高亮全部匹配（F-06） |
+| `find.matchCount` | boolean | `true`/`false` | `true` | 显示匹配计数（F-07） |
+| `find.replacePreview` | boolean | `true`/`false` | `true` | 全部替换前预览确认（F-08） |
+| `find.defaultScope` | string | `document`/`selection`/`rowRange` | `document` | 查找范围默认（F-09） |
+| `find.historyLimit` | number | 0–1000 | `50` | 查找历史条数（0=禁用；F-10） |
+| `find.highlightColor` | string | 空 / #RGB / #RRGGBB / #RRGGBBAA / rgb() / rgba() | 空 | 匹配高亮颜色（空=跟随主题；F-11） |
+| `regex.timeoutMs` | number | 50–5000 | `500` | 正则扫描超时（毫秒；超时中断并提示，F-03/F-04） |
+| `regex.library` | array | 字符串数组（≤200 条、单条 ≤512 字符、逐项正则编译校验） | `[]` | 常用正则库（F-14） |
 
 ### 2.2 `reader.json`（阅读排版子配置）
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `6` | `6` | 配置格式版本（当前 v6；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `7` | `7` | 配置格式版本（当前 v7；启动自动迁移旧版，见 §2.7） |
 | `theme` | string | `system` / `light` / `dark` / `eye-green` / `paper-cream` / `high-contrast` / `minimal-gray` / 用户主题 id | `system` | 主题 id；`system` 跟随系统明暗解析；用户主题来自 `data/themes/<id>.json`（导入生成） |
 | `themeAnimEnabled` | boolean | `true`/`false` | `true` | 主题切换过渡动画（尊重系统「减少动态效果」） |
 | `themeAnimMs` | number | 0–1000 整数 | `200` | 主题过渡时长（ms；0 = 无过渡） |
@@ -88,7 +99,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `6` | `6` | 配置格式版本（当前 v6；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `7` | `7` | 配置格式版本（当前 v7；启动自动迁移旧版，见 §2.7） |
 | `bindings` | object | 动作 id → 组合键字符串 | 见下表 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
 
 组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`）。
@@ -143,7 +154,7 @@
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v6）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐）：
+**schema 版本（当前 v7）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐）：
 
 | 情况 | 行为 |
 |---|---|

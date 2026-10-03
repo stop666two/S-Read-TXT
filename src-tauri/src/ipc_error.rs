@@ -67,6 +67,8 @@ pub const CODE_QUERY_TOO_BROAD: &str = "QUERY_TOO_BROAD";
 pub const CODE_INVALID_REGEX: &str = "INVALID_REGEX";
 /// 预览后文档发生变化（需重新查找/预览）
 pub const CODE_SEARCH_STALE: &str = "SEARCH_STALE";
+/// 正则扫描超时（已中断，内容未修改）
+pub const CODE_REGEX_TIMEOUT: &str = "REGEX_TIMEOUT";
 /// 字体格式不支持
 pub const CODE_FONT_UNSUPPORTED: &str = "FONT_UNSUPPORTED";
 /// 字体文件过大
@@ -151,6 +153,9 @@ impl From<EditError> for IpcError {
             }
             EditError::StaleSearch => {
                 Self::new(CODE_SEARCH_STALE, "文档已变化，请重新执行查找/替换")
+            }
+            EditError::RegexTimeout => {
+                Self::new(CODE_REGEX_TIMEOUT, "正则执行超时，已中断，未修改内容")
             }
         }
     }

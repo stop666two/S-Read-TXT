@@ -139,6 +139,7 @@ fn normalize_app(settings: &mut AppSettings) {
     settings.log_level = settings.log_level.normalized();
     settings.locale = settings.locale.normalized();
     normalize_editor(&mut settings.editor);
+    normalize_find(settings);
     let (min_size, max_size) = defaults::MAX_FILE_SIZE_MB_RANGE;
     settings.max_file_size_mb = settings.max_file_size_mb.clamp(min_size, max_size);
     let (min_hard, max_hard) = defaults::HARD_LIMIT_MB_RANGE;
@@ -177,6 +178,87 @@ fn normalize_editor(editor: &mut EditorSettings) {
     let clipboard = &mut editor.clipboard;
     let (min_limit, max_limit) = defaults::CLIPBOARD_HISTORY_LIMIT_RANGE;
     clipboard.history_limit = clipboard.history_limit.clamp(min_limit, max_limit);
+}
+
+/// 查找/正则归一：范围钳制、枚举回退、颜色与正则库合法性校验。
+fn normalize_find(settings: &mut AppSettings) {
+    let find = &mut settings.find;
+    find.default_scope = find.default_scope.normalized();
+    let (min_history, max_history) = defaults::FIND_HISTORY_LIMIT_RANGE;
+    find.history_limit = find.history_limit.clamp(min_history, max_history);
+    find.highlight_color = normalize_color(&find.highlight_color);
+    let regex = &mut settings.regex;
+    let (min_timeout, max_timeout) = defaults::REGEX_TIMEOUT_MS_RANGE;
+    regex.timeout_ms = regex.timeout_ms.clamp(min_timeout, max_timeout);
+    regex.library = normalize_regex_library(std::mem::take(&mut regex.library));
+}
+
+/// 颜色归一：允许 空 / `#RGB` / `#RRGGBB` / `#RRGGBBAA` / `rgb()` / `rgba()`；非法回退空串（跟随主题）。
+fn normalize_color(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || is_valid_color(trimmed) {
+        return trimmed.to_string();
+    }
+    log::warn!("查找高亮颜色非法，已回退主题内置色：{trimmed}");
+    String::new()
+}
+
+/// 颜色格式校验（供归一与注册表导入校验共用）。
+pub(crate) fn is_valid_color(value: &str) -> bool {
+    if let Some(hex) = value.strip_prefix('#') {
+        return matches!(hex.len(), 3 | 6 | 8) && hex.chars().all(|c| c.is_ascii_hexdigit());
+    }
+    for (prefix, components) in [("rgb(", 3usize), ("rgba(", 4usize)] {
+        if let Some(inner) = value
+            .strip_prefix(prefix)
+            .and_then(|rest| rest.strip_suffix(')'))
+        {
+            let parts: Vec<&str> = inner.split(',').collect();
+            if parts.len() != components {
+                return false;
+            }
+            return parts.iter().enumerate().all(|(index, part)| {
+                let part = part.trim();
+                if index == 3 {
+                    part.parse::<f64>()
+                        .map(|alpha| (0.0..=1.0).contains(&alpha))
+                        .unwrap_or(false)
+                } else {
+                    part.parse::<u8>().is_ok()
+                }
+            });
+        }
+    }
+    false
+}
+
+/// 正则库归一：去空白/去重（保序）/剔除超长项与非法正则；数量超限截断。
+fn normalize_regex_library(items: Vec<String>) -> Vec<String> {
+    let max_chars = defaults::REGEX_LIBRARY_MAX_CHARS as usize;
+    let max_items = defaults::REGEX_LIBRARY_MAX_ITEMS as usize;
+    let mut out: Vec<String> = Vec::new();
+    for item in items {
+        let trimmed = item.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.chars().count() > max_chars {
+            log::warn!("正则库条目过长（> {max_chars} 字符），已忽略");
+            continue;
+        }
+        if regex::Regex::new(trimmed).is_err() {
+            log::warn!("正则库条目语法非法，已忽略：{trimmed}");
+            continue;
+        }
+        if out.iter().any(|existing| existing == trimmed) {
+            continue;
+        }
+        out.push(trimmed.to_string());
+        if out.len() >= max_items {
+            break;
+        }
+    }
+    out
 }
 
 /// 阅读排版归一：主题回退、字体去空白、数值裁剪。
@@ -346,6 +428,34 @@ mod tests {
         let unknown: Language = serde_json::from_value(serde_json::json!("fr")).expect("解析");
         assert_eq!(unknown, Language::Unknown);
         assert_eq!(unknown.normalized(), Language::ZhCn);
+    }
+
+    /// 查找/正则设置：颜色非法回退空、正则库去重与非法/超长项剔除、超时与历史上限钳制。
+    #[test]
+    fn find_and_regex_normalize_on_load() {
+        let dir = data_dir();
+        let mut settings = AppSettings::default();
+        settings.find.highlight_color = "not-a-color".to_string();
+        settings.find.history_limit = 9_999;
+        settings.find.default_scope = crate::settings::model::FindScope::Unknown;
+        settings.regex.timeout_ms = 10;
+        settings.regex.library = vec![
+            "  a+  ".to_string(),
+            "a+".to_string(),
+            "[".to_string(),
+            "x".repeat(600),
+            "".to_string(),
+        ];
+        save_app_settings(dir.path(), &settings).expect("保存失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded.find.highlight_color, "");
+        assert_eq!(loaded.find.history_limit, 1_000);
+        assert_eq!(
+            loaded.find.default_scope,
+            crate::settings::model::FindScope::Document
+        );
+        assert_eq!(loaded.regex.timeout_ms, 50);
+        assert_eq!(loaded.regex.library, vec!["a+".to_string()]);
     }
 
     /// 主配置数值裁剪 + 未知日志级别归一。

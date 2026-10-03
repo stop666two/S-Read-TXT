@@ -46,6 +46,15 @@ pub enum SettingKind {
     },
     /// 快捷键绑定表（动作 id → 组合键；动作白名单见 `defaults::is_known_action`）
     Shortcuts,
+    /// 颜色（空 = 跟随主题；支持 `#RGB`/`#RRGGBB`/`#RRGGBBAA`/`rgb()`/`rgba()`）
+    Color,
+    /// 字符串列表（逐项长度与数量上限；`app.regex.library` 额外做正则编译校验）
+    StringList {
+        /// 条目数量上限
+        max_items: u32,
+        /// 单条最大字符数
+        max_chars: u32,
+    },
 }
 
 /// 单个设置项的元数据。
@@ -424,6 +433,75 @@ pub const SPECS: &[SettingSpec] = &[
         group: "app.editor.clipboard",
         kind: SettingKind::Bool,
     },
+    // ---------- settings.json / 查找与正则 ----------
+    SettingSpec {
+        id: "app.find.caseSensitive",
+        group: "app.find",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.find.wholeWord",
+        group: "app.find",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.find.wrapAround",
+        group: "app.find",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.find.highlightAll",
+        group: "app.find",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.find.matchCount",
+        group: "app.find",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.find.replacePreview",
+        group: "app.find",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.find.defaultScope",
+        group: "app.find",
+        kind: SettingKind::Enum {
+            values: &["document", "selection", "rowRange"],
+        },
+    },
+    SettingSpec {
+        id: "app.find.historyLimit",
+        group: "app.find",
+        kind: SettingKind::Number {
+            min: defaults::FIND_HISTORY_LIMIT_RANGE.0 as f64,
+            max: defaults::FIND_HISTORY_LIMIT_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.find.highlightColor",
+        group: "app.find",
+        kind: SettingKind::Color,
+    },
+    SettingSpec {
+        id: "app.regex.timeoutMs",
+        group: "app.regex",
+        kind: SettingKind::Number {
+            min: defaults::REGEX_TIMEOUT_MS_RANGE.0 as f64,
+            max: defaults::REGEX_TIMEOUT_MS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.regex.library",
+        group: "app.regex",
+        kind: SettingKind::StringList {
+            max_items: defaults::REGEX_LIBRARY_MAX_ITEMS,
+            max_chars: defaults::REGEX_LIBRARY_MAX_CHARS,
+        },
+    },
     // ---------- shortcuts.json ----------
     SettingSpec {
         id: "shortcuts.bindings",
@@ -530,6 +608,45 @@ pub fn validate_value(spec: &SettingSpec, value: &Value) -> Result<(), String> {
             .as_bool()
             .map(|_| ())
             .ok_or_else(|| format!("{}：应为 true/false", spec.id)),
+        SettingKind::Color => {
+            let raw = value
+                .as_str()
+                .ok_or_else(|| format!("{}：应为字符串", spec.id))?;
+            if raw.is_empty() || crate::settings::store::is_valid_color(raw) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{}：颜色格式非法「{raw}」（支持 空/#RGB/#RRGGBB/#RRGGBBAA/rgb()/rgba()）",
+                    spec.id
+                ))
+            }
+        }
+        SettingKind::StringList {
+            max_items,
+            max_chars,
+        } => {
+            let items = value
+                .as_array()
+                .ok_or_else(|| format!("{}：应为字符串数组", spec.id))?;
+            if items.len() > max_items as usize {
+                return Err(format!("{}：条目过多（上限 {max_items}）", spec.id));
+            }
+            for item in items {
+                let raw = item
+                    .as_str()
+                    .ok_or_else(|| format!("{}：数组元素应为字符串", spec.id))?;
+                if raw.trim().is_empty() {
+                    return Err(format!("{}：数组元素不能为空", spec.id));
+                }
+                if raw.chars().count() > max_chars as usize {
+                    return Err(format!("{}：单条过长（上限 {max_chars} 字符）", spec.id));
+                }
+                if spec.id == "app.regex.library" && regex::Regex::new(raw).is_err() {
+                    return Err(format!("{}：正则语法非法「{raw}」", spec.id));
+                }
+            }
+            Ok(())
+        }
         SettingKind::Enum { values } => {
             let raw = value
                 .as_str()
@@ -637,10 +754,16 @@ mod tests {
         ]);
         let language = names(&[Language::ZhCn, Language::En]);
         let align = names(&[TextAlign::Left, TextAlign::Justify]);
+        let find_scope = names(&[
+            crate::settings::model::FindScope::Document,
+            crate::settings::model::FindScope::Selection,
+            crate::settings::model::FindScope::RowRange,
+        ]);
         for (id, expected) in [
             ("app.logLevel", log),
             ("app.locale", language),
             ("reader.typography.textAlign", align),
+            ("app.find.defaultScope", find_scope),
         ] {
             let SettingKind::Enum { values } = spec_by_id(id).expect("存在").kind else {
                 panic!("{id} 应为枚举");
@@ -659,6 +782,26 @@ mod tests {
         assert!(validate_value(dim, &serde_json::json!(0)).is_ok());
         assert!(validate_value(dim, &serde_json::json!(-51)).is_err());
         assert!(validate_value(dim, &serde_json::json!(-12.5)).is_err());
+    }
+
+    /// 新增类型校验：颜色格式与字符串列表（正则库语法）。
+    #[test]
+    fn validate_value_color_and_string_list() {
+        let color = spec_by_id("app.find.highlightColor").expect("存在");
+        assert!(validate_value(color, &serde_json::json!("#FFD666")).is_ok());
+        assert!(validate_value(color, &serde_json::json!("#abc")).is_ok());
+        assert!(validate_value(color, &serde_json::json!("#aabbccdd")).is_ok());
+        assert!(validate_value(color, &serde_json::json!("rgb(255, 214, 102)")).is_ok());
+        assert!(validate_value(color, &serde_json::json!("rgba(255,214,102,0.5)")).is_ok());
+        assert!(validate_value(color, &serde_json::json!("")).is_ok());
+        assert!(validate_value(color, &serde_json::json!("yellow")).is_err());
+        assert!(validate_value(color, &serde_json::json!("#12345")).is_err());
+        let library = spec_by_id("app.regex.library").expect("存在");
+        assert!(validate_value(library, &serde_json::json!(["\\d+"])).is_ok());
+        assert!(validate_value(library, &serde_json::json!(["(unclosed"])).is_err());
+        assert!(validate_value(library, &serde_json::json!([])).is_ok());
+        assert!(validate_value(library, &serde_json::json!([123])).is_err());
+        assert!(validate_value(library, &serde_json::json!({"a": 1})).is_err());
     }
 
     /// 校验：越界 / 类型错误 / 未知动作均拒绝并带字段路径。

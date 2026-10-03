@@ -5,13 +5,15 @@ use std::collections::BTreeMap;
 use crate::settings::editor::{
     LineCaseMode, LineDedupeMode, LineIndentStyle, LineScopeKind, LineSortMode, RectModifier,
 };
-use crate::settings::model::{Language, LogLevel};
+use crate::settings::model::{FindScope, Language, LogLevel};
 use crate::settings::reader::{BackgroundFill, TextAlign};
 
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
 /// v2：新增 `hardLimitMB` / `startup` / `statusBar` / 排版扩展等字段（字段补齐式迁移，见 `settings::migrate`）。
 /// v3：主题升级为 id 体系（旧值 `eye` 迁移为 `paper-cream`；新增主题动画字段）。
-pub const SCHEMA_VERSION: u32 = 6;
+/// v4–v6：编辑器行操作/多光标/剪贴板设置节（字段补齐式）。
+/// v7：新增查找与正则设置节（find/regex）。
+pub const SCHEMA_VERSION: u32 = 7;
 
 // ---------- settings.json ----------
 
@@ -174,6 +176,37 @@ pub const DEFAULT_MULTI_CURSOR_RECT_MODIFIER: RectModifier = RectModifier::Alt;
 pub const DEFAULT_MULTI_CURSOR_MAX_COUNT: u32 = 1000;
 /// 多光标数量上限允许范围（闭区间）
 pub const MULTI_CURSOR_MAX_COUNT_RANGE: (u32, u32) = (2, 10_000);
+
+// ---------- settings.json / 查找与正则 ----------
+
+/// 默认区分大小写（F-01）
+pub const DEFAULT_FIND_CASE_SENSITIVE: bool = false;
+/// 默认全词匹配（F-02；仅字面模式生效）
+pub const DEFAULT_FIND_WHOLE_WORD: bool = false;
+/// 默认循环查找（F-05）
+pub const DEFAULT_FIND_WRAP_AROUND: bool = true;
+/// 默认高亮全部匹配（F-06）
+pub const DEFAULT_FIND_HIGHLIGHT_ALL: bool = true;
+/// 默认显示匹配计数（F-07）
+pub const DEFAULT_FIND_MATCH_COUNT: bool = true;
+/// 默认替换预览（F-08）
+pub const DEFAULT_FIND_REPLACE_PREVIEW: bool = true;
+/// 默认查找范围（F-09）
+pub const DEFAULT_FIND_SCOPE: FindScope = FindScope::Document;
+/// 默认查找历史条数（F-10）
+pub const DEFAULT_FIND_HISTORY_LIMIT: u32 = 50;
+/// 查找历史条数范围（闭区间）
+pub const FIND_HISTORY_LIMIT_RANGE: (u32, u32) = (0, 1_000);
+/// 默认高亮颜色（空串 = 跟随主题内置色；F-11）
+pub const DEFAULT_FIND_HIGHLIGHT_COLOR: &str = "";
+/// 默认正则超时（毫秒；F-03）
+pub const DEFAULT_REGEX_TIMEOUT_MS: u32 = 500;
+/// 正则超时范围（毫秒，闭区间）
+pub const REGEX_TIMEOUT_MS_RANGE: (u32, u32) = (50, 5_000);
+/// 正则库条目上限（F-14）
+pub const REGEX_LIBRARY_MAX_ITEMS: u32 = 200;
+/// 正则库单条最大字符数（F-14）
+pub const REGEX_LIBRARY_MAX_CHARS: u32 = 512;
 
 // ---------- shortcuts.json ----------
 

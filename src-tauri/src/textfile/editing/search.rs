@@ -19,6 +19,8 @@
 use regex::Regex;
 use serde::Serialize;
 
+use std::time::{Duration, Instant};
+
 use super::edit_doc::{EditApplied, EditDoc, EditError, EditOp};
 use super::piece::PieceSource;
 
@@ -40,6 +42,9 @@ const PREVIEW_TEXT_CHARS: usize = 200;
 
 /// 预览弹窗列举的命中上限（超出时仅支持整体替换，不支持逐条剔除）。
 pub const PREVIEW_LIST_CAP: usize = 500;
+
+/// 匹配计数上限（超出仅报“截断”，用于计数显示；不影响替换路径自己的上限）。
+pub const MATCH_COUNT_LIMIT: usize = 200_000;
 
 /// 一次查找命中（**显示行坐标**：段号 + 段内 UTF-16 偏移；超长行分段对前端透明）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -73,6 +78,39 @@ pub struct ReplaceAllOutcome {
     pub replaced: usize,
     /// 编辑结果（无命中时为 `None`，文档保持不变）
     pub applied: Option<EditApplied>,
+}
+
+/// 匹配计数结果（`truncated` 为真表示达到上限后提前停止）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchCount {
+    /// 统计到的命中数（截断时为上限值）
+    pub total: usize,
+    /// 是否因超过上限而截断
+    pub truncated: bool,
+}
+
+/// 查找请求（全词/大小写/模式/超时的统一参数包）。
+pub struct SearchRequest<'a> {
+    /// 查询文本（空查询不产生命中）
+    pub query: &'a str,
+    /// 大小写敏感
+    pub case_sensitive: bool,
+    /// 字面 / 正则
+    pub mode: SearchMode,
+    /// 全词匹配（以 `\b` 边界实现；字面模式对查询整体包裹）
+    pub whole_word: bool,
+    /// 正则扫描超时（毫秒；`None`/0 不限时）
+    pub timeout_ms: Option<u32>,
+}
+
+impl SearchRequest<'_> {
+    /// 计算扫描截止时刻（`timeout_ms` 为空或 0 时不限时）。
+    fn deadline(&self) -> Option<Instant> {
+        self.timeout_ms
+            .filter(|ms| *ms > 0)
+            .map(|ms| Instant::now() + Duration::from_millis(u64::from(ms)))
+    }
 }
 
 /// 查找模式：标准（字面）或正则（用户自写）。
@@ -135,11 +173,85 @@ impl EditDoc {
         mode: SearchMode,
         from: Option<(u64, u64)>,
     ) -> Result<Option<FindHit>, EditError> {
-        let matcher = Matcher::build(query, case_sensitive, mode)?;
+        let request = SearchRequest {
+            query,
+            case_sensitive,
+            mode,
+            whole_word: false,
+            timeout_ms: None,
+        };
+        self.find_request(&request, from, None)
+    }
+
+    /// 请求式查找：支持全词匹配、（正则）超时与行区间上界（`until_row`，显示行，含该行）。
+    pub fn find_request(
+        &self,
+        request: &SearchRequest<'_>,
+        from: Option<(u64, u64)>,
+        until_row: Option<u64>,
+    ) -> Result<Option<FindHit>, EditError> {
+        let matcher = Matcher::build_opts(
+            request.query,
+            request.case_sensitive,
+            request.mode,
+            request.whole_word,
+        )?;
         let logical_from = from.map(|(seg, local)| self.to_logical_pos(seg, local));
-        Ok(self
-            .find_logical(&matcher, logical_from)?
-            .map(|hit| self.to_display_hit(hit)))
+        let until_logical = until_row.map(|row| self.to_logical_pos(row, 0).0);
+        let max_row = until_logical.map(|row| row.saturating_add(1));
+        let found = self.find_logical(&matcher, logical_from, max_row, request.deadline())?;
+        // 同一解码块内可能越过 max_row：回调后再做严格上界检查
+        // （`max_row` 仅保证块间提前退出，块内命中仍会先上报）。
+        let bounded = match (found, until_logical) {
+            (Some(hit), Some(limit)) if hit.start_row > limit => None,
+            (found, _) => found,
+        };
+        Ok(bounded.map(|hit| self.to_display_hit(hit)))
+    }
+
+    /// 统计命中总数（达到 [`MATCH_COUNT_LIMIT`] 后停止并标记截断）。
+    pub fn count_request(&self, request: &SearchRequest<'_>) -> Result<MatchCount, EditError> {
+        self.count_request_with(request, MATCH_COUNT_LIMIT)
+    }
+
+    /// 带显式上限的计数（上限可注入：单测用小值验证截断）。
+    pub fn count_request_with(
+        &self,
+        request: &SearchRequest<'_>,
+        limit: usize,
+    ) -> Result<MatchCount, EditError> {
+        if request.query.is_empty() {
+            return Ok(MatchCount {
+                total: 0,
+                truncated: false,
+            });
+        }
+        let matcher = Matcher::build_opts(
+            request.query,
+            request.case_sensitive,
+            request.mode,
+            request.whole_word,
+        )?;
+        let mut total = 0usize;
+        let mut truncated = false;
+        self.scan(
+            &matcher,
+            None,
+            None,
+            request.deadline(),
+            |_hit, _matched| {
+                total += 1;
+                if total > limit {
+                    truncated = true;
+                    return false;
+                }
+                true
+            },
+        )?;
+        if truncated {
+            total = limit;
+        }
+        Ok(MatchCount { total, truncated })
     }
 
     /// 内部：查找逻辑坐标命中（编辑操作用）。
@@ -147,9 +259,11 @@ impl EditDoc {
         &self,
         matcher: &Matcher,
         from: Option<(u64, u64)>,
+        max_row: Option<u64>,
+        deadline: Option<Instant>,
     ) -> Result<Option<FindHit>, EditError> {
         let mut hit = None;
-        self.scan(matcher, from, None, |found, _matched| {
+        self.scan(matcher, from, max_row, deadline, |found, _matched| {
             hit = Some(found);
             false
         })?;
@@ -161,9 +275,10 @@ impl EditDoc {
         &self,
         matcher: &Matcher,
         from: Option<(u64, u64)>,
+        deadline: Option<Instant>,
     ) -> Result<Option<(FindHit, String)>, EditError> {
         let mut found = None;
-        self.scan(matcher, from, None, |hit, matched| {
+        self.scan(matcher, from, None, deadline, |hit, matched| {
             found = Some((hit, matched.to_string()));
             false
         })?;
@@ -202,9 +317,33 @@ impl EditDoc {
         from: Option<(u64, u64)>,
         replacement: &str,
     ) -> Result<Option<ReplaceNextOutcome>, EditError> {
-        let matcher = Matcher::build(query, case_sensitive, mode)?;
+        let request = SearchRequest {
+            query,
+            case_sensitive,
+            mode,
+            whole_word: false,
+            timeout_ms: None,
+        };
+        self.replace_next_request(&request, from, replacement)
+    }
+
+    /// 请求式「替换下一次」（全词/超时感知；`from` 为显示坐标）。
+    pub fn replace_next_request(
+        &mut self,
+        request: &SearchRequest<'_>,
+        from: Option<(u64, u64)>,
+        replacement: &str,
+    ) -> Result<Option<ReplaceNextOutcome>, EditError> {
+        let matcher = Matcher::build_opts(
+            request.query,
+            request.case_sensitive,
+            request.mode,
+            request.whole_word,
+        )?;
+        let deadline = request.deadline();
         let logical_from = from.map(|(seg, local)| self.to_logical_pos(seg, local));
-        let Some((hit, matched)) = self.find_logical_match(&matcher, logical_from)? else {
+        let Some((hit, matched)) = self.find_logical_match(&matcher, logical_from, deadline)?
+        else {
             return Ok(None);
         };
         let op = EditOp::Replace {
@@ -217,7 +356,7 @@ impl EditDoc {
         let applied = self.apply_edits(&[op])?;
         let (next_row, next_utf16) = self.to_logical_pos(applied.caret_row, applied.caret_utf16);
         let next = self
-            .find_logical(&matcher, Some((next_row, next_utf16)))?
+            .find_logical(&matcher, Some((next_row, next_utf16)), None, deadline)?
             .map(|found| self.to_display_hit(found));
         Ok(Some(ReplaceNextOutcome { applied, next }))
     }
@@ -235,18 +374,45 @@ impl EditDoc {
         mode: SearchMode,
         replacement: &str,
     ) -> Result<ReplaceAllOutcome, EditError> {
-        let matcher = Matcher::build(query, case_sensitive, mode)?;
+        let request = SearchRequest {
+            query,
+            case_sensitive,
+            mode,
+            whole_word: false,
+            timeout_ms: None,
+        };
+        self.replace_all_request(&request, replacement)
+    }
+
+    /// 请求式全部替换（全词/超时感知；单次编辑 = 单个撤销步）。
+    pub fn replace_all_request(
+        &mut self,
+        request: &SearchRequest<'_>,
+        replacement: &str,
+    ) -> Result<ReplaceAllOutcome, EditError> {
+        let matcher = Matcher::build_opts(
+            request.query,
+            request.case_sensitive,
+            request.mode,
+            request.whole_word,
+        )?;
         let mut hits: Vec<(FindHit, String)> = Vec::new();
         let mut overflow = false;
-        self.scan(&matcher, None, None, |found, matched| {
-            hits.push((found, matcher.expand(matched, replacement)));
-            if hits.len() > REPLACE_ALL_LIMIT {
-                overflow = true;
-                false
-            } else {
-                true
-            }
-        })?;
+        self.scan(
+            &matcher,
+            None,
+            None,
+            request.deadline(),
+            |found, matched| {
+                hits.push((found, matcher.expand(matched, replacement)));
+                if hits.len() > REPLACE_ALL_LIMIT {
+                    overflow = true;
+                    false
+                } else {
+                    true
+                }
+            },
+        )?;
         if overflow {
             return Err(EditError::TooManyMatches {
                 limit: REPLACE_ALL_LIMIT,
@@ -267,7 +433,24 @@ impl EditDoc {
         replacement: &str,
         max_items: usize,
     ) -> Result<ReplacePreview, EditError> {
-        if query.is_empty() {
+        let request = SearchRequest {
+            query,
+            case_sensitive,
+            mode,
+            whole_word: false,
+            timeout_ms: None,
+        };
+        self.preview_replace_all_request(&request, replacement, max_items)
+    }
+
+    /// 请求式「全部替换预览」（全词/超时感知）。
+    pub fn preview_replace_all_request(
+        &self,
+        request: &SearchRequest<'_>,
+        replacement: &str,
+        max_items: usize,
+    ) -> Result<ReplacePreview, EditError> {
+        if request.query.is_empty() {
             return Ok(ReplacePreview {
                 state_id: self.state_id(),
                 total: 0,
@@ -275,12 +458,17 @@ impl EditDoc {
                 items: Vec::new(),
             });
         }
-        let matcher = Matcher::build(query, case_sensitive, mode)?;
+        let matcher = Matcher::build_opts(
+            request.query,
+            request.case_sensitive,
+            request.mode,
+            request.whole_word,
+        )?;
         let state_id = self.state_id();
         let mut total = 0usize;
         let mut items: Vec<ReplacePreviewItem> = Vec::new();
         let mut overflow = false;
-        self.scan(&matcher, None, None, |hit, matched| {
+        self.scan(&matcher, None, None, request.deadline(), |hit, matched| {
             let index = total;
             total += 1;
             if total > REPLACE_ALL_LIMIT {
@@ -337,14 +525,37 @@ impl EditDoc {
         indices: Option<&[usize]>,
         expect_state_id: u64,
     ) -> Result<ReplaceAllOutcome, EditError> {
+        let request = SearchRequest {
+            query,
+            case_sensitive,
+            mode,
+            whole_word: false,
+            timeout_ms: None,
+        };
+        self.replace_matches_request(&request, replacement, indices, expect_state_id)
+    }
+
+    /// 请求式「按命中执行替换」（全词/超时感知；`indices = None` 全部，`Some` 仅列出的升序下标）。
+    pub fn replace_matches_request(
+        &mut self,
+        request: &SearchRequest<'_>,
+        replacement: &str,
+        indices: Option<&[usize]>,
+        expect_state_id: u64,
+    ) -> Result<ReplaceAllOutcome, EditError> {
         if self.state_id() != expect_state_id {
             return Err(EditError::StaleSearch);
         }
-        let matcher = Matcher::build(query, case_sensitive, mode)?;
+        let matcher = Matcher::build_opts(
+            request.query,
+            request.case_sensitive,
+            request.mode,
+            request.whole_word,
+        )?;
         let mut hits: Vec<(FindHit, String)> = Vec::new();
         let mut index = 0usize;
         let mut overflow = false;
-        self.scan(&matcher, None, None, |hit, matched| {
+        self.scan(&matcher, None, None, request.deadline(), |hit, matched| {
             let include = match indices {
                 None => true,
                 Some(list) => list.binary_search(&index).is_ok(),
@@ -380,10 +591,32 @@ impl EditDoc {
         start_row: u64,
         count: u64,
     ) -> Result<Vec<FindHit>, EditError> {
-        if query.is_empty() || count == 0 {
+        let request = SearchRequest {
+            query,
+            case_sensitive,
+            mode,
+            whole_word: false,
+            timeout_ms: None,
+        };
+        self.match_window_request(&request, start_row, count)
+    }
+
+    /// 请求式窗口高亮（全词/超时感知）。
+    pub fn match_window_request(
+        &self,
+        request: &SearchRequest<'_>,
+        start_row: u64,
+        count: u64,
+    ) -> Result<Vec<FindHit>, EditError> {
+        if request.query.is_empty() || count == 0 {
             return Ok(Vec::new());
         }
-        let matcher = Matcher::build(query, case_sensitive, mode)?;
+        let matcher = Matcher::build_opts(
+            request.query,
+            request.case_sensitive,
+            request.mode,
+            request.whole_word,
+        )?;
         let window_end = start_row.saturating_add(count);
         let (logical_row, _) = self.to_logical_pos(start_row, 0);
         let (last_logical, _) = self.to_logical_pos(window_end.saturating_sub(1), 0);
@@ -392,6 +625,7 @@ impl EditDoc {
             &matcher,
             Some((logical_row, 0)),
             Some(last_logical.saturating_add(1)),
+            request.deadline(),
             |hit, _matched| {
                 let display = self.to_display_hit(hit);
                 if display.start_row >= window_end {
@@ -435,18 +669,22 @@ impl EditDoc {
     /// 核心扫描：流式解码 + 游标推进，逐次回调命中（含匹配原文）；回调返回 `false` 时停止。
     ///
     /// - `matcher`：标准/正则匹配器（空查询直接返回）；
-    /// - `max_row`（逻辑行，可选）：游标越过该行后提前结束（窗口高亮用，避免全文件扫描）；
+    /// - `max_row`（逻辑行，可选）：游标越过该行后提前结束（窗口高亮/行区间上界用）；
+    /// - `deadline`（可选）：超过该时刻立即中断并报 [`EditError::RegexTimeout`]；
     /// - 命中与回调均为逻辑行坐标。
     fn scan(
         &self,
         matcher: &Matcher,
         from: Option<(u64, u64)>,
         max_row: Option<u64>,
+        deadline: Option<Instant>,
         mut on_hit: impl FnMut(FindHit, &str) -> bool,
     ) -> Result<(), EditError> {
         if matcher.query_is_empty() {
             return Ok(());
         }
+        let timed_out =
+            |deadline: Option<Instant>| deadline.is_some_and(|limit| Instant::now() >= limit);
         let (start_row, start_utf16) = from.unwrap_or((0, 0));
         let start_pos = self.resolve_pos(start_row, start_utf16)?;
         let global_start = self.global_offset(start_pos);
@@ -471,6 +709,9 @@ impl EditDoc {
                 PieceSource::Added => {
                     let bytes = self.piece_bytes(&piece);
                     while off < piece.len {
+                        if timed_out(deadline) {
+                            return Err(EditError::RegexTimeout);
+                        }
                         let mut take = ((piece.len - off) as usize).min(SEARCH_CHUNK_BYTES);
                         let end = (off as usize) + take;
                         if end < piece.len as usize {
@@ -499,6 +740,9 @@ impl EditDoc {
                     let encoding = self.encoding_for(&piece);
                     let mut decoder = encoding.encoding().new_decoder_without_bom_handling();
                     while off < piece.len {
+                        if timed_out(deadline) {
+                            return Err(EditError::RegexTimeout);
+                        }
                         let take = ((piece.len - off) as usize).min(SEARCH_CHUNK_BYTES);
                         let mut buffer = String::with_capacity(take + 16);
                         let (_result, read, _replaced) = decoder.decode_to_string(
@@ -654,10 +898,18 @@ enum Matcher {
 }
 
 impl Matcher {
-    /// 构建匹配器（正则编译失败报 [`EditError::InvalidRegex`]）。
-    fn build(query: &str, case_sensitive: bool, mode: SearchMode) -> Result<Self, EditError> {
-        match mode {
-            SearchMode::Literal => Ok(Matcher::Literal {
+    /// 带全词选项的构建：全词以 `\b` 边界包裹实现（字面模式先 `regex::escape`）。
+    ///
+    /// 说明：包裹后 `\b` 对以非单词字符开头/结尾的查询可能出现不匹配
+    /// （与主流编辑器语义一致；已在文档记录）。
+    fn build_opts(
+        query: &str,
+        case_sensitive: bool,
+        mode: SearchMode,
+        whole_word: bool,
+    ) -> Result<Self, EditError> {
+        match (mode, whole_word) {
+            (SearchMode::Literal, false) => Ok(Matcher::Literal {
                 query: query.to_string(),
                 fold: if case_sensitive {
                     Vec::new()
@@ -666,17 +918,31 @@ impl Matcher {
                 },
                 case_sensitive,
             }),
-            SearchMode::Regex => {
-                let re = regex::RegexBuilder::new(query)
-                    .case_insensitive(!case_sensitive)
-                    .multi_line(true)
-                    .build()
-                    .map_err(|error| EditError::InvalidRegex {
-                        message: error.to_string(),
-                    })?;
-                Ok(Matcher::Regex(re))
+            (SearchMode::Literal, true) => {
+                let pattern = format!(r"\b(?:{})\b", regex::escape(query));
+                Self::build_regex(&pattern, case_sensitive)
+            }
+            (SearchMode::Regex, whole_word) => {
+                if whole_word {
+                    let pattern = format!(r"\b(?:{})\b", query);
+                    Self::build_regex(&pattern, case_sensitive)
+                } else {
+                    Self::build_regex(query, case_sensitive)
+                }
             }
         }
+    }
+
+    /// 编译正则匹配器（multi-line 使 `^`/`$` 按行；大小写按开关）。
+    fn build_regex(pattern: &str, case_sensitive: bool) -> Result<Self, EditError> {
+        let re = regex::RegexBuilder::new(pattern)
+            .case_insensitive(!case_sensitive)
+            .multi_line(true)
+            .build()
+            .map_err(|error| EditError::InvalidRegex {
+                message: error.to_string(),
+            })?;
+        Ok(Matcher::Regex(re))
     }
 
     /// 查询是否为空（空查询不产生命中）。
@@ -1374,5 +1640,118 @@ mod tests {
         assert_eq!(hits.len(), 3);
         assert_eq!(hits[0].start_row, 3);
         assert_eq!(hits[2].start_row, 5);
+    }
+
+    // ---------- P1-6：全词 / 计数 / 超时 / 行区间上界 ----------
+
+    /// 构造请求的测试助手。
+    fn req<'a>(
+        query: &'a str,
+        case_sensitive: bool,
+        mode: SearchMode,
+        whole_word: bool,
+    ) -> SearchRequest<'a> {
+        SearchRequest {
+            query,
+            case_sensitive,
+            mode,
+            whole_word,
+            timeout_ms: None,
+        }
+    }
+
+    /// 全词（字面）：词内子串不命中，独立词与标点相邻词命中。
+    #[test]
+    fn whole_word_literal_boundaries() {
+        let (_dir, doc) = open_doc("cat concatenate cat! cat-cat 猫cat".as_bytes(), None);
+        let request = req("cat", true, SearchMode::Literal, true);
+        let first = doc.find_request(&request, None, None).expect("查找失败");
+        assert_eq!(first, Some(hit(0, 0, 0, 3)));
+        let second = doc
+            .find_request(&request, Some((0, 3)), None)
+            .expect("查找失败");
+        assert_eq!(second, Some(hit(0, 16, 0, 19)));
+        let third = doc
+            .find_request(&request, Some((0, 19)), None)
+            .expect("查找失败");
+        assert_eq!(third, Some(hit(0, 21, 0, 24)));
+        let fourth = doc
+            .find_request(&request, Some((0, 24)), None)
+            .expect("查找失败");
+        assert_eq!(fourth, Some(hit(0, 25, 0, 28)));
+        let fifth = doc
+            .find_request(&request, Some((0, 28)), None)
+            .expect("查找失败");
+        assert_eq!(fifth, None);
+    }
+
+    /// 全词（正则）+ 大小写不敏感。
+    #[test]
+    fn whole_word_regex_case_insensitive() {
+        let (_dir, doc) = open_doc("Word wordy WORD".as_bytes(), None);
+        let request = req("word", false, SearchMode::Regex, true);
+        let first = doc.find_request(&request, None, None).expect("查找失败");
+        assert_eq!(first, Some(hit(0, 0, 0, 4)));
+        let second = doc
+            .find_request(&request, Some((0, 4)), None)
+            .expect("查找失败");
+        assert_eq!(second, Some(hit(0, 11, 0, 15)));
+    }
+
+    /// 计数：总数、上限截断、空查询。
+    #[test]
+    fn count_respects_limit_and_reports_truncation() {
+        let (_dir, doc) = open_doc(b"a a a a", None);
+        let request = req("a", true, SearchMode::Literal, false);
+        let all = doc.count_request(&request).expect("计数失败");
+        assert_eq!(all.total, 4);
+        assert!(!all.truncated);
+        let capped = doc.count_request_with(&request, 3).expect("计数失败");
+        assert_eq!(capped.total, 3);
+        assert!(capped.truncated);
+        let empty = doc
+            .count_request(&req("", true, SearchMode::Literal, false))
+            .expect("空查询失败");
+        assert_eq!(empty.total, 0);
+        assert!(!empty.truncated);
+    }
+
+    /// 行区间上界：`until_row` 之后不再命中（含 until 行本身）。
+    #[test]
+    fn find_request_respects_until_row() {
+        let content = "x1\nx2\nx3\nx4\nx5";
+        let (_dir, doc) = open_doc(content.as_bytes(), None);
+        let request = req("x", true, SearchMode::Literal, false);
+        let found = doc
+            .find_request(&request, Some((2, 0)), Some(3))
+            .expect("查找失败");
+        assert_eq!(found, Some(hit(2, 0, 2, 1)));
+        let after = doc
+            .find_request(&request, Some((3, 1)), Some(3))
+            .expect("查找失败");
+        assert_eq!(after, None, "until_row 之后不应命中（含 x5 在第 4 行）");
+    }
+
+    /// 超时：正则 + 极小超时 + 大文档 → RegexTimeout，且替换路径不修改内容。
+    #[test]
+    fn regex_timeout_interrupts_scan() {
+        let content = "abcdefgh\n".repeat(500_000);
+        let (_dir, mut doc) = open_doc(content.as_bytes(), None);
+        let request = SearchRequest {
+            query: "z9",
+            case_sensitive: true,
+            mode: SearchMode::Regex,
+            whole_word: false,
+            timeout_ms: Some(50),
+        };
+        let err = doc.find_request(&request, None, None).expect_err("应超时");
+        assert!(matches!(err, EditError::RegexTimeout));
+        let before = doc.byte_len();
+        let replace_err = doc
+            .replace_all_request(&request, "x")
+            .expect_err("替换也应超时");
+        assert!(matches!(replace_err, EditError::RegexTimeout));
+        assert_eq!(doc.byte_len(), before);
+        assert!(!doc.is_dirty());
     }
 }
