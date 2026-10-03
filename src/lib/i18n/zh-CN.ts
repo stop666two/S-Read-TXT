@@ -230,6 +230,17 @@ export const zhCN = {
   'edit.replaceDone': '已替换 {count} 处',
   'edit.ariaInput': '文本编辑输入',
   'find.notFound': '未找到「{query}」',
+  'filter.toggle': '筛选',
+  'filter.placeholder': '匹配文本（正则或字面量）',
+  'filter.regex': '正则表达式',
+  'filter.case': '区分大小写',
+  'filter.hideEmpty': '隐藏空行',
+  'filter.apply': '应用',
+  'filter.applying': '筛选中…',
+  'filter.clear': '清除筛选',
+  'filter.count': '{shown} / {total} 行',
+  'filter.truncated': '（已达上限）',
+  'filter.noMatch': '无匹配行',
 
   // ---------- Toast ----------
   'common.closeHint': '关闭提示',

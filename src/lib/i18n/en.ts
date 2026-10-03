@@ -241,6 +241,17 @@ export const en: Record<MessageKey, string> = {
   'edit.replaceDone': 'Replaced {count} occurrence(s)',
   'edit.ariaInput': 'Text editing input',
   'find.notFound': '"{query}" not found',
+  'filter.toggle': 'Filter',
+  'filter.placeholder': 'Match text (regex or literal)',
+  'filter.regex': 'Regular expression',
+  'filter.case': 'Case sensitive',
+  'filter.hideEmpty': 'Hide empty lines',
+  'filter.apply': 'Apply',
+  'filter.applying': 'Filtering…',
+  'filter.clear': 'Clear filter',
+  'filter.count': '{shown} / {total} rows',
+  'filter.truncated': '(limit reached)',
+  'filter.noMatch': 'No matching lines',
 
   // ---------- Toast ----------
   'common.closeHint': 'Dismiss notification',

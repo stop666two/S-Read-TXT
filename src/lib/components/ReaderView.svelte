@@ -7,7 +7,14 @@
   import EditLayer from './EditLayer.svelte';
   import type { EditorAction } from '../edit/actions';
   import { t } from '../i18n/index.svelte';
-  import { describeIpcError, ipc, toIpcError, type EditApplied, type TabInfo } from '../ipc';
+  import {
+    describeIpcError,
+    ipc,
+    toIpcError,
+    type EditApplied,
+    type FilterQuery,
+    type TabInfo,
+  } from '../ipc';
   import { HeightModel } from '../reader/heights';
   import { RowCache } from '../reader/row-cache';
   import { scrollMemory } from '../reader/scroll-memory';
@@ -67,6 +74,84 @@
   /** 位置恢复代次：用户主动交互（滚轮/指针/触摸/按键）自增，用于中止进行中的恢复重试 */
   let scrollEpoch = 0;
 
+  // ---------------------------------------------------------------------------
+  // 过滤视图（P1-4 / D61：仅阅读模式；以稀疏虚拟列表渲染命中行）
+  // ---------------------------------------------------------------------------
+  /** 过滤条是否展开 */
+  let filterOpen = $state(false);
+  /** 查询文本（正则或字面量） */
+  let filterText = $state('');
+  let filterRegex = $state(false);
+  let filterCase = $state(false);
+  let filterHideEmpty = $state(false);
+  /** 命中显示行号；null = 过滤未启用 */
+  let filterRows = $state<number[] | null>(null);
+  let filterTruncated = $state(false);
+  let filterBusy = $state(false);
+  let filterError = $state<string | null>(null);
+  const filterActive = $derived(filterRows !== null);
+
+  /** 显示行 → 文件行（过滤关闭时二者相同）。 */
+  function fileRowOf(displayRow: number): number {
+    const filter = filterRows;
+    return filter ? (filter[displayRow] ?? 0) : displayRow;
+  }
+
+  /** 当前视图总行数（过滤启用后为命中数）。 */
+  function viewRowsTotal(): number {
+    return filterRows ? filterRows.length : tab.rowsTotal;
+  }
+
+  /** 过滤启用/清除后的视图基线重建（缓存、高度、窗口、滚动记忆统一重置）。 */
+  function resetViewState(): void {
+    cache.clear();
+    heights.clear();
+    inflight.clear();
+    lastPercent = -1;
+    startRow = 0;
+    endRow = 0;
+    if (container) setContentScrollTop(0);
+    refreshWindow();
+    version += 1;
+  }
+
+  /** 应用过滤（仅阅读模式）：扫描命中行后以稀疏虚拟列表渲染。 */
+  async function applyFilter(): Promise<void> {
+    if (tab.editing || filterBusy) return;
+    filterBusy = true;
+    filterError = null;
+    const tabId = tab.tabId;
+    const query: FilterQuery = {
+      text: filterText.trim(),
+      regex: filterRegex,
+      caseSensitive: filterCase,
+      hideEmpty: filterHideEmpty,
+    };
+    try {
+      const result = await ipc.filterRows(tabId, query);
+      if (tab.tabId !== tabId) return;
+      filterRows = result.rows;
+      filterTruncated = result.truncated;
+      resetViewState();
+      scrollMemory.set(tab.tabId, 0);
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('[reader] 过滤失败', error);
+      filterError = describeIpcError(toIpcError(error));
+    } finally {
+      filterBusy = false;
+    }
+  }
+
+  /** 清除过滤，恢复全量视图。 */
+  function clearFilter(): void {
+    if (filterRows === null) return;
+    filterRows = null;
+    filterTruncated = false;
+    filterError = null;
+    resetViewState();
+    scrollMemory.set(tab.tabId, 0);
+  }
+
   /** 当前渲染行（窗口 + 文本；version 驱动刷新）。 */
   const renderedRows = $derived.by(() => {
     void version;
@@ -95,7 +180,9 @@
     });
   }
 
-  /** 请求窗口内缺失的行（合并为连续批次；切换标签后丢弃过期结果）。 */
+  /** 请求窗口内缺失的行（合并为连续批次；切换标签/过滤变化后丢弃过期结果）。
+   *  过滤启用时：批次中的显示行经 `filterRows` 映射为文件行，经 `fetch_rows_at` 稀疏取回，
+   *  并按「显示行」键写入缓存（虚拟列表与百分比均以显示行为准）。 */
   function ensureRows(start: number, end: number): void {
     const wanted: number[] = [];
     for (let row = start; row < end; row += 1) wanted.push(row);
@@ -104,22 +191,30 @@
       if (inflight.has(key)) continue;
       inflight.add(key);
       const tabId = tab.tabId;
-      void ipc.getRows(tabId, batch.start, batch.count).then(
-        (payload) => {
+      const filter = filterRows; // 快照：过滤结果变化后旧批次作废
+      const fetch = filter
+        ? ipc.fetchRowsAt(
+            tabId,
+            Array.from({ length: batch.count }, (_, index) => filter[batch.start + index] ?? 0),
+          )
+        : ipc.getRows(tabId, batch.start, batch.count).then((payload) => payload.rows);
+      void fetch.then(
+        (rows) => {
           inflight.delete(key);
-          if (tab.tabId !== tabId) return;
-          for (const row of payload.rows) {
-            cache.set(row.row, {
+          if (tab.tabId !== tabId || filterRows !== filter) return;
+          rows.forEach((row, index) => {
+            const displayRow = filter ? batch.start + index : row.row;
+            cache.set(displayRow, {
               text: row.text,
               logicalRow: row.logicalRow ?? row.row,
               baseUtf16: row.baseUtf16 ?? 0,
             });
-          }
+          });
           version += 1;
         },
         (error: unknown) => {
           inflight.delete(key);
-          if (tab.tabId !== tabId) return;
+          if (tab.tabId !== tabId || filterRows !== filter) return;
           if (import.meta.env.DEV) console.error('[reader] 取行失败', error);
           toasts.error(describeIpcError(toIpcError(error)));
         },
@@ -139,17 +234,22 @@
     onEditApplied?.(tab.tabId, result);
   }
 
-  /** 确保单行已加载（编辑层光标定位/复制使用；返回加载后的文本）。 */
+  /** 确保单行已加载（编辑层光标定位/复制使用；返回加载后的文本）。
+   *  过滤启用时入参为显示行，内部映射到文件行（编辑模式下过滤恒为关闭，此处仅为防御）。 */
   async function ensureRow(row: number): Promise<string | undefined> {
     const cached = cache.get(row);
     if (cached !== undefined) return cached.text;
+    const filter = filterRows;
     try {
-      const payload = await ipc.getRows(tab.tabId, row, 1);
-      const item = payload.rows[0];
+      const fileRow = filter ? fileRowOf(row) : row;
+      const rows = filter
+        ? await ipc.fetchRowsAt(tab.tabId, [fileRow])
+        : (await ipc.getRows(tab.tabId, fileRow, 1)).rows;
+      const item = rows[0];
       if (item !== undefined) {
         cache.set(row, {
           text: item.text,
-          logicalRow: item.logicalRow ?? row,
+          logicalRow: item.logicalRow ?? fileRow,
           baseUtf16: item.baseUtf16 ?? 0,
         });
         version += 1;
@@ -166,23 +266,22 @@
   function refreshWindow(): void {
     const el = container;
     if (!el) return;
+    const rowsTotal = viewRowsTotal();
     const { start, end, anchorRow } = computeWindow(
       heights,
-      tab.rowsTotal,
+      rowsTotal,
       contentScrollTop(),
       el.clientHeight,
       OVERSCAN,
     );
     startRow = start;
     endRow = end;
-    spacerTop = heights.offsetOf(start, tab.rowsTotal);
-    spacerBottom = Math.max(
-      0,
-      heights.totalHeight(tab.rowsTotal) - heights.offsetOf(end, tab.rowsTotal),
-    );
+    spacerTop = heights.offsetOf(start, rowsTotal);
+    spacerBottom = Math.max(0, heights.totalHeight(rowsTotal) - heights.offsetOf(end, rowsTotal));
     ensureRows(start, end);
-    scrollMemory.set(tab.tabId, anchorRow);
-    const percent = computePercent(heights, tab.rowsTotal, anchorRow);
+    // 过滤视图的显示行与文件行不是同一坐标，不写入滚动记忆（会话恢复始终针对文件行）
+    if (filterRows === null) scrollMemory.set(tab.tabId, anchorRow);
+    const percent = computePercent(heights, rowsTotal, anchorRow);
     if (Math.round(percent) !== lastPercent) {
       lastPercent = Math.round(percent);
       onPercent(percent);
@@ -198,10 +297,13 @@
       refreshWindow();
       // 实时记录顶部定位行（会话/标签切换共用数据源）；
       // 此前仅在切换标签的清理阶段记录，导致「滚动后直接退出」恢复不到位置。
-      scrollMemory.set(
-        tab.tabId,
-        heights.rowAtOffset(contentScrollTop(), Math.max(1, tab.rowsTotal)),
-      );
+      // 过滤视图下跳过（显示行 ≠ 文件行）。
+      if (filterRows === null) {
+        scrollMemory.set(
+          tab.tabId,
+          heights.rowAtOffset(contentScrollTop(), Math.max(1, viewRowsTotal())),
+        );
+      }
     });
   }
 
@@ -210,8 +312,9 @@
     const el = container;
     if (!el) return;
     const beforeScroll = contentScrollTop();
-    const anchorRow = heights.rowAtOffset(beforeScroll, tab.rowsTotal);
-    const anchorDelta = Math.max(0, beforeScroll - heights.offsetOf(anchorRow, tab.rowsTotal));
+    const rowsTotal = viewRowsTotal();
+    const anchorRow = heights.rowAtOffset(beforeScroll, rowsTotal);
+    const anchorDelta = Math.max(0, beforeScroll - heights.offsetOf(anchorRow, rowsTotal));
     let changed = false;
     // 实时查询已渲染行（与 rowNodeOf 同一策略：不维护易失步的注册表）
     for (const node of el.querySelectorAll<HTMLElement>('.row[data-row]')) {
@@ -224,7 +327,7 @@
       }
     }
     if (changed) {
-      const corrected = heights.offsetOf(anchorRow, tab.rowsTotal) + anchorDelta;
+      const corrected = heights.offsetOf(anchorRow, rowsTotal) + anchorDelta;
       if (Math.abs(corrected - beforeScroll) > 1) {
         programmatic = true;
         el.scrollTop = corrected + pagePadTop;
@@ -235,10 +338,10 @@
     }
     // 无论是否有新测量都重算占位：排版变更（clear 后）新旧行高差异可能小于测量阈值（0.5px），
     // 若此时提前返回，占位会停留在旧值——表现为「改完不立刻生效、滚动一次才落定」。
-    spacerTop = heights.offsetOf(startRow, tab.rowsTotal);
+    spacerTop = heights.offsetOf(startRow, rowsTotal);
     spacerBottom = Math.max(
       0,
-      heights.totalHeight(tab.rowsTotal) - heights.offsetOf(endRow, tab.rowsTotal),
+      heights.totalHeight(rowsTotal) - heights.offsetOf(endRow, rowsTotal),
     );
     if (changed) version += 1;
   }
@@ -352,18 +455,30 @@
   }
 
   // 标签或编码变化：重建缓存/高度，按记忆行号恢复位置；离开前记录当前行号
+  // 说明：体调用的 refreshWindow 经 viewRowsTotal 读取过滤状态——若不放入 untrack，
+  // 应用过滤时的 filterRows 赋值会反向触发本 effect 清空刚应用的过滤（真实缺陷，已修）。
   $effect(() => {
     const currentTabId = tab.tabId;
     const rowsTotal = tab.rowsTotal;
     void tab.encoding;
-    cache.clear();
-    heights.clear();
-    inflight.clear();
-    lastPercent = -1;
-    const restoredRow = Math.min(scrollMemory.get(currentTabId) ?? 0, Math.max(0, rowsTotal - 1));
-    if (container) {
-      applyInitialScroll(restoredRow, rowsTotal);
-    }
+    untrack(() => {
+      cache.clear();
+      heights.clear();
+      inflight.clear();
+      lastPercent = -1;
+      // 切换标签/编码：过滤状态随视图重建而清空（过滤结果为当前会话的一次性扫描）
+      filterRows = null;
+      filterTruncated = false;
+      filterOpen = false;
+      filterError = null;
+      const restoredRow = Math.min(
+        scrollMemory.get(currentTabId) ?? 0,
+        Math.max(0, rowsTotal - 1),
+      );
+      if (container) {
+        applyInitialScroll(restoredRow, rowsTotal);
+      }
+    });
     return () => {
       scrollMemory.set(
         currentTabId,
@@ -371,11 +486,86 @@
       );
     };
   });
+
+  // 进入编辑模式时关闭过滤（D61：过滤视图仅阅读模式）
+  $effect(() => {
+    if (!tab.editing) return;
+    if (filterRows !== null) clearFilter();
+    filterOpen = false;
+  });
 </script>
 
 <div class="reader" bind:this={container} onscroll={handleScroll}>
+  {#if !tab.editing && tab.rowsTotal > 0}
+    <div class="filter-host">
+      {#if filterActive && filterRows}
+        <span class="filter-count" data-filter-count>
+          {t('filter.count', { shown: filterRows.length, total: tab.rowsTotal })}{filterTruncated
+            ? t('filter.truncated')
+            : ''}
+        </span>
+        <button class="filter-btn" data-filter-clear onclick={clearFilter}>{t('filter.clear')}</button>
+      {/if}
+      <button
+        class="filter-btn toggle"
+        class:on={filterOpen}
+        data-filter-toggle
+        aria-expanded={filterOpen}
+        onclick={() => {
+          filterOpen = !filterOpen;
+        }}
+      >
+        {t('filter.toggle')}
+      </button>
+      {#if filterOpen}
+        <div class="filter-bar" data-filter-bar>
+          <input
+            class="filter-input"
+            data-filter-input
+            aria-label={t('filter.placeholder')}
+            placeholder={t('filter.placeholder')}
+            bind:value={filterText}
+            onkeydown={(event) => {
+              if (event.key === 'Enter') void applyFilter();
+              if (event.key === 'Escape') filterOpen = false;
+            }}
+          />
+          <button
+            class="flag"
+            class:on={filterRegex}
+            data-filter-regex
+            title={t('filter.regex')}
+            onclick={() => {
+              filterRegex = !filterRegex;
+            }}>.*</button
+          >
+          <button
+            class="flag"
+            class:on={filterCase}
+            data-filter-case
+            title={t('filter.case')}
+            onclick={() => {
+              filterCase = !filterCase;
+            }}>Aa</button
+          >
+          <label class="flag-label">
+            <input type="checkbox" data-filter-hide-empty bind:checked={filterHideEmpty} />
+            {t('filter.hideEmpty')}
+          </label>
+          <button class="filter-btn apply" data-filter-apply disabled={filterBusy} onclick={() => void applyFilter()}>
+            {filterBusy ? t('filter.applying') : t('filter.apply')}
+          </button>
+          {#if filterError}
+            <span class="filter-err" data-filter-error>{filterError}</span>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
   <div class="page">
-    {#if tab.rowsTotal === 0}
+    {#if filterActive && filterRows?.length === 0}
+      <p class="empty-file" data-filter-no-match>{t('filter.noMatch')}</p>
+    {:else if tab.rowsTotal === 0}
       <p class="empty-file">{t('reader.emptyFile')}</p>
     {:else}
       <div class="spacer" style="height: {spacerTop}px"></div>
@@ -449,5 +639,106 @@
     margin: 30vh 0 0;
     text-align: center;
     color: var(--muted);
+  }
+
+  /* 过滤视图（P1-4）：阅读区顶部粘性条（不透明底，避免滚动内容透出） */
+  .filter-host {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--base);
+    border-bottom: 1px solid transparent;
+  }
+
+  .filter-host:has(.filter-bar) {
+    border-bottom-color: var(--line);
+  }
+
+  .filter-count {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .filter-btn {
+    height: 24px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .filter-btn:hover {
+    background: var(--hover);
+  }
+
+  .filter-btn.on,
+  .filter-btn.apply {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .filter-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .filter-input {
+    flex: 1;
+    min-width: 160px;
+    max-width: 360px;
+    height: 24px;
+    padding: 0 8px;
+    font-size: 12px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+  }
+
+  .filter-bar .flag {
+    height: 24px;
+    min-width: 28px;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .filter-bar .flag.on {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .flag-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .filter-err {
+    font-size: 12px;
+    color: var(--danger, #c0392b);
   }
 </style>

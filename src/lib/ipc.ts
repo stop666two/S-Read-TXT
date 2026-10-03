@@ -404,6 +404,22 @@ export interface StatusBarSettings {
   showEncoding: boolean;
 }
 
+/** 过滤视图查询（与 Rust `FilterQuery` 对应）。 */
+export interface FilterQuery {
+  /** 匹配文本（空 = 只按 hideEmpty 过滤） */
+  text: string;
+  regex: boolean;
+  caseSensitive: boolean;
+  hideEmpty: boolean;
+}
+
+/** 过滤扫描结果（与 Rust `FilterResult` 对应；rows 为命中显示行号）。 */
+export interface FilterResult {
+  rows: number[];
+  scanned: number;
+  truncated: boolean;
+}
+
 /** 背景图填充模式（与 Rust `BackgroundFill` 对应）。 */
 export type BackgroundFill = 'cover' | 'contain' | 'stretch' | 'tile';
 
@@ -734,6 +750,12 @@ export const ipc = {
   /** 执行行操作（单撤销步）。 */
   applyLineOp: (tabId: number, config: LineOpConfig) =>
     invoke<LineOpOutcome>('apply_line_op', { tabId, config }),
+  /** 过滤扫描（P1-4，只读；返回命中显示行号）。 */
+  filterRows: (tabId: number, query: FilterQuery) =>
+    invoke<FilterResult>('filter_rows', { tabId, query }),
+  /** 稀疏按行取文本（过滤视图虚拟窗口；单次 ≤512 行）。 */
+  fetchRowsAt: (tabId: number, rows: number[]) =>
+    invoke<RowsPayload['rows']>('fetch_rows_at', { tabId, rows }),
   /** 配置快照（快捷键等；后端为唯一真源）。 */
   getSettings: () => invoke<SettingsSnapshot>('get_settings'),
   /** 保存配置（返回保存后的快照）。 */
