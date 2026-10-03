@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "high-contrast",
+  "name": "高对比",
+  "nameEn": "High Contrast",
+  "base": "light",
+  "builtin": true,
+  "tokens": {
+    "base": "#FFFFFF",
+    "surface": "#FFFFFF",
+    "chrome": "#F0F0F0",
+    "ink": "#000000",
+    "muted": "#1A1A1A",
+    "line": "#000000",
+    "hover": "#E0E0E0",
+    "accent": "#0033CC",
+    "tabActive": "#FFFFFF",
+    "selection": "#B3CCFF",
+    "danger": "#CC0000",
+    "success": "#006600",
+    "warning": "#995500"
+  }
+}

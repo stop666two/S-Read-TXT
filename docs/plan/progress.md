@@ -1,4 +1,4 @@
-# S-Read-TXT 项目进度台账
+﻿# S-Read-TXT 项目进度台账
 
 - 作用：记录阶段与切片的执行状态、验证证据、提交记录；是实施计划（`docs/plan/implementation-plan.md`）的实时执行账本。
 - 维护规则（文档同步义务）：
@@ -341,3 +341,8 @@
 - **设置 UI**：`TypographyTab` 重写（7 滑块 + 对齐/平滑开关 + 自定义字体导入与删除管理）；`GeneralTab` 新增「界面元素」「启动行为」组。
 - **验证**：cargo **251/251**（229 lib + 15 对抗 + 2 助手 + 5 集成，0 告警）；svelte-check 0/0；`smoke-settings` **47/47**（新增 S14a–e 排版扩充、S15a–i 字体导入链、S16a–e 界面/启动开关）；回归 `smoke-scroll` 4/4、`smoke-titlebar` 10/10、`smoke-buttons` 32/32。
 - **测试口径说明**：字体删除的原生确认框（TaskDialog）无法自动化点「是」——E2E 覆盖「弹框 + 取消保留」，删除链路经直连命令验证（S15h/i）。
+
+## P0 基础设施与外观（2026-10-03 启动）
+- **规划产物**：设计文档并入 §17（D39–D77 摘要）；docs/plan/2026-10-03-p0-plan.md（P0-1 双阈值 / P0-2 设置 v2 / P0-3 i18n / P0-4 设置 UI v2 / P0-5 主题 v2 / P0-6 背景图 / P0-7 欢迎页 / P0-8 资源策略 / P0-9 快捷键框架 / P0-10 配置迁移 / P0-11 验收）；三份提案状态改为「已批准执行」（维护者「完全开始」）。
+- **主题令牌**：src-tauri/resources/themes/*.json 6 套落盘（13 令牌/套），scripts/check-theme-contrast.mjs 实测全部 WCAG AA 通过（护眼绿 accent 首轮 4.34 不达标 → 调整为 #3A7449 后 4.53）。
+- **设计预览**：docs/design/previews/2026-10-03-themes-and-welcome.html（6 套色板 × 模拟窗口 + 浅/深欢迎页 mockup），待维护者确认后实施主题与欢迎页（其余 P0 任务不受阻）。

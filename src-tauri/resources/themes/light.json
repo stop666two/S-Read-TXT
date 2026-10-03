@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "light",
+  "name": "浅色",
+  "nameEn": "Light",
+  "base": "light",
+  "builtin": true,
+  "tokens": {
+    "base": "#FAF9F7",
+    "surface": "#FFFFFF",
+    "chrome": "#F3F1EC",
+    "ink": "#2B2B2B",
+    "muted": "#6B6B6B",
+    "line": "#E5E1DA",
+    "hover": "#EAE7E0",
+    "accent": "#3B6EA5",
+    "tabActive": "#FAF9F7",
+    "selection": "#CBDDF0",
+    "danger": "#C0392B",
+    "success": "#2E7D32",
+    "warning": "#8A5200"
+  }
+}

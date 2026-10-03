@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "minimal-gray",
+  "name": "极简灰",
+  "nameEn": "Minimal Gray",
+  "base": "light",
+  "builtin": true,
+  "tokens": {
+    "base": "#F7F7F7",
+    "surface": "#FFFFFF",
+    "chrome": "#EDEDED",
+    "ink": "#1F1F1F",
+    "muted": "#6A6A6A",
+    "line": "#DFDFDF",
+    "hover": "#E8E8E8",
+    "accent": "#4A4A4A",
+    "tabActive": "#F7F7F7",
+    "selection": "#D9D9D9",
+    "danger": "#A33B33",
+    "success": "#3E6B41",
+    "warning": "#7A5A22"
+  }
+}

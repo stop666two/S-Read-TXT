@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "paper-cream",
+  "name": "纸张米黄",
+  "nameEn": "Paper Cream",
+  "base": "light",
+  "builtin": true,
+  "tokens": {
+    "base": "#F5EFE0",
+    "surface": "#FAF5E8",
+    "chrome": "#EFE8D5",
+    "ink": "#33302A",
+    "muted": "#6E675A",
+    "line": "#E3DCC9",
+    "hover": "#E9E1CC",
+    "accent": "#3B6EA5",
+    "tabActive": "#F5EFE0",
+    "selection": "#D8CBAA",
+    "danger": "#B5443A",
+    "success": "#2B6E2F",
+    "warning": "#7E5500"
+  }
+}

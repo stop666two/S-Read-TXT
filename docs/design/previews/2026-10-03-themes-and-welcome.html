@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>S-Read-TXT 设计预览：主题色板与欢迎页</title>
+<style>
+  :root {
+    --page-bg: #e8e8e8;
+    --page-ink: #1f1f1f;
+    --page-muted: #5f5f5f;
+    --card-bg: #ffffff;
+    --card-line: #cfcfcf;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 24px 64px;
+    background: var(--page-bg);
+    color: var(--page-ink);
+    font-family: system-ui, "Microsoft YaHei", "微软雅黑", sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+  h2 { font-size: 15px; margin: 40px 0 14px; font-weight: 600; }
+  .lead { color: var(--page-muted); margin: 0 0 24px; max-width: 860px; }
+  .note { color: var(--page-muted); font-size: 12px; margin: 8px 0 0; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; max-width: 1180px; }
+  .card { background: var(--card-bg); border: 1px solid var(--card-line); border-radius: 10px; padding: 16px; }
+  .card h3 { font-size: 13px; margin: 0 0 2px; font-weight: 600; }
+  .card .sub { color: var(--page-muted); font-size: 11px; margin: 0 0 12px; }
+  .mock { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .mock .titlebar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--chrome); border-bottom: 1px solid var(--line); }
+  .mock .titlebar .dot { width: 10px; height: 10px; border-radius: 2px; background: var(--accent); flex: none; }
+  .mock .titlebar .name { color: var(--ink); font-size: 11px; flex: 1; }
+  .mock .titlebar .wbtn { color: var(--muted); font-size: 11px; letter-spacing: 2px; }
+  .mock .menubar { display: flex; gap: 14px; padding: 4px 10px; background: var(--chrome); color: var(--ink); font-size: 11px; border-bottom: 1px solid var(--line); }
+  .mock .toolbar { display: flex; gap: 6px; padding: 5px 10px; background: var(--chrome); border-bottom: 1px solid var(--line); }
+  .mock .toolbar span { font-size: 11px; color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 1px 7px; background: var(--surface); }
+  .mock .toolbar span.on { border-color: var(--accent); color: var(--accent); }
+  .mock .reader { background: var(--base); padding: 12px 16px; min-height: 86px; }
+  .mock .reader p { margin: 0 0 6px; color: var(--ink); font-size: 12px; }
+  .mock .reader p.dim { color: var(--muted); }
+  .mock .reader span.sel { background: var(--selection); }
+  .mock .statusbar { display: flex; justify-content: space-between; padding: 3px 10px; background: var(--chrome); border-top: 1px solid var(--line); font-size: 11px; }
+  .mock .statusbar .l { color: var(--muted); }
+  .mock .statusbar .r { color: var(--accent); }
+  .swatches { display: flex; gap: 4px; margin-top: 10px; flex-wrap: wrap; }
+  .sw { width: 26px; height: 20px; border: 1px solid rgba(0,0,0,0.12); border-radius: 3px; }
+  .tag { display: inline-block; font-size: 11px; padding: 0 6px; border: 1px solid var(--card-line); border-radius: 999px; color: var(--page-muted); margin-left: 6px; }
+  .welcome-wrap { max-width: 640px; }
+  .welcome { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .welcome .wbody { background: var(--base); color: var(--ink); padding: 44px 40px 36px; }
+  .welcome .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .welcome .logo { width: 30px; height: 30px; border: 1px solid var(--accent); border-radius: 7px; display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 14px; font-weight: 600; }
+  .welcome .appname { font-size: 17px; font-weight: 600; }
+  .welcome .tagline { color: var(--muted); font-size: 12px; margin: 0 0 22px; }
+  .welcome .actions { display: flex; gap: 10px; margin-bottom: 26px; }
+  .welcome .btn { font-size: 12px; padding: 7px 18px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+  .welcome .btn.primary { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+  .welcome .recent { border-top: 1px solid var(--line); padding-top: 14px; margin-bottom: 18px; }
+  .welcome .recent h4 { font-size: 11px; color: var(--muted); margin: 0 0 8px; font-weight: 400; }
+  .welcome .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
+  .welcome .row span.p { color: var(--muted); }
+  .welcome .hints { border-top: 1px solid var(--line); padding-top: 12px; color: var(--muted); font-size: 11px; display: flex; gap: 16px; flex-wrap: wrap; }
+  .welcome .hints b { color: var(--ink); font-weight: 500; }
+  .dark-page { background: #161616; padding: 24px; border-radius: 10px; }
+</style>
+</head>
+<body>
+<h1>S-Read-TXT 设计预览</h1>
+<p class="lead">主题 7 套（跟随系统展开为浅/深两态，共 6 套独立色板 + 系统跟随）与新版欢迎页（空状态）设计稿。仅供审阅：确认后按此实现；任何颜色、间距、文案都可调整。</p>
+
+<h2>一、主题色板（每套均通过 WCAG AA 对比度校验）</h2>
+<div class="grid">
+
+  <div class="card" style="--base:#FAF9F7;--surface:#FFFFFF;--chrome:#F3F1EC;--ink:#2B2B2B;--muted:#6B6B6B;--line:#E5E1DA;--hover:#EAE7E0;--accent:#3B6EA5;--tabActive:#FAF9F7;--selection:#CBDDF0;">
+    <h3>浅色 Light<span class="tag">默认候选</span></h3>
+    <p class="sub">暖白纸张，当前基线配色</p>
+    <div class="mock">
+      <div class="titlebar"><span class="dot"></span><span class="name">静夜思.txt - S-Read-TXT</span><span class="wbtn">- □ ×</span></div>
+      <div class="menubar"><span>文件</span><span>编辑</span><span>查看</span><span>帮助</span></div>
+      <div class="toolbar"><span class="on">打开</span><span>保存</span><span>编辑</span><span>历史</span><span>编码</span><span>设置</span></div>
+      <div class="reader"><p>床前明月光，疑是地上霜。</p><p>举头望明月，<span class="sel">低头思故乡</span>。</p><p class="dim">—— 李白《静夜思》</p></div>
+      <div class="statusbar"><span class="l">静夜思.txt · 42%</span><span class="r">1.2 KB · UTF-8</span></div>
+    </div>
+    <div class="swatches"><div class="sw" style="background:#FAF9F7"></div><div class="sw" style="background:#FFFFFF"></div><div class="sw" style="background:#F3F1EC"></div><div class="sw" style="background:#2B2B2B"></div><div class="sw" style="background:#6B6B6B"></div><div class="sw" style="background:#E5E1DA"></div><div class="sw" style="background:#3B6EA5"></div><div class="sw" style="background:#CBDDF0"></div></div>
+    <p class="note">正文 13.46:1 · 次要 5.06:1 · 强调 5.04:1</p>
+  </div>
+
+  <div class="card" style="--base:#1E1E1E;--surface:#252526;--chrome:#2A2A2B;--ink:#D4D4D4;--muted:#9A9A9A;--line:#3A3A3A;--hover:#333334;--accent:#6FA3D8;--tabActive:#1E1E1E;--selection:#2F4A66;">
+    <h3>深色 Dark</h3>
+    <p class="sub">低饱和深灰，夜间长时间阅读</p>
+    <div class="mock">
+      <div class="titlebar"><span class="dot"></span><span class="name">静夜思.txt - S-Read-TXT</span><span class="wbtn">- □ ×</span></div>
+      <div class="menubar"><span>文件</span><span>编辑</span><span>查看</span><span>帮助</span></div>
+      <div class="toolbar"><span class="on">打开</span><span>保存</span><span>编辑</span><span>历史</span><span>编码</span><span>设置</span></div>
+      <div class="reader"><p>床前明月光，疑是地上霜。</p><p>举头望明月，<span class="sel">低头思故乡</span>。</p><p class="dim">—— 李白《静夜思》</p></div>
+      <div class="statusbar"><span class="l">静夜思.txt · 42%</span><span class="r">1.2 KB · UTF-8</span></div>
+    </div>
+    <div class="swatches"><div class="sw" style="background:#1E1E1E"></div><div class="sw" style="background:#252526"></div><div class="sw" style="background:#2A2A2B"></div><div class="sw" style="background:#D4D4D4"></div><div class="sw" style="background:#9A9A9A"></div><div class="sw" style="background:#3A3A3A"></div><div class="sw" style="background:#6FA3D8"></div><div class="sw" style="background:#2F4A66"></div></div>
+    <p class="note">正文 11.25:1 · 次要 5.92:1 · 强调 6.28:1</p>
+  </div>
+
+  <div class="card" style="--base:#EAF1E6;--surface:#F4F8F1;--chrome:#DEE8D8;--ink:#2A332A;--muted:#5F6B5C;--line:#CFDCC8;--hover:#E0EADE;--accent:#3A7449;--tabActive:#EAF1E6;--selection:#C4DEC8;">
+    <h3>护眼绿 Eye Care</h3>
+    <p class="sub">柔和绿色纸面，缓解长时间阅读疲劳</p>
+    <div class="mock">
+      <div class="titlebar"><span class="dot"></span><span class="name">静夜思.txt - S-Read-TXT</span><span class="wbtn">- □ ×</span></div>
+      <div class="menubar"><span>文件</span><span>编辑</span><span>查看</span><span>帮助</span></div>
+      <div class="toolbar"><span class="on">打开</span><span>保存</span><span>编辑</span><span>历史</span><span>编码</span><span>设置</span></div>
+      <div class="reader"><p>床前明月光，疑是地上霜。</p><p>举头望明月，<span class="sel">低头思故乡</span>。</p><p class="dim">—— 李白《静夜思》</p></div>
+      <div class="statusbar"><span class="l">静夜思.txt · 42%</span><span class="r">1.2 KB · UTF-8</span></div>
+    </div>
+    <div class="swatches"><div class="sw" style="background:#EAF1E6"></div><div class="sw" style="background:#F4F8F1"></div><div class="sw" style="background:#DEE8D8"></div><div class="sw" style="background:#2A332A"></div><div class="sw" style="background:#5F6B5C"></div><div class="sw" style="background:#CFDCC8"></div><div class="sw" style="background:#3A7449"></div><div class="sw" style="background:#C4DEC8"></div></div>
+    <p class="note">正文 11.35:1 · 次要 4.87:1 · 强调 4.53:1</p>
+  </div>
+
+  <div class="card" style="--base:#F5EFE0;--surface:#FAF5E8;--chrome:#EFE8D5;--ink:#33302A;--muted:#6E675A;--line:#E3DCC9;--hover:#E9E1CC;--accent:#3B6EA5;--tabActive:#F5EFE0;--selection:#D8CBAA;">
+    <h3>纸张米黄 Paper Cream</h3>
+    <p class="sub">暖黄纸感，当前护眼主题升级而来</p>
+    <div class="mock">
+      <div class="titlebar"><span class="dot"></span><span class="name">静夜思.txt - S-Read-TXT</span><span class="wbtn">- □ ×</span></div>
+      <div class="menubar"><span>文件</span><span>编辑</span><span>查看</span><span>帮助</span></div>
+      <div class="toolbar"><span class="on">打开</span><span>保存</span><span>编辑</span><span>历史</span><span>编码</span><span>设置</span></div>
+      <div class="reader"><p>床前明月光，疑是地上霜。</p><p>举头望明月，<span class="sel">低头思故乡</span>。</p><p class="dim">—— 李白《静夜思》</p></div>
+      <div class="statusbar"><span class="l">静夜思.txt · 42%</span><span class="r">1.2 KB · UTF-8</span></div>
+    </div>
+    <div class="swatches"><div class="sw" style="background:#F5EFE0"></div><div class="sw" style="background:#FAF5E8"></div><div class="sw" style="background:#EFE8D5"></div><div class="sw" style="background:#33302A"></div><div class="sw" style="background:#6E675A"></div><div class="sw" style="background:#E3DCC9"></div><div class="sw" style="background:#3B6EA5"></div><div class="sw" style="background:#D8CBAA"></div></div>
+    <p class="note">正文 11.46:1 · 次要 4.88:1 · 强调 4.62:1</p>
+  </div>
+
+  <div class="card" style="--base:#FFFFFF;--surface:#FFFFFF;--chrome:#F0F0F0;--ink:#000000;--muted:#1A1A1A;--line:#000000;--hover:#E0E0E0;--accent:#0033CC;--tabActive:#FFFFFF;--selection:#B3CCFF;">
+    <h3>高对比 High Contrast</h3>
+    <p class="sub">纯黑描边与最大对比，无障碍优先</p>
+    <div class="mock">
+      <div class="titlebar"><span class="dot"></span><span class="name">静夜思.txt - S-Read-TXT</span><span class="wbtn">- □ ×</span></div>
+      <div class="menubar"><span>文件</span><span>编辑</span><span>查看</span><span>帮助</span></div>
+      <div class="toolbar"><span class="on">打开</span><span>保存</span><span>编辑</span><span>历史</span><span>编码</span><span>设置</span></div>
+      <div class="reader"><p>床前明月光，疑是地上霜。</p><p>举头望明月，<span class="sel">低头思故乡</span>。</p><p class="dim">—— 李白《静夜思》</p></div>
+      <div class="statusbar"><span class="l">静夜思.txt · 42%</span><span class="r">1.2 KB · UTF-8</span></div>
+    </div>
+    <div class="swatches"><div class="sw" style="background:#FFFFFF"></div><div class="sw" style="background:#F0F0F0"></div><div class="sw" style="background:#000000"></div><div class="sw" style="background:#1A1A1A"></div><div class="sw" style="background:#0033CC"></div><div class="sw" style="background:#B3CCFF"></div></div>
+    <p class="note">正文 21.00:1 · 次要 17.40:1 · 强调 8.95:1</p>
+  </div>
+
+  <div class="card" style="--base:#F7F7F7;--surface:#FFFFFF;--chrome:#EDEDED;--ink:#1F1F1F;--muted:#6A6A6A;--line:#DFDFDF;--hover:#E8E8E8;--accent:#4A4A4A;--tabActive:#F7F7F7;--selection:#D9D9D9;">
+    <h3>极简灰 Minimal Gray</h3>
+    <p class="sub">近黑白灰，零彩度干扰，纯粹阅读</p>
+    <div class="mock">
+      <div class="titlebar"><span class="dot"></span><span class="name">静夜思.txt - S-Read-TXT</span><span class="wbtn">- □ ×</span></div>
+      <div class="menubar"><span>文件</span><span>编辑</span><span>查看</span><span>帮助</span></div>
+      <div class="toolbar"><span class="on">打开</span><span>保存</span><span>编辑</span><span>历史</span><span>编码</span><span>设置</span></div>
+      <div class="reader"><p>床前明月光，疑是地上霜。</p><p>举头望明月，<span class="sel">低头思故乡</span>。</p><p class="dim">—— 李白《静夜思》</p></div>
+      <div class="statusbar"><span class="l">静夜思.txt · 42%</span><span class="r">1.2 KB · UTF-8</span></div>
+    </div>
+    <div class="swatches"><div class="sw" style="background:#F7F7F7"></div><div class="sw" style="background:#FFFFFF"></div><div class="sw" style="background:#EDEDED"></div><div class="sw" style="background:#1F1F1F"></div><div class="sw" style="background:#6A6A6A"></div><div class="sw" style="background:#DFDFDF"></div><div class="sw" style="background:#4A4A4A"></div><div class="sw" style="background:#D9D9D9"></div></div>
+    <p class="note">正文 15.39:1 · 次要 5.05:1 · 强调 8.27:1</p>
+  </div>
+
+  <div class="card" style="--base:#1E1E1E;--surface:#252526;--chrome:#2A2A2B;--ink:#D4D4D4;--muted:#9A9A9A;--line:#3A3A3A;--accent:#6FA3D8;--selection:#2F4A66;">
+    <h3>跟随系统 System</h3>
+    <p class="sub">不单独出图：系统浅色时用「浅色」、深色时用「深色」；系统切换时应用即时跟随（不需要重启）</p>
+    <div class="mock">
+      <div class="reader"><p>系统浅色 → 浅色色板</p><p>系统深色 → 深色色板</p><p class="dim">可在设置中固定为任一具体主题</p></div>
+    </div>
+  </div>
+
+</div>
+<p class="note">色板共 13 个令牌：base 阅读底 / surface 面板 / chrome 框架（菜单·工具栏·标签·状态栏）/ ink 正文 / muted 次要 / line 边框 / hover 悬停 / accent 强调 / tabActive 活动标签 / selection 选区 / danger 错误 / success 成功 / warning 警告。每套 13 个令牌均可整体替换。</p>
+
+<h2>二、欢迎页（空状态）设计稿</h2>
+<div class="grid welcome-wrap" style="grid-template-columns: minmax(0, 1fr);">
+
+  <div class="card">
+    <h3>浅色下的欢迎页</h3>
+    <p class="sub">打开应用未开文件时展示；实现后欢迎点击任一处提意见</p>
+    <div class="welcome" style="--base:#FAF9F7;--surface:#FFFFFF;--chrome:#F3F1EC;--ink:#2B2B2B;--muted:#6B6B6B;--line:#E5E1DA;--accent:#3B6EA5;--selection:#CBDDF0;">
+      <div class="mock">
+        <div class="titlebar"><span class="dot"></span><span class="name">S-Read-TXT</span><span class="wbtn">- □ ×</span></div>
+      </div>
+      <div class="wbody">
+        <div class="brand"><div class="logo">S</div><div class="appname">S-Read-TXT</div></div>
+        <p class="tagline">轻量文本阅读器 · 完全离线 · 数据随身</p>
+        <div class="actions"><span class="btn primary">打开文件</span><span class="btn">新建文件</span><span class="btn">载入示例文本</span></div>
+        <div class="recent">
+          <h4>最近打开</h4>
+          <div class="row"><span>静夜思.txt</span><span class="p">D:\文档\唐诗\ · 42%</span></div>
+          <div class="row"><span>三国演义.txt</span><span class="p">D:\文档\名著\ · 8%</span></div>
+          <div class="row"><span>readme.txt</span><span class="p">D:\项目\ · 100%</span></div>
+        </div>
+        <div class="hints"><span><b>Ctrl+O</b> 打开</span><span><b>Ctrl+Shift+H</b> 历史</span><span><b>Ctrl+F</b> 查找</span><span><b>F11</b> 全屏</span></div>
+        <p class="note" style="margin-top:12px">或将 txt 文件直接拖入窗口 · 双击文本进入编辑</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>深色下的欢迎页</h3>
+    <p class="sub">跟随主题，同一布局</p>
+    <div class="welcome" style="--base:#1E1E1E;--surface:#252526;--chrome:#2A2A2B;--ink:#D4D4D4;--muted:#9A9A9A;--line:#3A3A3A;--accent:#6FA3D8;--selection:#2F4A66;">
+      <div class="mock">
+        <div class="titlebar"><span class="dot"></span><span class="name">S-Read-TXT</span><span class="wbtn">- □ ×</span></div>
+      </div>
+      <div class="wbody">
+        <div class="brand"><div class="logo">S</div><div class="appname">S-Read-TXT</div></div>
+        <p class="tagline">轻量文本阅读器 · 完全离线 · 数据随身</p>
+        <div class="actions"><span class="btn primary">打开文件</span><span class="btn">新建文件</span><span class="btn">载入示例文本</span></div>
+        <div class="recent">
+          <h4>最近打开</h4>
+          <div class="row"><span>静夜思.txt</span><span class="p">D:\文档\唐诗\ · 42%</span></div>
+          <div class="row"><span>三国演义.txt</span><span class="p">D:\文档\名著\ · 8%</span></div>
+          <div class="row"><span>readme.txt</span><span class="p">D:\项目\ · 100%</span></div>
+        </div>
+        <div class="hints"><span><b>Ctrl+O</b> 打开</span><span><b>Ctrl+Shift+H</b> 历史</span><span><b>Ctrl+F</b> 查找</span><span><b>F11</b> 全屏</span></div>
+        <p class="note" style="margin-top:12px">或将 txt 文件直接拖入窗口 · 双击文本进入编辑</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<h2>三、请你确认</h2>
+<div class="card" style="max-width:860px">
+  <p style="margin:0 0 8px">1. 主题：6 套色板与「跟随系统」行为是否通过？是否有想调整的颜色、想替换的配色方向？</p>
+  <p style="margin:0 0 8px">2. 欢迎页：布局（品牌区 · 按钮区 · 最近打开 · 快捷键提示 · 拖拽提示）是否通过？按钮文案是否合适？</p>
+  <p style="margin:0">3. 确认后按 P0 计划实施：先设置 v2 与双阈值（不含视觉），主题与欢迎页在收到确认后动工。</p>
+</div>
+
+</body>
+</html>

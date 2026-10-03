@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "eye-green",
+  "name": "护眼绿",
+  "nameEn": "Eye Care",
+  "base": "light",
+  "builtin": true,
+  "tokens": {
+    "base": "#EAF1E6",
+    "surface": "#F4F8F1",
+    "chrome": "#DEE8D8",
+    "ink": "#2A332A",
+    "muted": "#5F6B5C",
+    "line": "#CFDCC8",
+    "hover": "#E0EADE",
+    "accent": "#3A7449",
+    "tabActive": "#EAF1E6",
+    "selection": "#C4DEC8",
+    "danger": "#B5443A",
+    "success": "#2B6E2F",
+    "warning": "#7E5500"
+  }
+}
