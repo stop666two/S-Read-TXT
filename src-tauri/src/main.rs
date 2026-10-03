@@ -239,6 +239,8 @@ fn main() {
             commands::apply_batch_numbering,
             commands::preview_line_op,
             commands::apply_line_op,
+            commands::filter_rows,
+            commands::fetch_rows_at,
             commands::list_encodings,
             commands::list_tabs,
             commands::close_tab,

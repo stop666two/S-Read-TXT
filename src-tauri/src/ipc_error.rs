@@ -57,6 +57,8 @@ pub const CODE_EDIT_DIRTY: &str = "EDIT_DIRTY";
 pub const CODE_FILE_READ_ONLY: &str = "FILE_READ_ONLY";
 /// 批量插入/序号参数或范围非法（message 为引擎说明）
 pub const CODE_BATCH_INVALID: &str = "BATCH_INVALID";
+/// 过滤视图参数非法（表达式过长等；非法正则复用 INVALID_REGEX）
+pub const CODE_FILTER_INVALID: &str = "FILTER_INVALID";
 /// 行操作参数非法（message 为引擎说明）
 pub const CODE_LINE_OP_INVALID: &str = "LINE_OP_INVALID";
 /// 查找/替换命中过多（全部替换保护上限）
@@ -207,6 +209,7 @@ impl From<AppStateError> for IpcError {
             AppStateError::TextFile(err) => err.into(),
             AppStateError::Edit(err) => err.into(),
             AppStateError::Batch(err) => err.into(),
+            AppStateError::Filter(err) => err.into(),
             AppStateError::LineOp(err) => err.into(),
             AppStateError::Save(err) => err.into(),
             AppStateError::Io(err) => Self::new(CODE_IO, format!("文件操作失败：{err}")),
@@ -235,6 +238,17 @@ impl From<AppStateError> for IpcError {
 impl From<crate::textfile::editing::batch::BatchError> for IpcError {
     fn from(err: crate::textfile::editing::batch::BatchError) -> Self {
         Self::new(CODE_BATCH_INVALID, err.to_string())
+    }
+}
+
+impl From<crate::textfile::filter::FilterError> for IpcError {
+    fn from(err: crate::textfile::filter::FilterError) -> Self {
+        match &err {
+            crate::textfile::filter::FilterError::InvalidRegex { .. } => {
+                Self::new(CODE_INVALID_REGEX, err.to_string())
+            }
+            _ => Self::new(CODE_FILTER_INVALID, err.to_string()),
+        }
     }
 }
 

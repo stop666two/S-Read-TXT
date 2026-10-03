@@ -299,6 +299,34 @@ pub fn apply_line_op(
     })
 }
 
+use s_read_txt::textfile::filter::{FilterQuery, FilterResult};
+
+/// 命令：过滤扫描（P1-4，只读会话；返回命中显示行号供阅读态虚拟化）。
+#[tauri::command]
+pub fn filter_rows(
+    tab_id: u64,
+    query: FilterQuery,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FilterResult, IpcError> {
+    with_context(LogContext::request(), || {
+        let app_state = lock_state(&state)?;
+        Ok(app_state.filter_rows(tab_id, &query)?)
+    })
+}
+
+/// 命令：稀疏按行取文本（过滤视图虚拟窗口；单次 ≤512 行）。
+#[tauri::command]
+pub fn fetch_rows_at(
+    tab_id: u64,
+    rows: Vec<u64>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<s_read_txt::textfile::window::RowText>, IpcError> {
+    with_context(LogContext::request(), || {
+        let app_state = lock_state(&state)?;
+        Ok(app_state.rows_at(tab_id, &rows)?)
+    })
+}
+
 /// 命令：读取全部配置（聚合快照；快捷键字段为「生效绑定」= 默认 + 覆盖）。
 #[tauri::command]
 pub fn get_settings() -> SettingsSnapshot {

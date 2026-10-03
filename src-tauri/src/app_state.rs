@@ -30,6 +30,7 @@ use crate::textfile::editing::search::{
     FindHit, ReplaceAllOutcome, ReplaceNextOutcome, ReplacePreview, SearchMode,
 };
 use crate::textfile::encoding::FileEncoding;
+use crate::textfile::filter::{FilterError, FilterQuery, FilterResult};
 use crate::textfile::session::{FileSession, TextFileError};
 use crate::textfile::source::DocumentSource;
 use crate::textfile::window::RowText;
@@ -58,6 +59,9 @@ pub enum AppStateError {
     /// 批量插入/序号错误（透传）
     #[error(transparent)]
     Batch(#[from] BatchError),
+    /// 过滤视图错误（透传）
+    #[error(transparent)]
+    Filter(#[from] FilterError),
     /// 行操作错误（透传）
     #[error(transparent)]
     LineOp(#[from] LineOpError),
@@ -559,6 +563,30 @@ impl AppState {
     ) -> Result<LineOpOutcome, AppStateError> {
         let doc = self.edit_doc_mut(tab_id)?;
         Ok(doc.apply_line_op(config)?)
+    }
+
+    /// 过滤扫描（P1-4，只读会话）：返回命中显示行号供阅读态虚拟化。
+    pub fn filter_rows(
+        &self,
+        tab_id: u64,
+        query: &FilterQuery,
+    ) -> Result<FilterResult, AppStateError> {
+        let tab = self.tab(tab_id)?;
+        Ok(crate::textfile::filter::scan(&tab.session, query)?)
+    }
+
+    /// 稀疏按行取文本（过滤视图的虚拟窗口；单次上限与常规取行一致）。
+    pub fn rows_at(
+        &self,
+        tab_id: u64,
+        rows: &[u64],
+    ) -> Result<Vec<crate::textfile::window::RowText>, AppStateError> {
+        let tab = self.tab(tab_id)?;
+        let limit = rows.len().min(MAX_ROWS_PER_FETCH as usize);
+        Ok(rows[..limit]
+            .iter()
+            .filter_map(|row| tab.session.rows(*row, 1).into_iter().next())
+            .collect())
     }
 
     /// 只读访问标签的编辑文档（未进入编辑时报 `NotEditing`）。
