@@ -2,14 +2,14 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 359（337 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 96；E2E 28 套 ≈456 项；verify-all 31 步。
+- 计数口径：Rust 379（357 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 96；E2E 28 套 ≈464 项；verify-all 31 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
 | 套件 | 项数 | 覆盖域 |
 |---|---|---|
 | smoke-edit | 12 | 编辑基础：输入/撤销/保存/脏标记/编码弹窗 |
-| smoke-find | 19 | 查找替换：大小写/正则/预览剔除/撤销/高亮/菜单 |
+| smoke-find | 27 | 查找替换：大小写/正则/预览剔除/撤销/高亮/菜单 + 全词/计数/历史/行范围/设置新控件 |
 | smoke-batch | 16 | 批量序号（P1-1）：菜单入口/默认预览（跳空行）/零填充与前后缀/行范围/模板/应用+单撤销/超限错误就地展示/BATCH_INVALID |
 | smoke-lineops | 16 | 行操作（P1-2）：菜单入口/默认操作预览/排序预览与应用/单撤销/去重保留末次/缩进参数/末尾换行（文件级）/参数错误就地展示/LINE_OP_INVALID/Esc/截图 |
 | smoke-multi | 18 | 多光标（P1-3）：修饰键单击加/移除光标、多光标连续键入（单撤销步）、单步撤销还原、矩形拖选替换与列键入、Esc 收起、多光标退格（单撤销步）、设置开关门控（禁用/恢复）、截图 |
@@ -53,12 +53,14 @@
 | list_fonts / import_font / remove_font / read_font_data | smoke-settings S15a–S15g（含 FontFace 实际加载断言）；Rust fonts 7 项 |
 | toggle_edit / apply_edits / undo_edit / redo_edit | smoke-edit；smoke-abuse（撤销/重做狂按）；smoke-find；Rust editing 84 项 |
 | save_tab / save_tab_as / reload_tab | smoke-edit；smoke-find F12/F14；smoke-shortcuts K12 |
-| find_in_edit / replace_in_edit / replace_all_in_edit | smoke-find F1–F14；smoke-i18n I5；Rust search
+| find_in_edit / replace_in_edit / replace_all_in_edit | smoke-find F1–F23（含 wholeWord/范围）；smoke-i18n I5；Rust search
 | preview_batch_numbering / apply_batch_numbering | smoke-batch B1–B12；Rust batch 18 项 + app_state 2 项 | 测试 |
 | preview_line_op / apply_line_op | smoke-lineops L1–L13；Rust line_ops 15 项 + app_state 1 项 | 测试 |
 | filter_rows / fetch_rows_at | smoke-filter F1–F10；Rust filter 8 项 | 测试 |
 | list/add/remove/clear_clipboard_history | smoke-clipboard C1–C8；Rust clipboard_history 8 项 | 测试 |
 | preview_replace_all_in_edit / apply_replace_all_in_edit / match_window_in_edit | smoke-find F15–F19；smoke-i18n 高亮 |
+| count_matches_in_edit | smoke-find F20/F23a；Rust search（计数） |
+| list_find_history / add_find_history / clear_find_history | smoke-find F22a–c；Rust find_history 4 项 |
 | export_settings / import_settings / reset_settings / get_settings_registry | **smoke-settings-io E1–E10 + L1–L4（语言持久化）**；**smoke-settings-v2 V1–V10（搜索/单项·分组·全部重置/导入导出按钮/语言下拉/折叠）**；Rust bundle 11 项 / reset 5 项 / registry 7 项 |
 
 ## 3. 错误码 × 证据（24 个）
@@ -129,3 +131,4 @@
 - 2026-10-03 P1-3：多光标与矩形选择（设置节 v5 + 纯逻辑 multi.ts 8 项 + EditLayer 集成 + 修复阶段 4b 遗留的鼠标定位缺陷；smoke-multi 18/18 并入 verify-all）。
 - 2026-10-03 P1-4：过滤视图（只读扫描 filter.rs 8 项 + 稀疏取行 fetch_rows_at + 阅读区筛选条（字面量/正则/大小写/隐藏空行/截断标注）；smoke-filter 13/13 并入 verify-all）。
 - 2026-10-03 P1-5：剪贴板历史与复制格式（设置节 v6 + clipboard_history 存储 8 项 + 历史弹窗/插入/删除/清空 + 「复制为」纯文本·HTML·Markdown + write-html 权限；smoke-clipboard 19/19 并入 verify-all）。
+- 2026-10-03 P1-6：查找增强（全词（`\b` 包裹）/计数 20 万上限/正则超时中断/查找历史去重置顶；设置节 v7：`app.find` 9 项 + `app.regex` 2 项，注册表新类型 Color/StringList；FindBar v2：W/计数/历史下拉/范围（文档·选区·行区间）；高亮颜色与高亮全部·计数·循环开关接线；smoke-find 增至 27/27）。
