@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::settings::defaults;
 use crate::settings::editor::EditorSettings;
+use crate::settings::status::StatusSettings;
 
 /// 日志级别（命名对齐 RFC 5424；`Unknown` 用于向前兼容未知值）。
 ///
@@ -293,6 +294,8 @@ pub struct AppSettings {
     pub show_onboarding: bool,
     /// 界面语言（BCP 47 标签：`zh-CN` / `en`）
     pub locale: Language,
+    /// 状态栏显示与交互（P2-1）
+    pub status: StatusSettings,
     /// 启动行为
     pub startup: StartupSettings,
     /// 编辑器默认值（行操作等）
@@ -315,6 +318,7 @@ impl Default for AppSettings {
             save_backup_enabled: defaults::DEFAULT_SAVE_BACKUP_ENABLED,
             show_onboarding: defaults::DEFAULT_SHOW_ONBOARDING,
             locale: defaults::DEFAULT_LOCALE,
+            status: StatusSettings::default(),
             startup: StartupSettings::default(),
             editor: EditorSettings::default(),
             find: FindSettings::default(),

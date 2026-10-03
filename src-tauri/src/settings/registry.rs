@@ -48,12 +48,14 @@ pub enum SettingKind {
     Shortcuts,
     /// 颜色（空 = 跟随主题；支持 `#RGB`/`#RRGGBB`/`#RRGGBBAA`/`rgb()`/`rgba()`）
     Color,
-    /// 字符串列表（逐项长度与数量上限；`app.regex.library` 额外做正则编译校验）
+    /// 字符串列表（逐项长度与数量上限；`allowed` 为可选白名单，`app.regex.library` 额外做正则编译校验）
     StringList {
         /// 条目数量上限
         max_items: u32,
         /// 单条最大字符数
         max_chars: u32,
+        /// 可选白名单（存在时仅允许列表内取值，用于「显示项与顺序」类设置）
+        allowed: Option<&'static [&'static str]>,
     },
 }
 
@@ -563,7 +565,54 @@ pub const SPECS: &[SettingSpec] = &[
         kind: SettingKind::StringList {
             max_items: defaults::REGEX_LIBRARY_MAX_ITEMS,
             max_chars: defaults::REGEX_LIBRARY_MAX_CHARS,
+            allowed: None,
         },
+    },
+    // ---------- settings.json：状态栏（P2-1） ----------
+    SettingSpec {
+        id: "app.status.items",
+        group: "app.status",
+        kind: SettingKind::StringList {
+            max_items: defaults::STATUS_ITEMS_MAX,
+            max_chars: 16,
+            allowed: Some(defaults::STATUS_ITEM_IDS),
+        },
+    },
+    SettingSpec {
+        id: "app.status.countMode",
+        group: "app.status",
+        kind: SettingKind::Enum {
+            values: &["grapheme", "codepoint", "byte"],
+        },
+    },
+    SettingSpec {
+        id: "app.status.tabWidth",
+        group: "app.status",
+        kind: SettingKind::Number {
+            min: defaults::STATUS_TAB_WIDTH_RANGE.0 as f64,
+            max: defaults::STATUS_TAB_WIDTH_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.status.clickableGoto",
+        group: "app.status",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.status.clickableEncoding",
+        group: "app.status",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.status.clickableEol",
+        group: "app.status",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.status.emptySelectionText",
+        group: "app.status",
+        kind: SettingKind::Text { max_len: 16 },
     },
     // ---------- shortcuts.json ----------
     SettingSpec {
@@ -687,6 +736,7 @@ pub fn validate_value(spec: &SettingSpec, value: &Value) -> Result<(), String> {
         SettingKind::StringList {
             max_items,
             max_chars,
+            allowed,
         } => {
             let items = value
                 .as_array()
@@ -703,6 +753,11 @@ pub fn validate_value(spec: &SettingSpec, value: &Value) -> Result<(), String> {
                 }
                 if raw.chars().count() > max_chars as usize {
                     return Err(format!("{}：单条过长（上限 {max_chars} 字符）", spec.id));
+                }
+                if let Some(list) = allowed {
+                    if !list.contains(&raw) {
+                        return Err(format!("{}：不支持的值「{raw}」", spec.id));
+                    }
                 }
                 if spec.id == "app.regex.library" && regex::Regex::new(raw).is_err() {
                     return Err(format!("{}：正则语法非法「{raw}」", spec.id));

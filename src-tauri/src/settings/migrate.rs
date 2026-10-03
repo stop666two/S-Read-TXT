@@ -69,6 +69,7 @@ const STEPS: &[(u32, MigrationStep)] = &[
     (6, v6_to_v7),
     (7, v7_to_v8),
     (8, v8_to_v9),
+    (9, v9_to_v10),
 ];
 
 /// v7 → v8：新增 `editor.insert` / `editor.autoPairs` / `editor.cleanup` 字段（serde default 补齐）。
@@ -76,6 +77,9 @@ fn v7_to_v8(_value: &mut Value) {}
 
 /// v8 → v9：新增 `find.multifileEnabled` / `find.multifileConcurrency` 字段（serde default 补齐）。
 fn v8_to_v9(_value: &mut Value) {}
+
+/// v9 → v10：新增 `status` 节（字段补齐由 serde default 处理）。
+fn v9_to_v10(_value: &mut Value) {}
 
 /// v1 → v2：字段补齐式迁移（无结构变换）。
 fn v1_to_v2(_value: &mut Value) {}

@@ -16,6 +16,7 @@ use crate::settings::editor::EditorSettings;
 use crate::settings::model::AppSettings;
 use crate::settings::reader::ReaderSettings;
 use crate::settings::shortcuts::ShortcutSettings;
+use crate::settings::status::StatusSettings;
 use crate::settings::{SettingsSaveRequest, SettingsSnapshot};
 use crate::storage::json_io;
 
@@ -154,6 +155,46 @@ fn normalize_app(settings: &mut AppSettings) {
     settings.history.max_entries = settings.history.max_entries.clamp(min_entries, max_entries);
     let (min_days, max_days) = defaults::HISTORY_RETENTION_DAYS_RANGE;
     settings.history.retention_days = settings.history.retention_days.clamp(min_days, max_days);
+    normalize_status(&mut settings.status);
+}
+
+/// 状态栏归一：显示项白名单/去重/回退默认、计数模式、宽度钳制、提示文案截断。
+fn normalize_status(settings: &mut StatusSettings) {
+    let mut items: Vec<String> = Vec::new();
+    for raw in std::mem::take(&mut settings.items) {
+        let id = raw.trim().to_string();
+        if id.is_empty() {
+            continue;
+        }
+        if !defaults::STATUS_ITEM_IDS.contains(&id.as_str()) {
+            log::warn!("状态栏显示项包含未知取值，已忽略：{id}");
+            continue;
+        }
+        if items.contains(&id) {
+            continue;
+        }
+        items.push(id);
+        if items.len() >= defaults::STATUS_ITEMS_MAX as usize {
+            break;
+        }
+    }
+    settings.items = if items.is_empty() {
+        StatusSettings::default().items
+    } else {
+        items
+    };
+    settings.count_mode = settings.count_mode.normalized();
+    let (min_width, max_width) = defaults::STATUS_TAB_WIDTH_RANGE;
+    settings.tab_width = settings.tab_width.clamp(min_width, max_width);
+    settings.empty_selection_text = settings
+        .empty_selection_text
+        .trim()
+        .chars()
+        .take(defaults::STATUS_EMPTY_SELECTION_MAX_CHARS)
+        .collect();
+    if settings.empty_selection_text.is_empty() {
+        settings.empty_selection_text = defaults::DEFAULT_STATUS_EMPTY_SELECTION.to_string();
+    }
 }
 
 /// 编辑器默认值归一：枚举回退、缩进宽度钳制、分隔符非法回退默认。
@@ -569,6 +610,44 @@ mod tests {
             loaded.editor.insert.timestamp_format,
             crate::settings::editor::TimestampFormat::LocalDateTime
         );
+    }
+
+    /// 状态栏归一：未知/重复显示项剔除、空列表回退默认、计数模式与宽度钳制、提示截断。
+    #[test]
+    fn status_normalizes_on_load() {
+        let dir = data_dir();
+        let mut settings = AppSettings::default();
+        settings.status.items = vec![
+            "lineCol".into(),
+            "bogus".into(),
+            "lineCol".into(),
+            "".into(),
+            "counts".into(),
+        ];
+        settings.status.count_mode = crate::settings::status::CountMode::Unknown;
+        settings.status.tab_width = 99;
+        settings.status.empty_selection_text =
+            "  这是一个超过十六个字符限制的选择提示文案  ".into();
+        save_app_settings(dir.path(), &settings).expect("保存失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(
+            loaded.status.items,
+            vec!["lineCol".to_string(), "counts".to_string()]
+        );
+        assert_eq!(
+            loaded.status.count_mode,
+            crate::settings::status::CountMode::Grapheme
+        );
+        assert_eq!(loaded.status.tab_width, 16);
+        assert!(loaded.status.empty_selection_text.chars().count() <= 16);
+        assert!(!loaded.status.empty_selection_text.starts_with(' '));
+        // 空列表回退默认组合
+        let mut empty = AppSettings::default();
+        empty.status.items = vec![];
+        save_app_settings(dir.path(), &empty).expect("保存失败");
+        let loaded = load_app_settings(dir.path());
+        assert!(loaded.status.items.contains(&"lineCol".to_string()));
+        assert!(loaded.status.items.len() >= 3);
     }
 
     /// 编辑器多光标设置归一：未知修饰键回退 Alt、上限钳制到 2。

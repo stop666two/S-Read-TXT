@@ -24,6 +24,7 @@ pub mod registry;
 pub mod reset;
 pub mod shortcut_io;
 pub mod shortcuts;
+pub mod status;
 pub mod store;
 pub mod theme;
 

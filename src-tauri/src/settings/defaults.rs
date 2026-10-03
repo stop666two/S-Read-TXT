@@ -8,6 +8,7 @@ use crate::settings::editor::{
 };
 use crate::settings::model::{FindScope, Language, LogLevel};
 use crate::settings::reader::{BackgroundFill, TextAlign};
+use crate::settings::status::CountMode;
 
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
 /// v2：新增 `hardLimitMB` / `startup` / `statusBar` / 排版扩展等字段（字段补齐式迁移，见 `settings::migrate`）。
@@ -16,7 +17,8 @@ use crate::settings::reader::{BackgroundFill, TextAlign};
 /// v7：新增查找与正则设置节（find/regex）。
 /// v8：新增辅助编辑设置节（editor.insert / autoPairs / cleanup，P1-7）。
 /// v9：新增查找多文件开关与并发数（find.multifile*，P1-8）。
-pub const SCHEMA_VERSION: u32 = 9;
+/// v10：新增状态栏显示与交互设置节（status，P2-1）。
+pub const SCHEMA_VERSION: u32 = 10;
 
 // ---------- settings.json ----------
 
@@ -233,6 +235,29 @@ pub const REGEX_TIMEOUT_MS_RANGE: (u32, u32) = (50, 5_000);
 pub const REGEX_LIBRARY_MAX_ITEMS: u32 = 200;
 /// 正则库单条最大字符数（F-14）
 pub const REGEX_LIBRARY_MAX_CHARS: u32 = 512;
+
+// ---------- settings.json：状态栏（P2-1） ----------
+
+/// 状态栏默认显示项与顺序（id 白名单见 [`STATUS_ITEM_IDS`]）
+pub const DEFAULT_STATUS_ITEMS: &[&str] = &[
+    "lineCol", "counts", "progress", "size", "encoding", "eol", "modified",
+];
+/// 状态栏显示项可选 id（顺序即设置界面选项顺序）
+pub const STATUS_ITEM_IDS: &[&str] = &[
+    "lineCol", "counts", "words", "progress", "size", "encoding", "eol", "modified",
+];
+/// 状态栏显示项数量上限
+pub const STATUS_ITEMS_MAX: u32 = 16;
+/// 默认计数模式（字素簇）
+pub const DEFAULT_STATUS_COUNT_MODE: CountMode = CountMode::Grapheme;
+/// 默认 Tab 显示宽度
+pub const DEFAULT_STATUS_TAB_WIDTH: u32 = 4;
+/// Tab 显示宽度范围（闭区间）
+pub const STATUS_TAB_WIDTH_RANGE: (u32, u32) = (1, 16);
+/// 默认未选择提示
+pub const DEFAULT_STATUS_EMPTY_SELECTION: &str = "未选择";
+/// 未选择提示最大字符数
+pub const STATUS_EMPTY_SELECTION_MAX_CHARS: usize = 16;
 
 // ---------- shortcuts.json ----------
 
