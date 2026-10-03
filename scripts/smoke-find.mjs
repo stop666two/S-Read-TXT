@@ -455,6 +455,129 @@ async function main() {
     }, 8000);
     check('F18 单步撤销还原全部替换', r18 === true);
 
+    // F20：匹配计数（大小写不敏感 → 3 处）
+    currentStep = 'F20 匹配计数';
+    await focusFindInput();
+    await client.send('Input.insertText', { text: 'needle' });
+    // 确保大小写不敏感（Aa 关闭）
+    await evalJs(
+      `(() => { const b = document.querySelector('.find-bar button[aria-label="区分大小写"]'); if (b?.getAttribute('aria-pressed') === 'true') b.click(); return true; })()`,
+    );
+    const count3 = await waitForValue(async () => {
+      const text = await evalJs(`document.querySelector('[data-find-count]')?.textContent ?? ''`);
+      return text.includes('3 处匹配') ? text : null;
+    }, 8000);
+    check('F20 匹配计数显示 3 处', typeof count3 === 'string', String(count3));
+
+    // F21：全词匹配（开 W：'need' 不命中 'needle'；关 W：命中并选中）
+    currentStep = 'F21 全词匹配';
+    await evalJs(`(document.querySelector('[data-find-whole-word]')?.click(), true)`);
+    await focusFindInput();
+    await client.send('Input.insertText', { text: 'need' });
+    await clickBarButton('下一个');
+    const wwToast = await waitForValue(async () => {
+      const toast = await toastText();
+      return toast.includes('未找到') ? toast : null;
+    }, 8000);
+    await evalJs(`(document.querySelector('[data-find-whole-word]')?.click(), true)`);
+    await clickBarButton('下一个');
+    const wwHit = await waitForValue(async () => {
+      const boxes = await evalJs(`document.querySelectorAll('.selection').length`);
+      return boxes > 0 ? boxes : null;
+    }, 8000);
+    check('F21 全词开关生效（关闭后命中选中）', wwToast !== null && wwHit !== null, `toast=${wwToast}`);
+
+    // F22：查找历史（记录 + 下拉选取 + 清空）
+    currentStep = 'F22 查找历史';
+    await evalJs(`(document.querySelector('[data-find-history]')?.click(), true)`);
+    const historyItems = await waitForValue(async () => {
+      const items = await evalJs(
+        `[...document.querySelectorAll('[data-find-history-item]')].map((n) => n.textContent.trim())`,
+      );
+      return Array.isArray(items) && items.includes('need') && items.includes('needle') ? items : null;
+    }, 8000);
+    check('F22a 历史记录包含已查词', Array.isArray(historyItems), JSON.stringify(historyItems));
+    await evalJs(
+      `(() => { const it = [...document.querySelectorAll('[data-find-history-item]')].find((n) => n.textContent.trim() === 'need'); it?.click(); return true; })()`,
+    );
+    const picked = await waitForValue(async () => {
+      const value = await evalJs(`document.querySelector('.find-bar input')?.value ?? ''`);
+      return value === 'need' ? value : null;
+    }, 5000);
+    check('F22b 选取历史回填查询', picked === 'need', String(picked));
+    await evalJs(`(document.querySelector('[data-find-history]')?.click(), true)`);
+    await evalJs(`(document.querySelector('[data-find-history-clear]')?.click(), true)`);
+    const historyEmpty = await waitForValue(async () => {
+      const text = await evalJs(`document.querySelector('.history-panel')?.textContent ?? ''`);
+      return text.includes('暂无历史') ? text : null;
+    }, 5000);
+    check('F22c 清空历史显示空态', historyEmpty !== null);
+    await evalJs(`(document.querySelector('[data-find-history]')?.click(), true)`);
+
+    // F23：范围=指定行（计数过滤为 1）+ 范围内命中可选中
+    currentStep = 'F23 行范围';
+    await focusFindInput();
+    await client.send('Input.insertText', { text: 'needle' });
+    await evalJs(
+      `(() => { const s = document.querySelector('[data-find-scope]'); s.value = 'rowRange'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`,
+    );
+    // 等待行范围输入框渲染（Svelte 更新异步）
+    await waitForValue(
+      async () => ((await evalJs(`document.querySelector('[data-find-range-from]') !== null`)) || null),
+      5000,
+    );
+    await evalJs(
+      `(() => { const from = document.querySelector('[data-find-range-from]'); from.value = '2'; from.dispatchEvent(new Event('input', { bubbles: true })); const to = document.querySelector('[data-find-range-to]'); to.value = '2'; to.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`,
+    );
+    const count1 = await waitForValue(async () => {
+      const text = await evalJs(`document.querySelector('[data-find-count]')?.textContent ?? ''`);
+      return text.includes('1 处匹配') ? text : null;
+    }, 8000);
+    check('F23a 行范围计数过滤为 1 处', typeof count1 === 'string', String(count1));
+    await clickBarButton('下一个');
+    const rangeHit = await waitForValue(async () => {
+      const selected = await evalJs(`document.querySelectorAll('.selection').length`);
+      return selected > 0 ? selected : null;
+    }, 8000);
+    check('F23b 范围内命中选中', rangeHit !== null);
+    // 恢复整文档范围，避免影响后续关闭态
+    await evalJs(
+      `(() => { const s = document.querySelector('[data-find-scope]'); s.value = 'document'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`,
+    );
+
+    // F24：设置页「查找/正则」新控件可见（颜色行 + 字符串列表行）
+    currentStep = 'F24 设置页查找控件';
+    await evalJs(`window.__TAURI_INTERNALS__.invoke('open_settings', { tab: 'editor' })`);
+    const settingsWs = await findTarget(port, 'settings.html');
+    const settingsClient = await createClient(settingsWs);
+    const evalSettings = async (expression) => {
+      const result = await settingsClient.send('Runtime.evaluate', {
+        expression,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      if (result.exceptionDetails) {
+        throw new Error(`设置页执行异常：${result.exceptionDetails.text}`);
+      }
+      return result.result?.value;
+    };
+    const colorRow = await waitForValue(async () => {
+      const found = await evalSettings(
+        `document.querySelector('.color-text[data-setting="app.find.highlightColor"]') !== null`,
+      );
+      return found === true ? true : null;
+    }, 10000);
+    const listRow = await evalSettings(
+      `document.querySelector('[data-stringlist-add]') !== null || document.querySelector('[data-setting="app.regex.library"]') !== null`,
+    );
+    check('F24 设置页颜色行与列表行可见', colorRow === true && listRow === true, `color=${colorRow} list=${listRow}`);
+    // 关闭设置窗（fire-and-forget：窗口销毁后响应不会到达）
+    await evalSettings(
+      `(window.__TAURI_INTERNALS__.invoke('plugin:window|close', { label: 'settings' }), true)`,
+    );
+    await delay(300);
+    settingsClient.close();
+
     // F19：关闭查找条（清理交互态）
     currentStep = 'F19 关闭查找条';
     await evalJs(
