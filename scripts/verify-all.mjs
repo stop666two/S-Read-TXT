@@ -67,6 +67,7 @@ const steps = [
   { name: 'E2E 编辑（smoke-edit）', cmd: 'node scripts/smoke-edit.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 基础（smoke）', cmd: 'node scripts/smoke.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 查找（smoke-find）', cmd: 'node scripts/smoke-find.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 批量序号（smoke-batch）', cmd: 'node scripts/smoke-batch.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 输入法（smoke-ime）', cmd: 'node scripts/smoke-ime.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 多语言（smoke-i18n）', cmd: 'node scripts/smoke-i18n.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 标题栏（smoke-titlebar）', cmd: 'node scripts/smoke-titlebar.mjs', cwd: root, env: process.env, timeout: 600_000 },
