@@ -20,6 +20,7 @@ pub mod model;
 pub mod reader;
 pub mod registry;
 pub mod reset;
+pub mod shortcut_io;
 pub mod shortcuts;
 pub mod store;
 

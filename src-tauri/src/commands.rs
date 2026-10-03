@@ -31,7 +31,7 @@ use s_read_txt::session::store as session_store;
 use s_read_txt::settings::registry::{self, SettingSpec};
 use s_read_txt::settings::reset::{self as settings_reset, ResetScope};
 use s_read_txt::settings::store as settings_store;
-use s_read_txt::settings::{bundle, SettingsSaveRequest, SettingsSnapshot};
+use s_read_txt::settings::{bundle, shortcut_io, SettingsSaveRequest, SettingsSnapshot};
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::paths::{self, DataDirOrigin};
 use s_read_txt::textfile::editing::edit_doc::{EditApplied, EditOp};
@@ -228,6 +228,34 @@ pub fn import_settings(app: tauri::AppHandle, path: String) -> Result<SettingsSn
         bundle::import_from_file(&dir, Path::new(&path))
             .map_err(|message| IpcError::new(CODE_SETTINGS_IMPORT, message))?;
         log::info!(target: "sread::ipc", "配置已导入：{path}");
+        let _ = app.emit(
+            EVENT_SETTINGS_CHANGED,
+            serde_json::json!({ "kind": "import" }),
+        );
+        Ok(settings_store::load_snapshot(&dir))
+    })
+}
+
+/// 命令：导出快捷键到 JSON 文件（生效绑定全表；写入用户选择路径，返回字节数）。
+#[tauri::command]
+pub fn export_shortcuts(path: String) -> Result<u64, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let bytes = shortcut_io::export_to_file(&dir, &path)
+            .map_err(|message| IpcError::new(CODE_SETTINGS_EXPORT, message))?;
+        log::info!(target: "sread::ipc", "快捷键已导出：{path}（{bytes} 字节）");
+        Ok(bytes)
+    })
+}
+
+/// 命令：从 JSON 文件导入快捷键（强校验 + 备份 + 失败回滚）；成功后广播设置变更事件。
+#[tauri::command]
+pub fn import_shortcuts(app: tauri::AppHandle, path: String) -> Result<SettingsSnapshot, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        shortcut_io::import_from_file(&dir, &path)
+            .map_err(|message| IpcError::new(CODE_SETTINGS_IMPORT, message))?;
+        log::info!(target: "sread::ipc", "快捷键已导入：{path}");
         let _ = app.emit(
             EVENT_SETTINGS_CHANGED,
             serde_json::json!({ "kind": "import" }),
