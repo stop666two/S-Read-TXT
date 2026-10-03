@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 379（357 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 96；E2E 28 套 ≈464 项；verify-all 31 步。
+- 计数口径：Rust 380（358 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 96；E2E 29 套 ≈480 项；verify-all 38 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -15,6 +15,7 @@
 | smoke-multi | 18 | 多光标（P1-3）：修饰键单击加/移除光标、多光标连续键入（单撤销步）、单步撤销还原、矩形拖选替换与列键入、Esc 收起、多光标退格（单撤销步）、设置开关门控（禁用/恢复）、截图 |
 | smoke-filter | 13 | 过滤视图（P1-4）：入口可见/字面量过滤与计数/隐藏空行/大小写开关与无匹配/非法正则就地报错/清除恢复/切标签清空/编辑态隐藏入口/截图 |
 | smoke-clipboard | 19 | 剪贴板历史与复制格式（P1-5）：复制入库与持久化/弹窗插入/删除单条/清空确认/上限 0 禁用/菜单「复制为→HTML」（HTML 剪贴板 + 纯文本兜底）/截图 |
+| smoke-tools | 16 | 辅助编辑（P1-7）：时间戳插入（默认格式）/输入左括号自动补对/右符号跳过/空对退格整体删除/回车继承行首缩进/括号配对高亮（两个字符盒）/清理单项（行尾空白）与一键清理（行数 5→4）/设置页含时间戳与清理分组/截图 |
 | smoke-ime | 7 | 输入法组合：preedit/候选/提交/取消/保存 |
 | smoke-i18n | 27 | 8 语言渲染/查找/替换/编码往返/切换 |
 | smoke-titlebar | 10 | 标题栏：拖拽/三键/双击/最小化/主题/齿轮入口 |
@@ -132,3 +133,4 @@
 - 2026-10-03 P1-4：过滤视图（只读扫描 filter.rs 8 项 + 稀疏取行 fetch_rows_at + 阅读区筛选条（字面量/正则/大小写/隐藏空行/截断标注）；smoke-filter 13/13 并入 verify-all）。
 - 2026-10-03 P1-5：剪贴板历史与复制格式（设置节 v6 + clipboard_history 存储 8 项 + 历史弹窗/插入/删除/清空 + 「复制为」纯文本·HTML·Markdown + write-html 权限；smoke-clipboard 19/19 并入 verify-all）。
 - 2026-10-03 P1-6：查找增强（全词（`\b` 包裹）/计数 20 万上限/正则超时中断/查找历史去重置顶；设置节 v7：`app.find` 9 项 + `app.regex` 2 项，注册表新类型 Color/StringList；FindBar v2：W/计数/历史下拉/范围（文档·选区·行区间）；高亮颜色与高亮全部·计数·循环开关接线；smoke-find 增至 27/27）。
+- 2026-10-03 P1-7：辅助编辑（设置节 v8：`editor.insert`/`editor.autoPairs`/`editor.cleanup`；时间戳 5 种格式；自动补对（含选区包裹/跳过/空对退格）与回车缩进、括号配对高亮（跨行受限扫描）；编辑菜单「插入日期时间」与「清理」子菜单（单项 + 一键，参与项可配）；修复两处真实缺陷：自动补对跳过路径 `moveRight` 实参顺序、物理 `Enter` 未接自动缩进；陈旧断言同步（settings 页签数 6、settings-io 版本断言 v8）；smoke-tools 16/16 并入 verify-all（现 38 步）。
