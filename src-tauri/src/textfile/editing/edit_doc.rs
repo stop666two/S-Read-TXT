@@ -393,9 +393,8 @@ impl EditDoc {
         }
         let mut text = String::new();
         for piece in &self.pieces {
-            let from = piece.off;
-            let to = piece.off + piece.len;
-            text.push_str(&self.decode_slice(piece, from, to));
+            // decode_slice 的 from/to 是片段内偏移；整片段=0..len（曾误传绝对偏移导致越界崩溃）。
+            text.push_str(&self.decode_slice(piece, 0, piece.len));
         }
         // 先归一到 \n，再展开为目标风格；与原文相同则短路（含已是目标风格）。
         let unified = text.replace("\r\n", "\n").replace('\r', "\n");
@@ -2332,6 +2331,34 @@ mod tests {
             .expect("已是 LF");
         assert_eq!(out.replacements, 0);
         assert!(out.applied.is_none());
+    }
+
+    /// 回归：已有编辑（片段偏移 >0）后转换换行符（曾因 decode_slice 传绝对偏移越界崩溃）。
+    #[test]
+    fn convert_eol_after_edits_with_multibyte() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let path = dir.path().join("edited.txt");
+        std::fs::write(&path, "第一行\r\n第二行\r\n").expect("写文件");
+        let mut doc = EditDoc::open(&path, None, 10).expect("打开");
+        // 替换行首 3 个 UTF-16 单元（「第一行」）→ 制造 off>0 的原文片段
+        doc.apply_edits(&[EditOp::Replace {
+            start_row: 0,
+            start_utf16: 0,
+            end_row: 0,
+            end_utf16: 3,
+            text: "X".to_string(),
+        }])
+        .expect("替换");
+        let outcome = doc
+            .convert_eol(crate::textfile::eol::EolTarget::Lf)
+            .expect("转换");
+        assert_eq!(outcome.replacements, 2);
+        assert_eq!(doc.row_text(0).as_deref(), Some("X"));
+        assert_eq!(doc.row_text(1).as_deref(), Some("第二行"));
+        let len_after = doc.byte_len();
+        doc.undo().expect("撤销");
+        assert_eq!(doc.byte_len(), len_after + 2, "两个 \\r 回退");
+        assert_eq!(doc.row_text(0).as_deref(), Some("X"));
     }
 
     /// 混合风格归一为 LF（CRLF 与孤立 CR 均处理），撤销后恢复 Mixed。
