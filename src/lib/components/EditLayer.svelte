@@ -27,6 +27,17 @@
   import { caretMemory } from '../edit/caret-memory';
   import { focusEditorProxy } from '../edit/focus';
   import { planBackspace, planDeleteForward, type SegMeta } from '../edit/longline';
+  import {
+    clampRectRows,
+    normalizeRect,
+    rectBackspaceSpans,
+    rectDeleteSpans,
+    rectIsCollapsed,
+    rectSpans,
+    toggleCaret,
+    uniquePositions,
+    type RectRange,
+  } from '../edit/multi';
   import { deleteOp, deleteRangeOp, insertOp, replaceOp } from '../edit/ops';
   import { t } from '../i18n/index.svelte';
   import { toasts } from '../state/toasts.svelte';
@@ -35,10 +46,12 @@
   import BatchNumberingDialog from './BatchNumberingDialog.svelte';
   import LineOpsDialog from './LineOpsDialog.svelte';
   import type {
+    EditOp,
     EditorLinesSettings,
     LineOpConfig,
     LineOpOutcome,
     LineOpPreview,
+    MultiCursorSettings,
   } from '../ipc';
   import type { EditActionType, EditorAction } from '../edit/actions';
 
@@ -65,6 +78,8 @@
     editorAction?: EditorAction | null;
     /** 行操作默认值（编辑器设置；未就绪为 null 时使用兜底常量） */
     lineDefaults?: EditorLinesSettings | null;
+    /** 多光标设置（编辑器设置；未就绪为 null 时使用兜底常量） */
+    multiCursor?: MultiCursorSettings | null;
   }
   let {
     tabId,
@@ -78,6 +93,7 @@
     onApplied,
     editorAction,
     lineDefaults,
+    multiCursor,
   }: Props = $props();
 
   /** 叠加层盒子（相对 .page 的像素坐标） */
@@ -146,6 +162,49 @@
   /** 行操作弹窗开关（P1-2） */
   let lineOpsOpen = $state(false);
 
+  /** 多光标设置兜底（与 Rust 默认一致）。 */
+  const FALLBACK_MULTI: MultiCursorSettings = { enabled: true, rectModifier: 'alt', maxCount: 1000 };
+
+  /** 生效的多光标设置。 */
+  const multi = $derived(multiCursor ?? FALLBACK_MULTI);
+
+  /** 附加光标（多光标；显示坐标，不含主光标） */
+  let extraCarets = $state<CaretPos[]>([]);
+  /** 矩形选择锚点/端点（修饰键拖拽；null=未激活） */
+  let rectAnchor = $state<CaretPos | null>(null);
+  let rectHead = $state<CaretPos | null>(null);
+  /** 当前拖拽是否为矩形（区分普通拖选与矩形拖选） */
+  let dragRect = false;
+  /** 矩形拖拽是否发生过移动（区分「修饰键单击=加光标」与「拖选=矩形」） */
+  let rectDragMoved = false;
+  /** 附加光标盒与矩形选择盒 */
+  let extraBoxes = $state<Box[]>([]);
+  let rectBoxes = $state<Box[]>([]);
+
+  /** 规格化矩形（行数受多光标上限保护；无锚点/端点时为 null）。 */
+  const rectRange = $derived.by(() =>
+    rectAnchor && rectHead
+      ? clampRectRows(normalizeRect(rectAnchor, rectHead), Math.max(2, multi.maxCount))
+      : null,
+  );
+
+  /** 矩形修饰键是否激活（设置可配：Alt 或 Ctrl+Alt）。 */
+  function rectModifierActive(event: MouseEvent): boolean {
+    if (!multi.enabled) return false;
+    return multi.rectModifier === 'alt'
+      ? event.altKey && !event.ctrlKey && !event.metaKey
+      : event.altKey && event.ctrlKey;
+  }
+
+  /** 清空多光标与矩形选择。 */
+  function clearMulti(): void {
+    extraCarets = [];
+    rectAnchor = null;
+    rectHead = null;
+    dragRect = false;
+    rectDragMoved = false;
+  }
+
   /** 行操作默认值兜底（设置未就绪时；与 Rust 默认一致）。 */
   const FALLBACK_LINE_DEFAULTS: EditorLinesSettings = {
     defaultScope: 'all',
@@ -175,12 +234,12 @@
     return page instanceof HTMLElement ? page : null;
   }
 
-  /** 光标盒（相对 .page）；结点缺失或空文档时为 null。 */
-  function caretRect(pageRect: DOMRect): Box | null {
-    const node = rowNode(selection.head.row);
+  /** 指定位置的光标盒（相对 .page）；结点缺失或空文档时为 null。 */
+  function caretRectAt(pos: CaretPos, pageRect: DOMRect): Box | null {
+    const node = rowNode(pos.row);
     if (!node) return null;
-    const text = rowText(selection.head.row);
-    const offset = text === undefined ? 0 : Math.min(Math.max(0, selection.head.utf16), text.length);
+    const text = rowText(pos.row);
+    const offset = text === undefined ? 0 : Math.min(Math.max(0, pos.utf16), text.length);
     const range = document.createRange();
     const textNode = node.firstChild;
     if (textNode instanceof Text) {
@@ -198,6 +257,33 @@
     return { left: rect.left - pageRect.left, top: rect.top - pageRect.top, height, width: 0 };
   }
 
+  /** 单行内 [from,to) 的测量盒（仅当前已渲染行）。 */
+  function rowRangeRects(row: number, from: number, to: number, pageRect: DOMRect): Box[] {
+    const node = rowNode(row);
+    const text = rowText(row);
+    if (!node || text === undefined) return [];
+    const textNode = node.firstChild;
+    if (!(textNode instanceof Text)) return [];
+    const start = Math.min(from, text.length);
+    const end = Math.min(to, text.length);
+    if (end <= start) return [];
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.setEnd(textNode, end);
+    const boxes: Box[] = [];
+    for (const rect of range.getClientRects()) {
+      if (rect.width > 0 || rect.height > 0) {
+        boxes.push({
+          left: rect.left - pageRect.left,
+          top: rect.top - pageRect.top,
+          height: rect.height,
+          width: rect.width,
+        });
+      }
+    }
+    return boxes;
+  }
+
   /** 选区盒列表（仅当前已渲染行；跨行逐段测量）。 */
   function selectionRects(pageRect: DOMRect): Box[] {
     if (isCollapsed(selection)) return [];
@@ -205,42 +291,41 @@
     const boxes: Box[] = [];
     const lastRow = Math.min(end.row, rowsTotal - 1);
     for (let row = start.row; row <= lastRow; row += 1) {
-      const node = rowNode(row);
-      const text = rowText(row);
-      if (!node || text === undefined) continue;
-      const textNode = node.firstChild;
-      if (!(textNode instanceof Text)) continue;
-      const from = row === start.row ? Math.min(start.utf16, text.length) : 0;
-      const to = row === end.row ? Math.min(end.utf16, text.length) : text.length;
-      if (to <= from) continue;
-      const range = document.createRange();
-      range.setStart(textNode, from);
-      range.setEnd(textNode, to);
-      for (const rect of range.getClientRects()) {
-        if (rect.width > 0 || rect.height > 0) {
-          boxes.push({
-            left: rect.left - pageRect.left,
-            top: rect.top - pageRect.top,
-            height: rect.height,
-            width: rect.width,
-          });
-        }
-      }
+      const from = row === start.row ? start.utf16 : 0;
+      const to = row === end.row ? end.utf16 : Number.MAX_SAFE_INTEGER;
+      boxes.push(...rowRangeRects(row, from, to, pageRect));
     }
     return boxes;
   }
 
-  /** 重算光标与选区叠加层。 */
+  /** 矩形选择盒（各已渲染行的 [fromCol,toCol)）。 */
+  function rectSelectionRects(range: RectRange | null, pageRect: DOMRect): Box[] {
+    if (!range || rectIsCollapsed(range)) return [];
+    const boxes: Box[] = [];
+    const lastRow = Math.min(range.toRow, rowsTotal - 1);
+    for (let row = range.fromRow; row <= lastRow; row += 1) {
+      boxes.push(...rowRangeRects(row, range.fromCol, range.toCol, pageRect));
+    }
+    return boxes;
+  }
+
+  /** 重算光标、多光标与选区叠加层。 */
   function refreshOverlay(): void {
     const page = pageEl();
     if (!page) {
       caretBox = null;
       selBoxes = [];
+      extraBoxes = [];
+      rectBoxes = [];
       return;
     }
     const pageRect = page.getBoundingClientRect();
-    caretBox = caretRect(pageRect);
+    caretBox = caretRectAt(selection.head, pageRect);
     selBoxes = selectionRects(pageRect);
+    extraBoxes = extraCarets
+      .map((pos) => caretRectAt(pos, pageRect))
+      .filter((box): box is Box => box !== null);
+    rectBoxes = rectSelectionRects(rectRange, pageRect);
   }
 
   /** 光标移出可视区时滚动容器（保持安全边距）。 */
@@ -347,9 +432,216 @@
     }
   }
 
+  /** 批量操作排序键（起始位置）。 */
+  function opStart(op: EditOp): CaretPos {
+    return op.kind === 'insert'
+      ? { row: op.row, utf16: op.utf16 }
+      : { row: op.startRow, utf16: op.startUtf16 };
+  }
+
+  /** 批量下发（单撤销步）：ops 排序后应用；成功后落定各光标（主光标 + 附加光标）。 */
+  async function applyMulti(ops: EditOp[], newCarets: CaretPos[], primaryIndex: number): Promise<void> {
+    const ordered = [...ops]
+      .map((op) => ({ op, start: opStart(op) }))
+      .sort((a, b) => a.start.row - b.start.row || a.start.utf16 - b.start.utf16)
+      .map((item) => item.op);
+    try {
+      const result = await ipc.applyEdits(tabId, ordered);
+      goalUtf16 = null;
+      onApplied(result);
+      const primary = newCarets[primaryIndex] ?? { row: result.caretRow, utf16: result.caretUtf16 };
+      const clamped = clampPos(
+        primary,
+        result.rowsTotal,
+        (row) => rowText(row)?.length ?? primary.utf16,
+      );
+      selection = collapsed(clamped);
+      caretMemory.set(tabId, clamped);
+      extraCarets = newCarets.filter((_, index) => index !== primaryIndex);
+      rectAnchor = null;
+      rectHead = null;
+      dragRect = false;
+      await tick();
+      refreshOverlay();
+      scrollCaretIntoView();
+      void ensureRow(clamped.row);
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[edit] 批量操作失败', payload);
+      toasts.error(describeIpcError(payload));
+    }
+  }
+
+  /** 矩形插入（无换行文本）：各行替换 [fromCol,toCol) 并落定列光标。 */
+  async function insertIntoRect(text: string, rect: RectRange): Promise<void> {
+    for (let row = rect.fromRow; row <= rect.toRow; row += 1) {
+      await ensureRow(row);
+    }
+    const spans = rectSpans((row) => rowText(row)?.length ?? 0, rect);
+    const ops: EditOp[] = [];
+    const newCarets: CaretPos[] = [];
+    for (const span of spans) {
+      const meta = rowMeta(span.row);
+      const logicalRow = meta?.logicalRow ?? span.row;
+      const base = meta?.baseUtf16 ?? 0;
+      ops.push(
+        replaceOp(
+          {
+            anchor: { row: logicalRow, utf16: base + span.from },
+            head: { row: logicalRow, utf16: base + span.to },
+          },
+          text,
+        ),
+      );
+      newCarets.push({ row: span.row, utf16: span.from + text.length });
+    }
+    const primaryIndex = Math.max(
+      0,
+      newCarets.findIndex((pos) => pos.row >= selection.head.row),
+    );
+    await applyMulti(ops, newCarets, primaryIndex);
+  }
+
+  /** 多光标插入（无换行文本）：各光标点插入（主光标在列表首位）。 */
+  async function insertAtCarets(text: string): Promise<void> {
+    const ordered = uniquePositions(selection.head, extraCarets);
+    const ops: EditOp[] = [];
+    const newCarets: CaretPos[] = [];
+    for (const raw of ordered) {
+      const pos = await resolveLoadedPos(raw);
+      ops.push(insertOp(logicalOf(pos), text));
+      newCarets.push({ row: pos.row, utf16: pos.utf16 + text.length });
+    }
+    await applyMulti(ops, newCarets, 0);
+  }
+
+  /** 多光标/矩形批量删除（退格/前删；成功后落定到后端权威光标）。 */
+  async function multiDelete(kind: 'backspace' | 'forward'): Promise<void> {
+    const rect = rectRange;
+    const ops: EditOp[] = [];
+    if (rect && !rectIsCollapsed(rect)) {
+      for (let row = rect.fromRow; row <= rect.toRow; row += 1) {
+        await ensureRow(row);
+      }
+      const lengthAt = (row: number): number => rowText(row)?.length ?? 0;
+      const spans =
+        kind === 'backspace' ? rectBackspaceSpans(lengthAt, rect) : rectDeleteSpans(lengthAt, rect);
+      for (const span of spans) {
+        const meta = rowMeta(span.row);
+        const logicalRow = meta?.logicalRow ?? span.row;
+        const base = meta?.baseUtf16 ?? 0;
+        ops.push(
+          deleteRangeOp({
+            startRow: logicalRow,
+            startUtf16: base + span.from,
+            endRow: logicalRow,
+            endUtf16: base + span.to,
+          }),
+        );
+      }
+    } else {
+      const ordered = uniquePositions(selection.head, extraCarets);
+      ordered.sort((a, b) => a.row - b.row || a.utf16 - b.utf16);
+      for (const raw of ordered) {
+        const pos = await resolveLoadedPos(raw);
+        const cur = segOf(pos.row);
+        if (!cur) continue;
+        let neighbour: SegMeta | null = null;
+        const neighbourRow = kind === 'backspace' ? pos.row - 1 : pos.row + 1;
+        const needsNeighbour =
+          kind === 'backspace'
+            ? pos.utf16 === 0 && pos.row > 0
+            : pos.utf16 >= cur.text.length && pos.row + 1 < rowsTotal;
+        if (needsNeighbour) {
+          const text = rowText(neighbourRow) ?? (await ensureRow(neighbourRow));
+          const meta = rowMeta(neighbourRow);
+          if (text !== undefined) {
+            neighbour = {
+              logicalRow: meta?.logicalRow ?? neighbourRow,
+              baseUtf16: meta?.baseUtf16 ?? 0,
+              text,
+            };
+          }
+        }
+        const range =
+          kind === 'backspace'
+            ? planBackspace(cur, pos.utf16, neighbour)
+            : planDeleteForward(cur, pos.utf16, neighbour);
+        if (range) ops.push(deleteRangeOp(range));
+      }
+    }
+    clearMulti();
+    if (ops.length === 0) {
+      refreshOverlay();
+      return;
+    }
+    await applyResult(() => ipc.applyEdits(tabId, ops));
+  }
+
+  /** 矩形文本收集（各行 [fromCol,toCol) 以换行连接）。 */
+  async function gatherRectText(rect: RectRange): Promise<string | null> {
+    if (rect.toRow - rect.fromRow + 1 > COPY_MAX_ROWS) {
+      toasts.error(t('edit.selectionTooLarge'));
+      return null;
+    }
+    let out = '';
+    for (let row = rect.fromRow; row <= rect.toRow; row += 1) {
+      const text = rowText(row) ?? (await ensureRow(row));
+      if (text === undefined) return null;
+      out += text.slice(rect.fromCol, Math.min(rect.toCol, text.length));
+      if (row < rect.toRow) out += '\n';
+      if (out.length > COPY_MAX_CHARS) {
+        toasts.error(t('edit.selectionTooLarge'));
+        return null;
+      }
+    }
+    return out;
+  }
+
+  /** 矩形删除（剪切用）：整段 [fromCol,toCol)。 */
+  async function deleteRect(rect: RectRange): Promise<void> {
+    for (let row = rect.fromRow; row <= rect.toRow; row += 1) {
+      await ensureRow(row);
+    }
+    const spans = rectSpans((row) => rowText(row)?.length ?? 0, rect);
+    const ops: EditOp[] = [];
+    for (const span of spans) {
+      if (span.to <= span.from) continue;
+      const meta = rowMeta(span.row);
+      const logicalRow = meta?.logicalRow ?? span.row;
+      const base = meta?.baseUtf16 ?? 0;
+      ops.push(
+        deleteRangeOp({
+          startRow: logicalRow,
+          startUtf16: base + span.from,
+          endRow: logicalRow,
+          endUtf16: base + span.to,
+        }),
+      );
+    }
+    rectAnchor = null;
+    rectHead = null;
+    if (ops.length === 0) return;
+    await applyResult(() => ipc.applyEdits(tabId, ops));
+  }
+
   /** 插入文本（含选区替换；每次 = 单个撤销步）。 */
   async function doInsert(text: string): Promise<void> {
     if (text.length === 0) return;
+    const rect = rectRange;
+    const hasNewline = text.includes('\n');
+    if (!hasNewline && rect && !rectIsCollapsed(rect)) {
+      await insertIntoRect(text, rect);
+      return;
+    }
+    if (!hasNewline && extraCarets.length > 0) {
+      await insertAtCarets(text);
+      return;
+    }
+    if (extraCarets.length > 0 || (rect && !rectIsCollapsed(rect))) {
+      // 含换行的批量插入暂保守退化为单点编辑（清空多光标）
+      clearMulti();
+    }
     if (!isCollapsed(selection)) {
       const resolved = await resolveSelection();
       await applyResult(() => ipc.applyEdits(tabId, [replaceOp(logicalSelection(resolved), text)]));
@@ -359,8 +651,12 @@
     await applyResult(() => ipc.applyEdits(tabId, [insertOp(logicalOf(pos), text)]));
   }
 
-  /** 退格（选区删除或前一个字符/合并上一行）。 */
+  /** 退格（选区删除或前一个字符/合并上一行；多光标/矩形批量=单撤销步）。 */
   async function doBackspace(): Promise<void> {
+    if (extraCarets.length > 0 || (rectRange && !rectIsCollapsed(rectRange))) {
+      await multiDelete('backspace');
+      return;
+    }
     if (!isCollapsed(selection)) {
       const resolved = await resolveSelection();
       await applyResult(() => ipc.applyEdits(tabId, [deleteOp(logicalSelection(resolved))]));
@@ -386,8 +682,12 @@
     await applyResult(() => ipc.applyEdits(tabId, [deleteRangeOp(range)]));
   }
 
-  /** 前向删除（选区删除或后一个字符/合并下一行）。 */
+  /** 前向删除（选区删除或后一个字符/合并下一行；多光标/矩形批量=单撤销步）。 */
   async function doDeleteForward(): Promise<void> {
+    if (extraCarets.length > 0 || (rectRange && !rectIsCollapsed(rectRange))) {
+      await multiDelete('forward');
+      return;
+    }
     if (!isCollapsed(selection)) {
       const resolved = await resolveSelection();
       await applyResult(() => ipc.applyEdits(tabId, [deleteOp(logicalSelection(resolved))]));
@@ -468,8 +768,22 @@
     return out;
   }
 
-  /** 复制/剪切选区（写系统剪贴板；经 Tauri 剪贴板插件，无浏览器权限弹窗）。 */
+  /** 复制/剪切选区（写系统剪贴板；经 Tauri 剪贴板插件，无浏览器权限弹窗）。
+   *  矩形选择优先：复制各行 [fromCol,toCol) 以换行连接；剪切=删除对应跨度。 */
   async function doCopy(cut: boolean): Promise<void> {
+    const rect = rectRange;
+    if (rect && !rectIsCollapsed(rect)) {
+      const text = await gatherRectText(rect);
+      if (text === null) return;
+      try {
+        await writeText(text);
+      } catch {
+        toasts.error(t('edit.copyFailed'));
+        return;
+      }
+      if (cut) await deleteRect(rect);
+      return;
+    }
     if (isCollapsed(selection)) return;
     const text = await gatherSelectedText();
     if (text === null) return;
@@ -858,6 +1172,21 @@
     const head = selection.head;
     const extend = event.shiftKey;
     let handled = true;
+    // Esc：清空多光标/矩形选择（无多光标时不消费，交还上层）
+    if (event.key === 'Escape' && (extraCarets.length > 0 || rectAnchor !== null || rectHead !== null)) {
+      clearMulti();
+      event.preventDefault();
+      return;
+    }
+    // 导航键：收起多光标状态（与主流编辑器一致）
+    if (
+      ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(
+        event.key,
+      ) &&
+      (extraCarets.length > 0 || rectAnchor !== null)
+    ) {
+      clearMulti();
+    }
     switch (event.key) {
       case 'ArrowLeft':
         goalUtf16 = null;
@@ -980,20 +1309,78 @@
 
   // ---- 鼠标 ----
 
-  /** 由屏幕坐标解析编辑器位置（caretRangeFromPoint + 最近行元素）。 */
+  /** 由屏幕坐标解析编辑器位置。
+   *  注意：不能用 caretRangeFromPoint——它命中的是本交互层（最顶层、透明但可命中），
+   *  拿不到底层行文本；改用 elementsFromPoint 取行元素，再在行内按字符盒二分定位。 */
   function posFromPoint(clientX: number, clientY: number): CaretPos | null {
-    const range = document.caretRangeFromPoint(clientX, clientY);
-    if (!range) return null;
-    let element: Node | null = range.startContainer;
-    if (element.nodeType === Node.TEXT_NODE) element = element.parentElement;
-    const rowEl = element instanceof Element ? element.closest('.row') : null;
-    if (!(rowEl instanceof HTMLElement)) return null;
+    const stack = document.elementsFromPoint(clientX, clientY);
+    let rowEl: HTMLElement | null = null;
+    for (const el of stack) {
+      if (el instanceof HTMLElement && el.classList.contains('row')) {
+        rowEl = el;
+        break;
+      }
+    }
+    if (!rowEl) {
+      // 空白区：取垂直最近的行，按 x 是否越界落 0/行尾
+      const page = pageEl();
+      let best: HTMLElement | null = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const el of page?.querySelectorAll<HTMLElement>('.row[data-row]') ?? []) {
+        const rect = el.getBoundingClientRect();
+        const distance = Math.abs(rect.top + rect.height / 2 - clientY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = el;
+        }
+      }
+      if (!best) return null;
+      const row = Number(best.dataset.row ?? -1);
+      if (!Number.isFinite(row) || row < 0 || row >= rowsTotal) return null;
+      const rect = best.getBoundingClientRect();
+      const text = rowText(row) ?? best.textContent ?? '';
+      const offset = clientX <= rect.left ? 0 : clientX >= rect.right ? text.length : 0;
+      return { row, utf16: Math.min(offset, text.length) };
+    }
     const row = Number(rowEl.dataset.row ?? -1);
     if (!Number.isFinite(row) || row < 0 || row >= rowsTotal) return null;
     const text = rowText(row) ?? rowEl.textContent ?? '';
-    let offset = 0;
-    if (range.startContainer === rowEl.firstChild) offset = range.startOffset;
-    else if (range.startContainer === rowEl) offset = range.startOffset > 0 ? text.length : 0;
+    const textNode = rowEl.firstChild;
+    if (!(textNode instanceof Text)) return { row, utf16: 0 };
+    const range = document.createRange();
+    const charRect = (index: number): DOMRect => {
+      range.setStart(textNode, index);
+      range.setEnd(textNode, Math.min(index + 1, textNode.length));
+      return range.getBoundingClientRect();
+    };
+    let lo = 0;
+    let hi = textNode.length;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const rect = charRect(mid);
+      if (rect.width === 0 && rect.height === 0) {
+        lo = mid + 1;
+      } else if (rect.right <= clientX) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    let offset = lo;
+    if (offset > 0 && offset <= textNode.length) {
+      const prev = charRect(offset - 1);
+      if (prev.width > 0 && clientX < prev.left + prev.width / 2) {
+        offset -= 1;
+      }
+    }
+    // 代理对中点吸附（避免落在低代理码元上）
+    if (offset > 0 && offset < textNode.length) {
+      const prevCode = textNode.data.charCodeAt(offset - 1);
+      const code = textNode.data.charCodeAt(offset);
+      if (prevCode >= 0xd800 && prevCode <= 0xdbff && code >= 0xdc00 && code <= 0xdfff) {
+        offset -= 1;
+      }
+    }
     return { row, utf16: Math.min(offset, text.length) };
   }
 
@@ -1003,10 +1390,21 @@
     const pos = posFromPoint(event.clientX, event.clientY);
     if (!pos) return;
     event.preventDefault();
+    if (rectModifierActive(event)) {
+      // 修饰键：单击=追加/移除光标；拖动=矩形选择（拖动开始时才清空附加光标）
+      dragging = true;
+      dragRect = true;
+      rectDragMoved = false;
+      rectAnchor = pos;
+      rectHead = pos;
+      return;
+    }
     if (event.shiftKey) {
+      clearMulti();
       setSelection({ anchor: selection.anchor, head: pos });
       return;
     }
+    clearMulti();
     dragging = true;
     goalUtf16 = null;
     setSelection(collapsed(pos));
@@ -1015,11 +1413,28 @@
   function handleMouseMove(event: MouseEvent): void {
     if (!dragging) return;
     const pos = posFromPoint(event.clientX, event.clientY);
-    if (pos) setSelection({ anchor: selection.anchor, head: pos });
+    if (!pos) return;
+    if (dragRect && rectAnchor) {
+      if (!rectDragMoved) {
+        rectDragMoved = true;
+        extraCarets = [];
+      }
+      rectHead = pos;
+      return;
+    }
+    setSelection({ anchor: selection.anchor, head: pos });
   }
 
   function handleMouseUp(): void {
+    if (dragRect && rectAnchor && !rectDragMoved) {
+      // 修饰键单击：视作追加/移除附加光标（非矩形）
+      extraCarets = toggleCaret(extraCarets, rectAnchor, Math.max(2, multi.maxCount));
+      rectAnchor = null;
+      rectHead = null;
+    }
     dragging = false;
+    dragRect = false;
+    rectDragMoved = false;
   }
 
   /** 聚焦隐藏输入框（IME 候选窗跟随其位置）。 */
@@ -1044,13 +1459,16 @@
 
   // ---- 响应式 ----
 
-  // 渲染/行数/选区/组合变化 → 重算叠加层
+  // 渲染/行数/选区/组合/多光标变化 → 重算叠加层
   $effect(() => {
     void revision;
     void rowsTotal;
     void selection;
     void composing;
     void preedit;
+    void extraCarets;
+    void rectAnchor;
+    void rectHead;
     refreshOverlay();
   });
 
@@ -1112,10 +1530,24 @@
   ></div>
 {/each}
 
+{#each rectBoxes as box, index (index)}
+  <div
+    class="selection rect"
+    style="left: {box.left}px; top: {box.top}px; width: {box.width}px; height: {box.height}px"
+  ></div>
+{/each}
+
 {#each selBoxes as box, index (index)}
   <div
     class="selection"
     style="left: {box.left}px; top: {box.top}px; width: {box.width}px; height: {box.height}px"
+  ></div>
+{/each}
+
+{#each extraBoxes as box, index (index)}
+  <div
+    class="caret extra"
+    style="left: {box.left}px; top: {box.top}px; height: {box.height}px"
   ></div>
 {/each}
 
@@ -1215,12 +1647,21 @@
     pointer-events: none;
   }
 
+  .selection.rect {
+    background: rgba(59, 110, 165, 0.2);
+  }
+
   .caret {
     position: absolute;
     width: 2px;
     background: var(--ink);
     pointer-events: none;
     animation: srt-blink 1.06s step-end infinite;
+  }
+
+  .caret.extra {
+    opacity: 0.85;
+    animation: none;
   }
 
   .caret.composing {

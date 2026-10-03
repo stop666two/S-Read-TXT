@@ -1125,6 +1125,7 @@
         onEditApplied={handleEditApplied}
         {editorAction}
         lineDefaults={appSettings?.editor.lines ?? null}
+    multiCursor={appSettings?.editor.multiCursor ?? null}
         layoutKey={typographyKey}
       />
     {:else}
