@@ -155,6 +155,37 @@
     void persistReader({ typography: { ...readerSettings.typography, fontSize: 16 } });
   }
 
+  /** 自定义字体加载缓存（file → FontFace 家族名；加载中为 null 占位防并发重复） */
+  const customFontFamilies = new Map<string, string | null>();
+  /** 字体加载版本（加载完成后递增，触发排版变量效果重算） */
+  let customFontVersion = $state(0);
+
+  /** 确保自定义字体已注册（`custom:<文件>` 约定；读字节 → FontFace → document.fonts）。
+   *  失败时允许后续重试（不缓存失败态）。 */
+  async function ensureCustomFont(file: string): Promise<void> {
+    if (customFontFamilies.has(file)) return;
+    customFontFamilies.set(file, null);
+    try {
+      const base64 = await ipc.readFontData(file);
+      const bytes = Uint8Array.from(atob(base64), (ch) => ch.charCodeAt(0));
+      const family = `SRT Custom ${file}`;
+      const face = new FontFace(family, bytes);
+      await face.load();
+      document.fonts.add(face);
+      customFontFamilies.set(file, family);
+    } catch (error) {
+      customFontFamilies.delete(file);
+      if (import.meta.env.DEV) console.error('[app] 自定义字体加载失败', error);
+    }
+    customFontVersion += 1;
+  }
+
+  /** 读取已加载的自定义字体家族名（读取 customFontVersion 以建立依赖）。 */
+  function customFontFamily(file: string): string | null {
+    void customFontVersion;
+    return customFontFamilies.get(file) ?? null;
+  }
+
   /** 首启引导可见性（仅启动时按配置判定一次） */
   let onboardingOpen = $state(false);
   let onboardingChecked = false;
@@ -211,6 +242,8 @@
   /** 会话恢复：逐个打开上次的标签（缺失/失败经 Toast 跳过）、补齐编码覆盖与编辑态，
    *  恢复滚动锚点与活动标签；恢复期间由 sessionReady 门控自动保存。 */
   async function restoreSession(): Promise<void> {
+    // 启动行为设置：关闭「恢复上次会话」时直接进入空状态
+    if (appSettings?.startup.restoreSession === false) return;
     let session: SessionState | null = null;
     try {
       session = await ipc.getSession();
@@ -265,12 +298,13 @@
     return document.querySelector<HTMLElement>('.reader');
   }
 
-  /** 翻页（阅读态）：约一屏（留 3 行重叠） */
+  /** 翻页（阅读态）：约一屏（留 3 行重叠）；平滑动画可经设置关闭 */
   function scrollPages(step: number): void {
     const element = readerElement();
     if (!element) return;
     const span = Math.max(120, element.clientHeight - 96);
-    element.scrollBy({ top: step * span, behavior: 'auto' });
+    const smooth = readerSettings?.typography.smoothScroll !== false;
+    element.scrollBy({ top: step * span, behavior: smooth ? 'smooth' : 'auto' });
   }
 
   /** 跳到开头 / 结尾（阅读态） */
@@ -720,17 +754,28 @@
   /** 排版变更键（传给 ReaderView 触发行高失效重排；值变化即重排） */
   const typographyKey = $derived(readerSettings ? JSON.stringify(readerSettings.typography) : '');
 
-  // 排版令牌写入 CSS 变量：阅读区实时生效（字号/行高/字体/限宽/边距）
+  // 排版令牌写入 CSS 变量：阅读区实时生效
+  // （字号/行高/字体/限宽/边距/段间距/首行缩进/对齐；自定义字体按需动态加载）
   $effect(() => {
     const typo = readerSettings?.typography;
     if (!typo) return;
     const root = document.documentElement;
-    root.style.setProperty('--font-reading', `${typo.fontFamily}, system-ui, sans-serif`);
+    let fontStack = `${typo.fontFamily}, system-ui, sans-serif`;
+    if (typo.fontFamily.startsWith('custom:')) {
+      const file = typo.fontFamily.slice('custom:'.length);
+      const loaded = customFontFamily(file);
+      if (loaded === null) void ensureCustomFont(file);
+      fontStack = `"${loaded ?? 'Microsoft YaHei'}", system-ui, sans-serif`;
+    }
+    root.style.setProperty('--font-reading', fontStack);
     root.style.setProperty('--reading-size', `${typo.fontSize}px`);
     root.style.setProperty('--reading-line-height', `${typo.lineHeight}`);
     root.style.setProperty('--reading-width', `${typo.contentWidth}px`);
     root.style.setProperty('--reading-pad-x', `${typo.pagePadding}px`);
     root.style.setProperty('--reading-pad-y', `${typo.pagePaddingY}px`);
+    root.style.setProperty('--reading-para-spacing', `${typo.paragraphSpacing}px`);
+    root.style.setProperty('--reading-indent', `${typo.firstLineIndent * typo.fontSize}px`);
+    root.style.setProperty('--reading-align', typo.textAlign === 'justify' ? 'justify' : 'left');
   });
 
   // 标签集合/活动标签变化：防抖保存会话 + 刷新历史数据源
@@ -950,6 +995,10 @@
     encodingOverride={active?.encodingOverride ?? null}
     onEncodingChange={(label) => void changeEncoding(label)}
     {version}
+    showFileName={readerSettings?.statusBar.showFileName ?? true}
+    showPercent={readerSettings?.statusBar.showPercent ?? true}
+    showSize={readerSettings?.statusBar.showSize ?? true}
+    showEncoding={readerSettings?.statusBar.showEncoding ?? true}
   />
   <Toast />
 {#if onboardingOpen}

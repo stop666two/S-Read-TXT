@@ -427,6 +427,10 @@
     white-space: pre-wrap;
     overflow-wrap: break-word;
     min-height: calc(var(--reading-line-height) * 1em);
+    /* 排版扩展：文字对齐 / 首行缩进 / 段间距（值由 App.svelte 写入 CSS 变量） */
+    text-align: var(--reading-align, left);
+    text-indent: var(--reading-indent, 0);
+    padding-bottom: var(--reading-para-spacing, 0);
   }
 
   .spacer {

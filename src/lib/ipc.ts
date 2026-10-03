@@ -183,6 +183,12 @@ export interface HistorySettings {
   retentionDays: number;
 }
 
+/** 启动行为（与 Rust `StartupSettings` 对应）。 */
+export interface StartupSettings {
+  restoreSession: boolean;
+  restoreWindow: boolean;
+}
+
 /** 主配置（与 Rust `AppSettings` 对应；字段名以 Rust 序列化为准）。 */
 export interface AppSettings {
   schemaVersion: number;
@@ -192,6 +198,7 @@ export interface AppSettings {
   history: HistorySettings;
   saveBackupEnabled: boolean;
   showOnboarding: boolean;
+  startup: StartupSettings;
 }
 
 /** 排版配置（与 Rust `TypographySettings` 对应）。 */
@@ -202,6 +209,18 @@ export interface TypographySettings {
   contentWidth: number;
   pagePadding: number;
   pagePaddingY: number;
+  paragraphSpacing: number;
+  firstLineIndent: number;
+  textAlign: 'left' | 'justify';
+  smoothScroll: boolean;
+}
+
+/** 状态栏元素显隐（与 Rust `StatusBarSettings` 对应）。 */
+export interface StatusBarSettings {
+  showFileName: boolean;
+  showPercent: boolean;
+  showSize: boolean;
+  showEncoding: boolean;
 }
 
 /** 阅读配置（与 Rust `ReaderSettings` 对应）。 */
@@ -209,6 +228,14 @@ export interface ReaderSettings {
   schemaVersion: number;
   theme: string;
   typography: TypographySettings;
+  statusBar: StatusBarSettings;
+}
+
+/** 自定义字体条目（与 Rust `FontEntry` 对应）。 */
+export interface FontEntry {
+  fileName: string;
+  label: string;
+  sizeBytes: number;
 }
 
 /** 快捷键配置（与 Rust `ShortcutSettings` 对应；bindings 为「生效绑定」）。 */
@@ -297,6 +324,14 @@ export const ipc = {
   openSettings: (tab?: string) => invoke<void>('open_settings', { tab: tab ?? null }),
   /** 取走设置窗口待打开页签（读取即清空；无待办返回 null）。 */
   takeSettingsTab: () => invoke<string | null>('take_settings_tab'),
+  /** 列出已导入的自定义字体。 */
+  listFonts: () => invoke<FontEntry[]>('list_fonts'),
+  /** 导入字体文件（复制到数据目录 fonts/；重名自动唯一化）。 */
+  importFont: (path: string) => invoke<FontEntry>('import_font', { path }),
+  /** 删除已导入字体。 */
+  removeFont: (fileName: string) => invoke<void>('remove_font', { fileName }),
+  /** 读取字体字节（Base64；前端经 FontFace 动态注册）。 */
+  readFontData: (fileName: string) => invoke<string>('read_font_data', { fileName }),
   /** 切换编辑模式（首次进入创建编辑文档）。 */
   toggleEdit: (tabId: number) => invoke<TabInfo>('toggle_edit', { tabId }),
   /** 应用编辑批次（批次 = 单个撤销步）。 */

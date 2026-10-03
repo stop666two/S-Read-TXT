@@ -1,5 +1,6 @@
 <script lang="ts">
   // 状态栏：有文件时「左 文件名+阅读百分比 / 右 大小+编码（点击切换）」；无文件时显示应用名与版本。
+  // 元素显隐由设置控制（阅读排版 → 状态栏元素开关；缺省全显示）。
   import EncodingMenu from './EncodingMenu.svelte';
 
   interface Props {
@@ -19,6 +20,14 @@
     onEncodingChange?: (label: string | null) => void;
     /** 应用版本（无文件时右侧展示，如 v0.0.1-beta） */
     version?: string;
+    /** 显示文件名与进度（设置项） */
+    showFileName?: boolean;
+    /** 显示阅读百分比（设置项） */
+    showPercent?: boolean;
+    /** 显示文件大小（设置项） */
+    showSize?: boolean;
+    /** 显示编码切换（设置项） */
+    showEncoding?: boolean;
   }
   let {
     fileName,
@@ -29,27 +38,37 @@
     encodingOverride = null,
     onEncodingChange,
     version = '',
+    showFileName = true,
+    showPercent = true,
+    showSize = true,
+    showEncoding = true,
   }: Props = $props();
 </script>
 
 <footer class="status-bar">
   {#if fileName !== undefined}
-    <span class="left">{fileName} · 阅读 {Math.round(percent ?? 0)}%</span>
+    <span class="left">
+      {#if showFileName}{fileName}{/if}
+      {#if showFileName && showPercent}<span class="dot"> · </span>{/if}
+      {#if showPercent}阅读 {Math.round(percent ?? 0)}%{/if}
+    </span>
     <span class="right">
-      {#if sizeLabel}
+      {#if showSize && sizeLabel}
         <span>{sizeLabel}</span>
-        <span class="dot">·</span>
+        {#if showEncoding}<span class="dot">·</span>{/if}
       {/if}
-      {#if onEncodingChange}
-        <EncodingMenu
-          displayLabel={encodingLabel ?? '—'}
-          {encodings}
-          override={encodingOverride}
-          onPick={onEncodingChange}
-          openUp
-        />
-      {:else}
-        <span class="encoding" title="切换编码">{encodingLabel ?? '—'}</span>
+      {#if showEncoding}
+        {#if onEncodingChange}
+          <EncodingMenu
+            displayLabel={encodingLabel ?? '—'}
+            {encodings}
+            override={encodingOverride}
+            onPick={onEncodingChange}
+            openUp
+          />
+        {:else}
+          <span class="encoding" title="切换编码">{encodingLabel ?? '—'}</span>
+        {/if}
       {/if}
     </span>
   {:else}

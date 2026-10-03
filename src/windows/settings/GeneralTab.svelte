@@ -1,5 +1,5 @@
 <!--
-  GeneralTab — 常规设置：文件上限 / 标签上限（滑块）、日志级别、默认备份。
+  GeneralTab — 常规设置：文件与标签 / 日志与备份 / 界面元素 / 启动行为。
   修改即存（经共享 store）；数值范围与后端 defaults.rs 保持一致（越界由后端再归一）。
 -->
 <script lang="ts">
@@ -17,9 +17,22 @@
   ];
 
   const app = $derived(settings.snapshot?.app ?? null);
+  const reader = $derived(settings.snapshot?.reader ?? null);
+
+  /** 状态栏元素开关（reader.statusBar 补丁保存） */
+  function patchStatusBar(patch: Partial<NonNullable<typeof reader>['statusBar']>): void {
+    if (!reader) return;
+    void settings.saveReader({ statusBar: { ...reader.statusBar, ...patch } });
+  }
+
+  /** 启动行为开关（app.startup 补丁保存） */
+  function patchStartup(patch: Partial<NonNullable<typeof app>['startup']>): void {
+    if (!app) return;
+    void settings.saveApp({ startup: { ...app.startup, ...patch } });
+  }
 </script>
 
-{#if app}
+{#if app && reader}
   <p class="section-title">文件与标签</p>
   <div class="rows">
     <SliderRow
@@ -62,6 +75,56 @@
       checked={app.saveBackupEnabled}
       setting="saveBackupEnabled"
       onCommit={(checked) => void settings.saveApp({ saveBackupEnabled: checked })}
+    />
+  </div>
+
+  <p class="section-title">界面元素</p>
+  <div class="rows">
+    <ToggleRow
+      label="状态栏：文件名与进度"
+      desc="显示当前文件名与阅读百分比"
+      checked={reader.statusBar.showFileName}
+      setting="statusBar.showFileName"
+      onCommit={(checked) => patchStatusBar({ showFileName: checked })}
+    />
+    <ToggleRow
+      label="状态栏：阅读百分比"
+      desc="单独控制百分比文本（文件名可独立开关）"
+      checked={reader.statusBar.showPercent}
+      setting="statusBar.showPercent"
+      onCommit={(checked) => patchStatusBar({ showPercent: checked })}
+    />
+    <ToggleRow
+      label="状态栏：文件大小"
+      desc="显示当前文件的字节大小"
+      checked={reader.statusBar.showSize}
+      setting="statusBar.showSize"
+      onCommit={(checked) => patchStatusBar({ showSize: checked })}
+    />
+    <ToggleRow
+      label="状态栏：编码切换"
+      desc="显示编码按钮（点击可自动检测 / 手动覆盖）"
+      checked={reader.statusBar.showEncoding}
+      setting="statusBar.showEncoding"
+      onCommit={(checked) => patchStatusBar({ showEncoding: checked })}
+    />
+  </div>
+
+  <p class="section-title">启动行为</p>
+  <div class="rows">
+    <ToggleRow
+      label="启动时恢复上次会话"
+      desc="重新打开上次的标签与阅读位置（惰性索引，不拖慢启动）"
+      checked={app.startup.restoreSession}
+      setting="startup.restoreSession"
+      onCommit={(checked) => patchStartup({ restoreSession: checked })}
+    />
+    <ToggleRow
+      label="启动时恢复窗口位置与大小"
+      desc="关闭后每次以默认尺寸居中启动"
+      checked={app.startup.restoreWindow}
+      setting="startup.restoreWindow"
+      onCommit={(checked) => patchStartup({ restoreWindow: checked })}
     />
   </div>
 {:else}
