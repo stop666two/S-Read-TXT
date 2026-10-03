@@ -9,7 +9,9 @@
 // 依赖：debug 构建（npm run tauri build -- --debug --no-bundle）。
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, rmSync, writeFileSync, writeSync } from 'node:fs';
-import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   createClient,
@@ -18,11 +20,11 @@ import {
   findTarget,
   openPathDone,
   waitForValue,
-} from 'file:///D:/administrator/Documents/project/S-Read-TXT/scripts/lib/smoke-cdp.mjs';
+} from './lib/smoke-cdp.mjs';
 
-const root = 'D:/administrator/Documents/project/S-Read-TXT';
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exe = join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe');
-const work = join(process.env.TEMP ?? '.', `srt-limits-${Date.now()}`);
+const work = join(tmpdir(), `srt-limits-${Date.now()}`);
 mkdirSync(work, { recursive: true });
 const dataDir = join(work, 'data');
 mkdirSync(dataDir, { recursive: true });

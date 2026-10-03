@@ -5,13 +5,15 @@
 //   滑块轮另断言 CSS 变量到达目标值；窗口占位无需滚动即已落定。
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from 'file:///D:/administrator/Documents/project/S-Read-TXT/scripts/lib/smoke-cdp.mjs';
+import { createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
 
-const root = 'D:/administrator/Documents/project/S-Read-TXT';
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exe = join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe');
-const work = join(process.env.TEMP ?? '.', `srt-scroll-${Date.now()}`);
+const work = join(tmpdir(), `srt-scroll-${Date.now()}`);
 mkdirSync(work, { recursive: true });
 const dataDir = join(work, 'data');
 const sample = join(work, 'big.txt');

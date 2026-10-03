@@ -56,7 +56,7 @@
 
 - 首次 Rust 编译约需 10~15 分钟（依赖全量编译），之后增量构建为秒级。
 - 本项目在 Windows 上以 **GNU 工具链**实测构建通过（Tauri 官方仅支持 MSVC；如需切换：安装 VS Build Tools 后执行 `rustup default stable-x86_64-pc-windows-msvc`）。
-- 若构建报 `windres: preprocessing failed.` 或 `cc1.exe` 静默失败（退出码 `0xC0000139` / `STATUS_ENTRYPOINT_NOT_FOUND`）：原因是 PATH 中其他目录（如 Tesseract-OCR）携带的**旧版 `libgcc_s_seh-1.dll`** 抢先覆盖了 MSYS2 的运行库。修复：确保 MSYS2 的 `ucrt64\bin`（例如 `D:\msys64\ucrt64\bin`）在 PATH 中排在该目录之前，或从 PATH 移除该目录后重新构建。
+- 若构建报 `windres: preprocessing failed.` 或 `cc1.exe` 静默失败（退出码 `0xC0000139` / `STATUS_ENTRYPOINT_NOT_FOUND`）：原因是 PATH 中其他目录（如 Tesseract-OCR）携带的**旧版 `libgcc_s_seh-1.dll`** 抢先覆盖了 MSYS2 的运行库。修复：确保 MSYS2 的 `ucrt64\bin`（以你机器上的实际安装位置为准）在 PATH 中排在该目录之前，或从 PATH 移除该目录后重新构建；自检脚本可用环境变量 `SRT_MSYS_BIN` 指定该目录（未设置时自动从 PATH 探测）。
 - **「localhost 拒绝连接」防护（已根治）**：Tauri 以 `custom-protocol` feature 区分打包模式（内嵌前端资源）与开发模式（连 `http://localhost:1420`）；`tauri build` 由 CLI 自动启用，而裸 `cargo build`/`cargo test` 不会——产物会显示「localhost 拒绝连接」。本项目已在 `Cargo.toml` 中**常开该 feature**，任何方式编译的 exe 均可独立运行。代价：不支持 `tauri dev` HMR 开发服务器（本项目流程为构建产物 + CDP 自动化验证，不使用）。
 
 ## 构建与运行
@@ -118,6 +118,7 @@ npm run tauri build
 | `SRT_DATA_DIR` | 覆盖数据目录（便于测试与特殊部署） | 路径字符串 | 否 | `D:\srt-data` |
 | `SRT_LOG_LEVEL` | 覆盖日志级别（error/warn/info/debug） | 枚举字符串 | 否 | `debug` |
 | `SRT_NO_ELEVATION` | 跳过启动时的提权初始化（存在即生效；不想看到任何 UAC 时使用） | 开关（存在即启用） | 否 | `1` |
+| `SRT_MSYS_BIN` | 仅自检脚本（`scripts/verify-all.mjs`）使用：MSYS2 `ucrt64\bin` 目录；未设置时自动从 PATH 探测以 `ucrt64\bin` 结尾的条目（CI 无需） | 路径字符串 | 否 | 按实际安装位置 |
 
 说明：应用不读取 `.env` 文件，环境变量由启动环境（终端/快捷方式）提供。
 

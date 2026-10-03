@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-02T12:27:07.385Z",
-  "exe": "D:\\administrator\\Documents\\project\\S-Read-TXT\\src-tauri\\target\\release\\s-read-txt.exe",
+  "exe": "src-tauri/target/release/s-read-txt.exe",
   "files": 10,
   "sizeMb": 100,
   "openTimesMs": [
@@ -88,7 +88,7 @@
     {
       "name": "S10b 压力截图已保存",
       "passed": true,
-      "detail": "D:\\administrator\\Documents\\project\\S-Read-TXT\\docs\\screenshots\\phase9-stress.png"
+      "detail": "docs/screenshots/phase9-stress.png"
     },
     {
       "name": "S11 内存红线（10 标签 + 压力后；专用工作集口径）",

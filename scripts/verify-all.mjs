@@ -20,13 +20,24 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tauriDir = join(root, 'src-tauri');
-const MSYS = 'D:\\msys64\\ucrt64\\bin';
 const DEV_TARGET = join(tauriDir, 'target', 'debug');
 
-/** 构建类命令环境：PATH 前置 MSYS2（防 Tesseract 旧 DLL 遮蔽）与 target/debug（WebView2Loader） */
+/**
+ * MSYS2 工具链目录探测（禁止硬编码目录）：
+ * 1. 环境变量 `SRT_MSYS_BIN` 显式指定（最高优先；见 README 环境变量表）；
+ * 2. 否则从当前 PATH 中取以 `ucrt64\bin` 结尾的条目（本机 MSYS2 安装位置）；
+ * 3. 都未命中则为空——CI（MSVC）无需 MSYS。
+ */
+function detectMsysBin() {
+  if (process.env.SRT_MSYS_BIN) return process.env.SRT_MSYS_BIN;
+  const entries = (process.env.PATH ?? '').split(';').filter(Boolean);
+  return entries.find((entry) => /[\\/]ucrt64[\\/]bin[\\/]?$/i.test(entry)) ?? '';
+}
+
+/** 构建类命令环境：PATH 前置 MSYS2（防旧 DLL 遮蔽）与 target/debug（WebView2Loader） */
 const buildEnv = {
   ...process.env,
-  PATH: `${MSYS};${DEV_TARGET};${process.env.PATH ?? ''}`,
+  PATH: [detectMsysBin(), DEV_TARGET, process.env.PATH ?? ''].filter(Boolean).join(';'),
 };
 
 const skipLongline = process.argv.includes('--skip-longline');

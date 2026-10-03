@@ -500,11 +500,11 @@ async function main() {
     check('S15a 导入字体按钮打开原生对话框', importDialogOpened === true);
     check('S15b 取消对话框后关闭', (await waitDialog(false, 5000)) === true);
     await delay(300);
-    const fontCandidates = [
-      'C:\\Windows\\Fonts\\consola.ttf',
-      'C:\\Windows\\Fonts\\arial.ttf',
-      'C:\\Windows\\Fonts\\segoeui.ttf',
-    ];
+    // 系统字体目录来自环境变量（禁止硬编码目录）；候选字体取首个可用者
+    const fontDir = join(process.env.WINDIR ?? process.env.SystemRoot ?? '', 'Fonts');
+    const fontCandidates = ['consola.ttf', 'arial.ttf', 'segoeui.ttf'].map((name) =>
+      join(fontDir, name),
+    );
     let imported = null;
     for (const candidate of fontCandidates) {
       const result = await evalMain(

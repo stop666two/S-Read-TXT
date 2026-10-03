@@ -8,7 +8,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { argValue, createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
@@ -300,7 +300,7 @@ async function main() {
       const shotFd = openSync(shotPath, 'w');
       writeSync(shotFd, Buffer.from(shot.data, 'base64'));
       closeSync(shotFd);
-      check('S10b 压力截图已保存', true, shotPath);
+      check('S10b 压力截图已保存', true, relative(root, shotPath));
     } catch (error) {
       check('S10b 压力截图已保存', false, String(error));
     }
@@ -318,7 +318,7 @@ async function main() {
 
     const payload = {
       generatedAt: new Date().toISOString(),
-      exe: exePath,
+      exe: relative(root, exePath),
       files: fileCount,
       sizeMb,
       openTimesMs: openTimes.map((v) => Math.round(v)),
