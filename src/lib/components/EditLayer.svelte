@@ -9,7 +9,7 @@
 
   import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
-  import { describeIpcError, ipc, toIpcError, type EditApplied, type FindHit, type ReplacePreview, type SearchMode } from '../ipc';
+  import { describeIpcError, ipc, toIpcError, type BatchNumberingConfig, type BatchPreview, type EditApplied, type FindHit, type ReplacePreview, type SearchMode } from '../ipc';
   import {
     clampPos,
     collapsed,
@@ -32,6 +32,7 @@
   import { toasts } from '../state/toasts.svelte';
   import FindBar from './FindBar.svelte';
   import ReplacePreviewDialog from './ReplacePreviewDialog.svelte';
+  import BatchNumberingDialog from './BatchNumberingDialog.svelte';
   import type { EditActionType, EditorAction } from '../edit/actions';
 
   interface Props {
@@ -128,6 +129,15 @@
   } | null = null;
   /** 预览弹窗开关 */
   let previewOpen = $state(false);
+
+  /** 批量序号弹窗开关（P1-1） */
+  let batchOpen = $state(false);
+
+  /** 当前选区的显示行范围（无选区时 from==to==当前行；批量序号作用范围默认值用） */
+  const batchSelectionRows = $derived.by(() => {
+    const ordered = orderedSelection(logicalSelection(selection));
+    return { from: ordered.start.row, to: ordered.end.row };
+  });
 
   // ---- 坐标与渲染 ----
 
@@ -730,6 +740,25 @@
     }
   }
 
+  /** 批量序号：请求预览（错误向上抛出，由弹窗就地展示）。 */
+  async function previewBatch(config: BatchNumberingConfig): Promise<BatchPreview> {
+    return ipc.previewBatchNumbering(tabId, config);
+  }
+
+  /** 批量序号：执行（单撤销步；失败先提示再抛出，弹窗保持打开）。 */
+  async function applyBatch(config: BatchNumberingConfig): Promise<void> {
+    let outcome;
+    try {
+      outcome = await ipc.applyBatchNumbering(tabId, config);
+    } catch (error) {
+      const payload = toIpcError(error);
+      toasts.error(describeIpcError(payload));
+      throw error;
+    }
+    await applyResult(async () => outcome.applied);
+    toasts.show(t('batch.applied', { count: outcome.affected }), 'info');
+  }
+
   /** 外部动作分发（菜单触发）。 */
   function handleAction(type: EditActionType): void {
     switch (type) {
@@ -756,6 +785,9 @@
         break;
       case 'replace':
         openFind(true);
+        break;
+      case 'batchNumbering':
+        batchOpen = true;
         break;
     }
   }
@@ -1055,6 +1087,17 @@
   />
 {/if}
 
+{#if batchOpen}
+  <BatchNumberingDialog
+    selectionRows={batchSelectionRows}
+    onPreview={previewBatch}
+    onApply={applyBatch}
+    onClose={() => {
+      batchOpen = false;
+      focusEditorProxy();
+    }}
+  />
+{/if}
 {#if previewOpen && previewData}
   <ReplacePreviewDialog
     total={previewData.total}

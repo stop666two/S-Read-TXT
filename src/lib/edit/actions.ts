@@ -10,7 +10,8 @@ export type EditActionType =
   | 'paste'
   | 'selectAll'
   | 'find'
-  | 'replace';
+  | 'replace'
+  | 'batchNumbering';
 
 /** 一次编辑动作（seq 单调递增，用于区分重复的同类型动作）。 */
 export interface EditorAction {

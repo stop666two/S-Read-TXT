@@ -204,6 +204,13 @@
         <span>{t('menu.edit.replace')}</span>
         <span class="hint">Ctrl+H</span>
       </button>
+      <button
+        class="item"
+        disabled={!editing}
+        onclick={() => run(() => onEditorAction?.('batchNumbering'))}
+      >
+        <span>{t('menu.edit.batchNumbering')}</span>
+      </button>
       <div class="separator"></div>
       <button
         class="item"

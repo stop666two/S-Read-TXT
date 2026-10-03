@@ -137,6 +137,65 @@ export interface ReplacePreview {
   items: ReplacePreviewItem[];
 }
 
+/** 批量插入/序号：编号格式（10 种；与 Rust `NumberFormat` 对齐）。 */
+export type BatchNumberFormat =
+  | 'arabic'
+  | 'zeroPad'
+  | 'chineseLower'
+  | 'chineseUpper'
+  | 'parenthesized'
+  | 'bracketed'
+  | 'circled'
+  | 'circledFilled'
+  | 'romanUpper'
+  | 'romanLower';
+
+/** 序号插入位置：行首 / 行尾（行尾 = 原文 + 空格 + 序号串）。 */
+export type BatchInsertPosition = 'lineStart' | 'lineEnd';
+
+/** 作用范围（tag=kind；行号均为显示行序号）。 */
+export type BatchScope =
+  | { kind: 'all' }
+  | { kind: 'currentLine'; row: number }
+  | { kind: 'rowRange'; from: number; to: number }
+  | { kind: 'nonEmpty' }
+  | { kind: 'selection'; from: number; to: number };
+
+/** 批量序号配置（与 Rust `BatchNumberingConfig` 对齐）。 */
+export interface BatchNumberingConfig {
+  format: BatchNumberFormat;
+  start: number;
+  step: number;
+  zeroPadWidth: number;
+  separator: string;
+  suffix: string;
+  position: BatchInsertPosition;
+  scope: BatchScope;
+  skipEmpty: boolean;
+  template: string | null;
+  previewLines: number;
+}
+
+/** 预览单条（row=显示行序号；after=插入后的该行文本）。 */
+export interface BatchPreviewItem {
+  row: number;
+  after: string;
+  insertText: string;
+}
+
+/** 批量序号预览（truncated=仅渲染前 previewLines 条）。 */
+export interface BatchPreview {
+  items: BatchPreviewItem[];
+  totalRows: number;
+  truncated: boolean;
+}
+
+/** 批量序号执行结果（applied 用于刷新编辑视图）。 */
+export interface BatchNumberingOutcome {
+  applied: EditApplied;
+  affected: number;
+}
+
 /** 保存结果（与 Rust commands::SaveTabResult 对齐）。 */
 export interface SaveTabResult {
   bytesWritten: number;
@@ -549,6 +608,12 @@ export const ipc = {
       startRow,
       count,
     }),
+  /** 预览批量序号（容量预检在此阶段报 BATCH_INVALID）。 */
+  previewBatchNumbering: (tabId: number, config: BatchNumberingConfig) =>
+    invoke<BatchPreview>('preview_batch_numbering', { tabId, config }),
+  /** 执行批量序号（单撤销步）。 */
+  applyBatchNumbering: (tabId: number, config: BatchNumberingConfig) =>
+    invoke<BatchNumberingOutcome>('apply_batch_numbering', { tabId, config }),
   /** 配置快照（快捷键等；后端为唯一真源）。 */
   getSettings: () => invoke<SettingsSnapshot>('get_settings'),
   /** 保存配置（返回保存后的快照）。 */
