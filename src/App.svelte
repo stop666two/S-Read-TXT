@@ -1124,6 +1124,7 @@
         onPercent={(percent) => (readPercent = percent)}
         onEditApplied={handleEditApplied}
         {editorAction}
+        lineDefaults={appSettings?.editor.lines ?? null}
         layoutKey={typographyKey}
       />
     {:else}

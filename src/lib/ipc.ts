@@ -196,6 +196,110 @@ export interface BatchNumberingOutcome {
   affected: number;
 }
 
+/** 行操作种类（与 Rust `LineOp` 对齐；26 种）。 */
+export type LineOp =
+  | 'moveUp'
+  | 'moveDown'
+  | 'duplicate'
+  | 'delete'
+  | 'merge'
+  | 'split'
+  | 'sort'
+  | 'reverse'
+  | 'dedupe'
+  | 'removeEmptyLines'
+  | 'trimLines'
+  | 'trimTrailingWhitespace'
+  | 'indent'
+  | 'outdent'
+  | 'tabsToSpaces'
+  | 'spacesToTabs'
+  | 'case'
+  | 'widthConvert'
+  | 'prependText'
+  | 'appendText'
+  | 'deleteHead'
+  | 'deleteTail'
+  | 'extractColumn'
+  | 'delimiterConvert'
+  | 'collapseEmptyLines'
+  | 'ensureTrailingNewline';
+
+/** 排序模式（行操作引擎与编辑器设置共用取值）。 */
+export type LineSortOrder = 'lex' | 'natural' | 'length' | 'random';
+/** 去重规则。 */
+export type LineDedupeMode = 'keepFirst' | 'keepLast';
+/** 缩进字符。 */
+export type LineIndentStyle = 'spaces' | 'tab';
+/** 大小写模式。 */
+export type LineCaseMode = 'upper' | 'lower' | 'title';
+/** 全角/半角方向。 */
+export type LineWidthDirection = 'toHalf' | 'toFull';
+/** 行操作默认范围（编辑器设置）。 */
+export type LineScopeKind = 'all' | 'currentLine' | 'rowRange' | 'nonEmpty' | 'selection';
+
+/** 行操作配置（与 Rust `LineOpConfig` 对齐；各操作只读取自己相关的字段）。 */
+export interface LineOpConfig {
+  op: LineOp;
+  scope: BatchScope;
+  sortOrder: LineSortOrder;
+  sortSeed: number;
+  dedupeMode: LineDedupeMode;
+  dedupeIgnoreCase: boolean;
+  dedupeFuzzy: boolean;
+  indentWidth: number;
+  indentStyle: LineIndentStyle;
+  caseMode: LineCaseMode;
+  widthDirection: LineWidthDirection;
+  text: string;
+  count: number;
+  delimiter: string;
+  delimiterTo: string;
+  skipEmpty: boolean;
+  previewLines: number;
+}
+
+/** 行操作预览行（`row` 为显示行序号）。 */
+export interface LineOpPreviewItem {
+  row: number;
+  text: string;
+}
+
+/** 行操作预览（`warning` 为非致命提示，如移动已到边界）。 */
+export interface LineOpPreview {
+  affectedRows: number;
+  truncated: boolean;
+  items: LineOpPreviewItem[];
+  warning: string | null;
+}
+
+/** 行操作执行结果（`applied` 为空表示无变化）。 */
+export interface LineOpOutcome {
+  affected: number;
+  applied: EditApplied | null;
+  warning: string | null;
+}
+
+/** 行操作默认值（编辑器设置「app.editor.lines」；与 Rust `LineOpsSettings` 对应）。 */
+export interface EditorLinesSettings {
+  defaultScope: LineScopeKind;
+  sortMode: LineSortOrder;
+  dedupeMode: LineDedupeMode;
+  dedupeIgnoreCase: boolean;
+  dedupeFuzzy: boolean;
+  indentWidth: number;
+  indentStyle: LineIndentStyle;
+  caseDefault: LineCaseMode;
+  columnDelimiter: string;
+  preview: boolean;
+  skipEmptyLines: boolean;
+}
+
+/** 编辑器设置分组。 */
+export interface EditorSettings {
+  lines: EditorLinesSettings;
+}
+
 /** 保存结果（与 Rust commands::SaveTabResult 对齐）。 */
 export interface SaveTabResult {
   bytesWritten: number;
@@ -265,6 +369,8 @@ export interface AppSettings {
   saveBackupEnabled: boolean;
   showOnboarding: boolean;
   locale: 'zh-CN' | 'en';
+  /** 编辑器设置（P1-2 起） */
+  editor: EditorSettings;
   startup: StartupSettings;
 }
 
@@ -614,6 +720,12 @@ export const ipc = {
   /** 执行批量序号（单撤销步）。 */
   applyBatchNumbering: (tabId: number, config: BatchNumberingConfig) =>
     invoke<BatchNumberingOutcome>('apply_batch_numbering', { tabId, config }),
+  /** 预览行操作（无变化/边界等以 warning 呈现；参数非法报 LINE_OP_INVALID）。 */
+  previewLineOp: (tabId: number, config: LineOpConfig) =>
+    invoke<LineOpPreview>('preview_line_op', { tabId, config }),
+  /** 执行行操作（单撤销步）。 */
+  applyLineOp: (tabId: number, config: LineOpConfig) =>
+    invoke<LineOpOutcome>('apply_line_op', { tabId, config }),
   /** 配置快照（快捷键等；后端为唯一真源）。 */
   getSettings: () => invoke<SettingsSnapshot>('get_settings'),
   /** 保存配置（返回保存后的快照）。 */

@@ -211,6 +211,13 @@
       >
         <span>{t('menu.edit.batchNumbering')}</span>
       </button>
+      <button
+        class="item"
+        disabled={!editing}
+        onclick={() => run(() => onEditorAction?.('lineOps'))}
+      >
+        <span>{t('menu.edit.lineOps')}</span>
+      </button>
       <div class="separator"></div>
       <button
         class="item"

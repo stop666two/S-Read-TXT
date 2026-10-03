@@ -13,6 +13,7 @@
   import { scrollMemory } from '../reader/scroll-memory';
   import { computePercent, computeWindow, planBatches } from '../reader/viewport';
   import { toasts } from '../state/toasts.svelte';
+  import type { EditorLinesSettings } from '../ipc';
 
   interface Props {
     /** 当前活动标签（组件仅服务活动标签） */
@@ -25,8 +26,10 @@
     editorAction?: EditorAction | null;
     /** 排版变更键（字体/字号/行高/限宽/边距；变化触发行高失效重排） */
     layoutKey: string;
+    /** 行操作默认值（编辑器设置；透传给编辑层弹窗；设置未就绪为 null） */
+    lineDefaults?: EditorLinesSettings | null;
   }
-  let { tab, onPercent, onEditApplied, editorAction, layoutKey }: Props = $props();
+  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -396,6 +399,7 @@
         getContainer={() => container}
         onApplied={handleEditApplied}
         {editorAction}
+        lineDefaults={lineDefaults ?? null}
       />
     {/if}
   </div>

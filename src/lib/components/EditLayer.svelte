@@ -33,6 +33,13 @@
   import FindBar from './FindBar.svelte';
   import ReplacePreviewDialog from './ReplacePreviewDialog.svelte';
   import BatchNumberingDialog from './BatchNumberingDialog.svelte';
+  import LineOpsDialog from './LineOpsDialog.svelte';
+  import type {
+    EditorLinesSettings,
+    LineOpConfig,
+    LineOpOutcome,
+    LineOpPreview,
+  } from '../ipc';
   import type { EditActionType, EditorAction } from '../edit/actions';
 
   interface Props {
@@ -56,6 +63,8 @@
     onApplied: (result: EditApplied) => void;
     /** 外部编辑动作信号（菜单触发；seq 变化表示一次新动作） */
     editorAction?: EditorAction | null;
+    /** 行操作默认值（编辑器设置；未就绪为 null 时使用兜底常量） */
+    lineDefaults?: EditorLinesSettings | null;
   }
   let {
     tabId,
@@ -68,6 +77,7 @@
     getContainer,
     onApplied,
     editorAction,
+    lineDefaults,
   }: Props = $props();
 
   /** 叠加层盒子（相对 .page 的像素坐标） */
@@ -132,6 +142,24 @@
 
   /** 批量序号弹窗开关（P1-1） */
   let batchOpen = $state(false);
+
+  /** 行操作弹窗开关（P1-2） */
+  let lineOpsOpen = $state(false);
+
+  /** 行操作默认值兜底（设置未就绪时；与 Rust 默认一致）。 */
+  const FALLBACK_LINE_DEFAULTS: EditorLinesSettings = {
+    defaultScope: 'all',
+    sortMode: 'lex',
+    dedupeMode: 'keepFirst',
+    dedupeIgnoreCase: false,
+    dedupeFuzzy: false,
+    indentWidth: 4,
+    indentStyle: 'spaces',
+    caseDefault: 'lower',
+    columnDelimiter: '\t',
+    preview: true,
+    skipEmptyLines: false,
+  };
 
   /** 当前选区的显示行范围（无选区时 from==to==当前行；批量序号作用范围默认值用） */
   const batchSelectionRows = $derived.by(() => {
@@ -759,6 +787,32 @@
     toasts.show(t('batch.applied', { count: outcome.affected }), 'info');
   }
 
+  /** 行操作：请求预览（错误向上抛出，由弹窗就地展示）。 */
+  async function previewLineOps(config: LineOpConfig): Promise<LineOpPreview> {
+    return ipc.previewLineOp(tabId, config);
+  }
+
+  /** 行操作：执行（单撤销步；失败先提示再抛出，弹窗保持打开）。 */
+  async function applyLineOps(config: LineOpConfig): Promise<void> {
+    let outcome: LineOpOutcome;
+    try {
+      outcome = await ipc.applyLineOp(tabId, config);
+    } catch (error) {
+      const payload = toIpcError(error);
+      toasts.error(describeIpcError(payload));
+      throw error;
+    }
+    const applied = outcome.applied;
+    if (applied) {
+      await applyResult(async () => applied);
+    }
+    if (outcome.affected > 0) {
+      toasts.show(t('lineOps.applied', { count: outcome.affected }), 'info');
+    } else if (outcome.warning) {
+      toasts.show(outcome.warning, 'info');
+    }
+  }
+
   /** 外部动作分发（菜单触发）。 */
   function handleAction(type: EditActionType): void {
     switch (type) {
@@ -788,6 +842,9 @@
         break;
       case 'batchNumbering':
         batchOpen = true;
+        break;
+      case 'lineOps':
+        lineOpsOpen = true;
         break;
     }
   }
@@ -1094,6 +1151,18 @@
     onApply={applyBatch}
     onClose={() => {
       batchOpen = false;
+      focusEditorProxy();
+    }}
+  />
+{/if}
+{#if lineOpsOpen}
+  <LineOpsDialog
+    selectionRows={batchSelectionRows}
+    defaults={lineDefaults ?? FALLBACK_LINE_DEFAULTS}
+    onPreview={previewLineOps}
+    onApply={applyLineOps}
+    onClose={() => {
+      lineOpsOpen = false;
       focusEditorProxy();
     }}
   />
