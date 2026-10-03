@@ -311,11 +311,23 @@ async function main() {
     if (f5Dialog) dialogOp('close');
     await waitDialog(false);
     await reopenSettings();
-    await evalSet(
-      `(() => { const row = [...document.querySelectorAll('.row')].find((r) => r.querySelector('.label')?.textContent?.trim() === '打开文件'); row?.querySelector('.reset')?.click(); return true; })()`,
+    // 行渲染存在性等待（重开窗口后列表可能尚未渲染，S11c 偶发失败的根因）
+    const rowPresent = await waitForValue(
+      async () =>
+        (await evalSet(
+          `[...document.querySelectorAll('.row')].some((r) => r.querySelector('.label')?.textContent?.trim() === '打开文件')`,
+        )) === true
+          ? true
+          : null,
+      8000,
     );
+    if (rowPresent === true) {
+      await evalSet(
+        `(() => { const row = [...document.querySelectorAll('.row')].find((r) => r.querySelector('.label')?.textContent?.trim() === '打开文件'); row?.querySelector('.reset')?.click(); return true; })()`,
+      );
+    }
     const openRestored = await waitForValue(async () => ((await comboText('打开文件')) === 'Ctrl+O' ? true : null), 6000);
-    check('S11c 打开文件单条恢复默认', openRestored === true);
+    check('S11c 打开文件单条恢复默认', openRestored === true, rowPresent === true ? '' : '行未渲染');
     await closeSettings();
 
     // S12 持久化跨重启：自定义绑定在应用重启后仍生效
