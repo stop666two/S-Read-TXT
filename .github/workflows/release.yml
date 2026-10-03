@@ -115,6 +115,8 @@ jobs:
           key: ${{ matrix.target }}
       - name: 构建安装包（NSIS）
         run: npm run tauri build -- --target ${{ matrix.target }}
+      - name: 打包便携版（zip）
+        run: node scripts/make-portable.mjs --exe src-tauri/target/${{ matrix.target }}/release/s-read-txt.exe --arch ${{ matrix.arch }} --out portable-dist
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
@@ -123,6 +125,7 @@ jobs:
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
             src-tauri/target/${{ matrix.target }}/release/s-read-txt.exe
+            portable-dist/*.zip
 
   # 发布：生成详尽描述 → 创建（或重建）Release → 删除其他全部旧 Release
   release:
@@ -166,6 +169,11 @@ jobs:
                 *setup.exe) cp "$f" "release-assets-all/$base" ;;
                 *) cp "$f" "release-assets-all/s-read-txt-$arch.exe" ;;
               esac
+            done
+            for z in "$dir"/portable-dist/*.zip; do
+              if [ -f "$z" ]; then
+                cp "$z" "release-assets-all/$(basename "$z")"
+              fi
             done
           done
           ls -la release-assets-all
