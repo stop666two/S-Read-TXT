@@ -18,6 +18,7 @@ use std::path::Path;
 
 use crate::textfile::editing::edit_doc::EditDoc;
 use crate::textfile::encoding::FileEncoding;
+use crate::textfile::eol::EolStyle;
 use crate::textfile::session::FileSession;
 use crate::textfile::window::RowText;
 
@@ -28,6 +29,9 @@ pub trait DocumentSource {
 
     /// 当前生效编码（状态栏展示）。
     fn encoding(&self) -> FileEncoding;
+
+    /// 主导换行符风格（状态栏展示）。
+    fn eol(&self) -> EolStyle;
 
     /// 显示行总数（虚拟滚动高度依据；超长逻辑行按 8KB 分段计入）。
     fn rows_total(&self) -> u64;
@@ -51,6 +55,10 @@ impl DocumentSource for FileSession {
 
     fn encoding(&self) -> FileEncoding {
         FileSession::encoding(self)
+    }
+
+    fn eol(&self) -> EolStyle {
+        FileSession::eol(self)
     }
 
     fn rows_total(&self) -> u64 {
@@ -77,6 +85,10 @@ impl DocumentSource for EditDoc {
 
     fn encoding(&self) -> FileEncoding {
         EditDoc::encoding(self)
+    }
+
+    fn eol(&self) -> EolStyle {
+        EditDoc::eol(self)
     }
 
     fn rows_total(&self) -> u64 {

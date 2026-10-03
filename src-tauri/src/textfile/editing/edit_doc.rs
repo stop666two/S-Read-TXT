@@ -240,6 +240,8 @@ pub struct EditDoc {
     long_rows: BTreeMap<u64, LongRowSegments>,
     /// 文档是否以换行单元结尾（行数换算用）
     trailing_newline: bool,
+    /// 主导换行符风格（打开时检测；「换行符转换」成功后更新）
+    eol: crate::textfile::eol::EolStyle,
     /// 状态版本号（每次变更递增；前端刷新依据）
     state_id: u64,
     /// 状态版本号分配器（单调，不回收）
@@ -285,6 +287,7 @@ impl EditDoc {
         }
         let encoding = encoding_override.unwrap_or_else(|| detect(mapped.bytes()));
         let bom_len = detect_bom_len(mapped.bytes(), encoding);
+        let eol = crate::textfile::eol::detect(mapped.bytes(), encoding);
 
         let mut pieces = Vec::new();
         let mut metas = Vec::new();
@@ -314,6 +317,7 @@ impl EditDoc {
             line_tree: Fenwick::build_from(&[]),
             long_rows: BTreeMap::new(),
             trailing_newline: false,
+            eol,
             state_id: 1,
             next_state_id: 2,
             saved_state_id: Some(1),
@@ -335,6 +339,11 @@ impl EditDoc {
     /// 当前生效编码（原文片段解码用；新增片段始终 UTF-8）。
     pub fn encoding(&self) -> FileEncoding {
         self.encoding
+    }
+
+    /// 主导换行符风格（打开时检测；换行符转换成功后更新）。
+    pub fn eol(&self) -> crate::textfile::eol::EolStyle {
+        self.eol
     }
 
     /// 文档是否以换行结尾（行操作「确保换行结尾」依据）。

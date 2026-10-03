@@ -166,6 +166,8 @@ pub struct TabInfo {
     pub read_only: bool,
     /// 总显示行数
     pub rows_total: u64,
+    /// 主导换行符风格（lf/crlf/cr/mixed/unknown；状态栏展示）
+    pub eol: String,
     /// 文件总字节数
     pub byte_len: u64,
 }
@@ -1071,6 +1073,7 @@ fn tab_info(tab: &Tab) -> TabInfo {
         dirty: tab.edit.as_ref().is_some_and(|doc| doc.is_dirty()),
         read_only: tab.read_only,
         rows_total: source.rows_total(),
+        eol: source.eol().as_str().to_string(),
         byte_len: source.byte_len(),
     }
 }

@@ -17,6 +17,7 @@
 
 pub mod editing;
 pub mod encoding;
+pub mod eol;
 pub mod filter;
 pub mod line_index;
 pub mod mmap;

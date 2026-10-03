@@ -13,6 +13,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::textfile::encoding::{detect, FileEncoding};
+use crate::textfile::eol::EolStyle;
 use crate::textfile::line_index::RowIndex;
 use crate::textfile::mmap::MappedFile;
 use crate::textfile::window::{fetch_rows, RowText};
@@ -48,6 +49,8 @@ pub struct FileSession {
     encoding: FileEncoding,
     /// 手动指定的编码（`None` = 自动检测）
     encoding_override: Option<FileEncoding>,
+    /// 主导换行符风格（打开/切编码时按前 256KB 检测；状态栏展示）
+    eol: EolStyle,
 }
 
 impl FileSession {
@@ -79,6 +82,7 @@ impl FileSession {
             });
         }
         let encoding = encoding_override.unwrap_or_else(|| detect(mapped.bytes()));
+        let eol = crate::textfile::eol::detect(mapped.bytes(), encoding);
         let index = RowIndex::build(mapped.bytes(), encoding);
         Ok(Self {
             path: path.to_path_buf(),
@@ -86,6 +90,7 @@ impl FileSession {
             index,
             encoding,
             encoding_override,
+            eol,
         })
     }
 
@@ -102,6 +107,11 @@ impl FileSession {
     /// 手动编码（`None` = 自动检测）。
     pub fn encoding_override(&self) -> Option<FileEncoding> {
         self.encoding_override
+    }
+
+    /// 主导换行符风格（前 256KB 检测）。
+    pub fn eol(&self) -> EolStyle {
+        self.eol
     }
 
     /// 总显示行数。
@@ -162,6 +172,7 @@ impl FileSession {
     pub fn set_encoding(&mut self, encoding: Option<FileEncoding>) {
         self.encoding_override = encoding;
         self.encoding = encoding.unwrap_or_else(|| detect(self.mapped.bytes()));
+        self.eol = crate::textfile::eol::detect(self.mapped.bytes(), self.encoding);
         self.index = RowIndex::build(self.mapped.bytes(), self.encoding);
     }
 }
