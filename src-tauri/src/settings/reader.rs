@@ -119,6 +119,91 @@ impl Default for StatusBarSettings {
     }
 }
 
+/// 背景图填充模式。
+///
+/// 语义与 [`Theme`] 相同：未知取值归入 `Unknown`，经 [`BackgroundFill::normalized`]
+/// 归一为默认（覆盖）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BackgroundFill {
+    /// 覆盖（等比缩放填满，可能裁剪）
+    Cover,
+    /// 包含（等比缩放完整显示，可能留边）
+    Contain,
+    /// 拉伸（铺满，不保持比例）
+    Stretch,
+    /// 平铺（原始尺寸重复）
+    Tile,
+    /// 未知取值（向前兼容；载入时归一为默认）
+    Unknown,
+}
+
+/// 手写反序列化：未知字符串宽容归入 `Unknown`（避免整份配置回退）。
+impl<'de> Deserialize<'de> for BackgroundFill {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.trim().to_ascii_lowercase().as_str() {
+            "cover" => Self::Cover,
+            "contain" => Self::Contain,
+            "stretch" => Self::Stretch,
+            "tile" => Self::Tile,
+            _ => Self::Unknown,
+        })
+    }
+}
+
+impl Default for BackgroundFill {
+    fn default() -> Self {
+        defaults::DEFAULT_BACKGROUND_FILL
+    }
+}
+
+impl BackgroundFill {
+    /// 归一：`Unknown` 回退默认填充模式，其余原样。
+    pub fn normalized(self) -> Self {
+        if self == Self::Unknown {
+            defaults::DEFAULT_BACKGROUND_FILL
+        } else {
+            self
+        }
+    }
+}
+
+/// 背景图设置（`reader.json` 的嵌套对象 `background`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BackgroundSettings {
+    /// 是否启用背景图
+    pub enabled: bool,
+    /// 存储文件名（`data/backgrounds/` 内；`None` = 未选择，不出现在 JSON 中）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    /// 不透明度（%，范围见 [`defaults::BACKGROUND_OPACITY_RANGE`]）
+    pub opacity: u32,
+    /// 填充模式
+    pub fill: BackgroundFill,
+    /// 模糊半径（px，范围见 [`defaults::BACKGROUND_BLUR_RANGE`]）
+    pub blur: u32,
+    /// 亮度调整（%，范围见 [`defaults::BACKGROUND_DIM_RANGE`]；负=暗化，正=亮化）
+    pub dim: i32,
+}
+
+impl Default for BackgroundSettings {
+    fn default() -> Self {
+        Self {
+            enabled: defaults::DEFAULT_BACKGROUND_ENABLED,
+            file: None,
+            opacity: defaults::DEFAULT_BACKGROUND_OPACITY,
+            fill: defaults::DEFAULT_BACKGROUND_FILL,
+            blur: defaults::DEFAULT_BACKGROUND_BLUR,
+            dim: defaults::DEFAULT_BACKGROUND_DIM,
+        }
+    }
+}
+
 /// 阅读排版配置（`reader.json`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -138,6 +223,8 @@ pub struct ReaderSettings {
     pub typography: Typography,
     /// 状态栏元素显隐
     pub status_bar: StatusBarSettings,
+    /// 背景图
+    pub background: BackgroundSettings,
 }
 
 impl Default for ReaderSettings {
@@ -149,6 +236,7 @@ impl Default for ReaderSettings {
             theme_anim_ms: defaults::DEFAULT_THEME_ANIM_MS,
             typography: Typography::default(),
             status_bar: StatusBarSettings::default(),
+            background: BackgroundSettings::default(),
         }
     }
 }

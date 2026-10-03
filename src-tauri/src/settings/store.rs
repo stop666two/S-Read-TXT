@@ -162,6 +162,19 @@ fn normalize_reader(settings: &mut ReaderSettings) {
     }
     let (min_anim, max_anim) = defaults::THEME_ANIM_MS_RANGE;
     settings.theme_anim_ms = settings.theme_anim_ms.clamp(min_anim, max_anim);
+    let background = &mut settings.background;
+    background.fill = background.fill.normalized();
+    background.file = background
+        .file
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let (min_opacity, max_opacity) = defaults::BACKGROUND_OPACITY_RANGE;
+    background.opacity = background.opacity.clamp(min_opacity, max_opacity);
+    let (min_blur, max_blur) = defaults::BACKGROUND_BLUR_RANGE;
+    background.blur = background.blur.clamp(min_blur, max_blur);
+    let (min_dim, max_dim) = defaults::BACKGROUND_DIM_RANGE;
+    background.dim = background.dim.clamp(min_dim, max_dim);
     let font = settings.typography.font_family.trim();
     settings.typography.font_family = if font.is_empty() {
         defaults::DEFAULT_FONT_FAMILY.to_string()

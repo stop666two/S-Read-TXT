@@ -104,17 +104,22 @@ fn reset_one(
     } else {
         return Err(format!("未知设置项：{id}"));
     };
-    let default_node = registry::navigate(&defaults_tree, relative)
-        .cloned()
-        .ok_or_else(|| format!("设置项缺少默认值：{id}"))?;
     let target = if id.starts_with("app.") {
         app_value
     } else {
         reader_value
     };
     let segments: Vec<&str> = relative.split('.').collect();
-    if !registry::set_at(target, &segments, default_node) {
-        return Err(format!("设置项路径不存在：{id}"));
+    match registry::navigate(&defaults_tree, relative).cloned() {
+        Some(default_node) => {
+            if !registry::set_at(target, &segments, default_node) {
+                return Err(format!("设置项路径不存在：{id}"));
+            }
+        }
+        // 默认值即「缺省」（如 `Option` 字段为 None 时序列化省略）：重置 = 移除字段
+        None => {
+            registry::remove_at(target, &segments);
+        }
     }
     Ok(())
 }

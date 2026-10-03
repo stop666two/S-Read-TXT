@@ -268,6 +268,53 @@ pub const SPECS: &[SettingSpec] = &[
         group: "reader.statusBar",
         kind: SettingKind::Bool,
     },
+    // ---------- reader.json / 背景图 ----------
+    SettingSpec {
+        id: "reader.background.enabled",
+        group: "reader.background",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "reader.background.file",
+        group: "reader.background",
+        kind: SettingKind::Text {
+            max_len: defaults::BACKGROUND_FILE_MAX_CHARS,
+        },
+    },
+    SettingSpec {
+        id: "reader.background.opacity",
+        group: "reader.background",
+        kind: SettingKind::Number {
+            min: defaults::BACKGROUND_OPACITY_RANGE.0 as f64,
+            max: defaults::BACKGROUND_OPACITY_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.background.fill",
+        group: "reader.background",
+        kind: SettingKind::Enum {
+            values: &["cover", "contain", "stretch", "tile"],
+        },
+    },
+    SettingSpec {
+        id: "reader.background.blur",
+        group: "reader.background",
+        kind: SettingKind::Number {
+            min: defaults::BACKGROUND_BLUR_RANGE.0 as f64,
+            max: defaults::BACKGROUND_BLUR_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.background.dim",
+        group: "reader.background",
+        kind: SettingKind::Number {
+            min: defaults::BACKGROUND_DIM_RANGE.0 as f64,
+            max: defaults::BACKGROUND_DIM_RANGE.1 as f64,
+            integer: true,
+        },
+    },
     // ---------- shortcuts.json ----------
     SettingSpec {
         id: "shortcuts.bindings",
@@ -320,14 +367,36 @@ pub fn set_at(value: &mut Value, segments: &[&str], new_value: Value) -> bool {
     true
 }
 
+/// 按点分路径移除字段（用于「默认值即缺省」的可选字段重置；
+/// 路径不存在时视为已满足，返回 `false` 但不视为错误）。
+pub fn remove_at(value: &mut Value, segments: &[&str]) -> bool {
+    let Some((last, parents)) = segments.split_last() else {
+        return false;
+    };
+    let mut current = value;
+    for segment in parents {
+        let Some(next) = current
+            .as_object_mut()
+            .and_then(|obj| obj.get_mut(*segment))
+        else {
+            return false;
+        };
+        current = next;
+    }
+    current
+        .as_object_mut()
+        .map(|obj| obj.remove(*last).is_some())
+        .unwrap_or(false)
+}
+
 /// 严格校验单个设置项取值（导入用；错误消息含字段 id 与中文原因）。
 pub fn validate_value(spec: &SettingSpec, value: &Value) -> Result<(), String> {
     match spec.kind {
         SettingKind::Number { min, max, integer } => {
             if integer {
                 let raw = value
-                    .as_u64()
-                    .ok_or_else(|| format!("{}：应为非负整数", spec.id))?;
+                    .as_i64()
+                    .ok_or_else(|| format!("{}：应为整数", spec.id))?;
                 let number = raw as f64;
                 if number < min || number > max {
                     return Err(format!(
@@ -472,6 +541,17 @@ mod tests {
         }
     }
 
+    /// 负值范围（背景图亮度调整）校验：整数有符号支持。
+    #[test]
+    fn validate_value_supports_negative_ranges() {
+        let dim = spec_by_id("reader.background.dim").expect("存在");
+        assert!(validate_value(dim, &serde_json::json!(-50)).is_ok());
+        assert!(validate_value(dim, &serde_json::json!(50)).is_ok());
+        assert!(validate_value(dim, &serde_json::json!(0)).is_ok());
+        assert!(validate_value(dim, &serde_json::json!(-51)).is_err());
+        assert!(validate_value(dim, &serde_json::json!(-12.5)).is_err());
+    }
+
     /// 校验：越界 / 类型错误 / 未知动作均拒绝并带字段路径。
     #[test]
     fn validate_value_rejects_bad_values() {
@@ -554,6 +634,10 @@ mod tests {
                     );
                 }
                 Some(("reader", rest)) => {
+                    if spec.id == "reader.background.file" {
+                        // `Option<String>` 默认 None：默认序列化会省略该字段，跳过导航断言
+                        continue;
+                    }
                     assert!(
                         navigate(&reader_tree, rest).is_some(),
                         "注册项 {} 无法导航",
@@ -572,7 +656,7 @@ mod tests {
         let spec = |id: &str| spec_by_id(id).expect(id);
         let err =
             validate_value(spec("app.maxTabs"), &serde_json::json!(1.5)).expect_err("浮点应拒绝");
-        assert!(err.contains("非负整数"), "{err}");
+        assert!(err.contains("应为整数"), "{err}");
 
         let long = "字".repeat(201);
         let err = validate_value(

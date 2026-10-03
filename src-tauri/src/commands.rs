@@ -15,13 +15,15 @@ use serde::Serialize;
 use tauri::{Emitter, State};
 
 use s_read_txt::app_state::{AppState, RowsPayload, TabInfo};
+use s_read_txt::background::{self, BackgroundEntry};
 use s_read_txt::fonts::{self, FontEntry};
 use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
-    IpcError, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING, CODE_INVALID_POSITION,
-    CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT,
-    CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
+    IpcError, CODE_BACKGROUND_INVALID, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING,
+    CODE_INVALID_POSITION, CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_SESSION_SAVE,
+    CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET, CODE_TAB_NOT_FOUND,
+    CODE_THEME_INVALID,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -252,13 +254,18 @@ pub fn get_settings() -> SettingsSnapshot {
 }
 
 /// 命令：保存全部配置并返回保存后的快照（前端以返回值刷新状态）。
+/// 成功后广播设置变更事件（主窗口热刷新；设置窗口本地状态以返回值为准，无需自行广播）。
 #[tauri::command]
-pub fn save_settings(request: SettingsSaveRequest) -> Result<SettingsSnapshot, IpcError> {
+pub fn save_settings(
+    app: tauri::AppHandle,
+    request: SettingsSaveRequest,
+) -> Result<SettingsSnapshot, IpcError> {
     with_context(LogContext::request(), || {
         let (dir, _origin) = paths::resolve_data_dir();
         settings_store::save_snapshot(&dir, &request)
             .map_err(|err| IpcError::new(CODE_CONFIG_SAVE, format!("保存配置失败：{err}")))?;
         log::info!(target: "sread::ipc", "配置已保存");
+        let _ = app.emit(EVENT_SETTINGS_CHANGED, serde_json::json!({ "kind": "save" }));
         Ok(settings_store::load_snapshot(&dir))
     })
 }
@@ -380,6 +387,53 @@ pub fn get_default_shortcuts() -> std::collections::BTreeMap<String, String> {
     with_context(LogContext::request(), || {
         s_read_txt::settings::defaults::default_bindings()
     })
+}
+
+/// 背景图读取返回体（base64 + MIME；前端拼 data URL 渲染图层）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundImageData {
+    /// 图片字节的 Base64 编码
+    data_base64: String,
+    /// MIME 类型（image/png | image/jpeg | image/webp）
+    mime: String,
+}
+
+/// 命令：设置背景图（校验扩展名/大小 → 复制到数据目录 `backgrounds/` → 单文件驻留）。
+#[tauri::command]
+pub fn set_background_file(path: String) -> Result<BackgroundEntry, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        background::set_background(&dir, Path::new(&path)).map_err(background_ipc_error)
+    })
+}
+
+/// 命令：删除背景图文件（幂等；非法文件名仍拒绝）。
+#[tauri::command]
+pub fn clear_background_file(file_name: String) -> Result<(), IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        background::remove_background(&dir, &file_name).map_err(background_ipc_error)
+    })
+}
+
+/// 命令：读取背景图（文件缺失/非法名返回错误；前端降级为无背景）。
+#[tauri::command]
+pub fn read_background_image(file_name: String) -> Result<BackgroundImageData, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let (bytes, mime) =
+            background::read_background(&dir, &file_name).map_err(background_ipc_error)?;
+        Ok(BackgroundImageData {
+            data_base64: fonts::base64_encode(&bytes),
+            mime: mime.to_string(),
+        })
+    })
+}
+
+/// 背景图错误 → IPC 载荷（统一错误码 `BACKGROUND_INVALID`；消息为中文原因）。
+fn background_ipc_error(err: background::BackgroundError) -> IpcError {
+    IpcError::new(CODE_BACKGROUND_INVALID, err.to_string())
 }
 
 /// 命令：读取历史记录（去重 + 修剪 + 时间倒序；必要时自愈压缩文件）。

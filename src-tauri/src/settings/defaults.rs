@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::settings::model::{Language, LogLevel};
-use crate::settings::reader::TextAlign;
+use crate::settings::reader::{BackgroundFill, TextAlign};
 
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
 /// v2：新增 `hardLimitMB` / `startup` / `statusBar` / 排版扩展等字段（字段补齐式迁移，见 `settings::migrate`）。
@@ -55,6 +55,27 @@ pub const DEFAULT_THEME_ANIM_ENABLED: bool = true;
 pub const DEFAULT_THEME_ANIM_MS: u32 = 200;
 /// 主题过渡时长允许范围（ms，闭区间）
 pub const THEME_ANIM_MS_RANGE: (u32, u32) = (0, 1000);
+
+// ---------- 背景图（T-04～T-08） ----------
+
+/// 默认不启用背景图
+pub const DEFAULT_BACKGROUND_ENABLED: bool = false;
+/// 默认背景图不透明度（%）
+pub const DEFAULT_BACKGROUND_OPACITY: u32 = 40;
+/// 背景图不透明度允许范围（%，闭区间）
+pub const BACKGROUND_OPACITY_RANGE: (u32, u32) = (0, 100);
+/// 默认背景图填充模式
+pub const DEFAULT_BACKGROUND_FILL: BackgroundFill = BackgroundFill::Cover;
+/// 默认背景图模糊半径（px）
+pub const DEFAULT_BACKGROUND_BLUR: u32 = 0;
+/// 背景图模糊半径允许范围（px，闭区间）
+pub const BACKGROUND_BLUR_RANGE: (u32, u32) = (0, 40);
+/// 默认背景图亮度调整（%）
+pub const DEFAULT_BACKGROUND_DIM: i32 = 0;
+/// 背景图亮度调整允许范围（%，闭区间；负=暗化，正=亮化）
+pub const BACKGROUND_DIM_RANGE: (i32, i32) = (-50, 50);
+/// 背景图存储文件名最大长度（字符；注册表校验用）
+pub const BACKGROUND_FILE_MAX_CHARS: u32 = 200;
 /// 默认正文字体
 pub const DEFAULT_FONT_FAMILY: &str = "Microsoft YaHei";
 /// 默认正文字号（px）

@@ -69,6 +69,8 @@ pub const CODE_FONT_TOO_LARGE: &str = "FONT_TOO_LARGE";
 pub const CODE_FONT_NOT_FOUND: &str = "FONT_NOT_FOUND";
 /// 字体文件名为非法值
 pub const CODE_FONT_INVALID_NAME: &str = "FONT_INVALID_NAME";
+/// 背景图操作失败（格式/大小/文件名非法或读取失败）
+pub const CODE_BACKGROUND_INVALID: &str = "BACKGROUND_INVALID";
 
 /// 主题不存在 / 文件无效 / 内置主题删除被拒（消息含具体原因）
 pub const CODE_THEME_INVALID: &str = "THEME_INVALID";

@@ -17,6 +17,7 @@
 //! - `time_util`：RFC 3339 时间工具
 
 pub mod app_state;
+pub mod background;
 pub mod elevation;
 pub mod fonts;
 pub mod history;
