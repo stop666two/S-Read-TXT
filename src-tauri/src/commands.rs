@@ -16,6 +16,8 @@ use tauri::{Emitter, State};
 
 use s_read_txt::app_state::{AppState, RowsPayload, TabInfo};
 use s_read_txt::background::{self, BackgroundEntry};
+use s_read_txt::clipboard_history as clipboard_store;
+use s_read_txt::clipboard_history::ClipboardEntry;
 use s_read_txt::fonts::{self, FontEntry};
 use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
@@ -325,6 +327,48 @@ pub fn fetch_rows_at(
         let app_state = lock_state(&state)?;
         Ok(app_state.rows_at(tab_id, &rows)?)
     })
+}
+
+/// 读取剪贴板历史的有效配置：`(上限, 是否持久化)`（上限 0 = 功能禁用）。
+fn clipboard_config() -> (u32, bool) {
+    let (dir, _origin) = paths::resolve_data_dir();
+    let settings = s_read_txt::settings::store::load_app_settings(&dir);
+    (
+        settings.editor.clipboard.history_limit,
+        settings.editor.clipboard.persist,
+    )
+}
+
+/// 命令：列出剪贴板历史（最新在前；上限 0 时为空）。
+#[tauri::command]
+pub fn list_clipboard_history() -> Vec<ClipboardEntry> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    let (limit, persist) = clipboard_config();
+    clipboard_store::list(&dir, persist, limit)
+}
+
+/// 命令：记录一条剪贴板文本（空文本与禁用时无操作）。
+#[tauri::command]
+pub fn add_clipboard_entry(text: String) -> Vec<ClipboardEntry> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    let (limit, persist) = clipboard_config();
+    clipboard_store::add(&dir, persist, limit, &text)
+}
+
+/// 命令：删除指定条目（越界无操作）。
+#[tauri::command]
+pub fn remove_clipboard_entry(index: u32) -> Vec<ClipboardEntry> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    let (limit, persist) = clipboard_config();
+    clipboard_store::remove(&dir, persist, limit, index as usize)
+}
+
+/// 命令：清空剪贴板历史。
+#[tauri::command]
+pub fn clear_clipboard_history() -> Vec<ClipboardEntry> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    let (_, persist) = clipboard_config();
+    clipboard_store::clear(&dir, persist)
 }
 
 /// 命令：读取全部配置（聚合快照；快捷键字段为「生效绑定」= 默认 + 覆盖）。

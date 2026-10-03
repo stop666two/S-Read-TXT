@@ -18,6 +18,7 @@
 
 pub mod app_state;
 pub mod background;
+pub mod clipboard_history;
 pub mod elevation;
 pub mod fonts;
 pub mod history;

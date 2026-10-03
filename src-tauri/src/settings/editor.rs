@@ -367,6 +367,25 @@ impl Default for MultiCursorSettings {
     }
 }
 
+/// 剪贴板历史设置（`editor.clipboard`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ClipboardSettings {
+    /// 历史上限（条；0 = 禁用，范围见 [`defaults::CLIPBOARD_HISTORY_LIMIT_RANGE`]）
+    pub history_limit: u32,
+    /// 是否持久化到数据目录（关闭时仅进程内会话内存）
+    pub persist: bool,
+}
+
+impl Default for ClipboardSettings {
+    fn default() -> Self {
+        Self {
+            history_limit: defaults::DEFAULT_CLIPBOARD_HISTORY_LIMIT,
+            persist: defaults::DEFAULT_CLIPBOARD_PERSIST,
+        }
+    }
+}
+
 /// 编辑器节（`settings.json` 的嵌套对象 `editor`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -375,6 +394,8 @@ pub struct EditorSettings {
     pub lines: LineOpsSettings,
     /// 多光标设置
     pub multi_cursor: MultiCursorSettings,
+    /// 剪贴板历史设置
+    pub clipboard: ClipboardSettings,
 }
 
 impl Default for EditorSettings {
@@ -382,6 +403,7 @@ impl Default for EditorSettings {
         Self {
             lines: LineOpsSettings::default(),
             multi_cursor: MultiCursorSettings::default(),
+            clipboard: ClipboardSettings::default(),
         }
     }
 }

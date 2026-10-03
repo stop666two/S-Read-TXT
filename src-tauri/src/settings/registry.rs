@@ -409,6 +409,21 @@ pub const SPECS: &[SettingSpec] = &[
             integer: true,
         },
     },
+    // ---------- editor.clipboard（P1-5） ----------
+    SettingSpec {
+        id: "app.editor.clipboard.historyLimit",
+        group: "app.editor.clipboard",
+        kind: SettingKind::Number {
+            min: defaults::CLIPBOARD_HISTORY_LIMIT_RANGE.0 as f64,
+            max: defaults::CLIPBOARD_HISTORY_LIMIT_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.editor.clipboard.persist",
+        group: "app.editor.clipboard",
+        kind: SettingKind::Bool,
+    },
     // ---------- shortcuts.json ----------
     SettingSpec {
         id: "shortcuts.bindings",

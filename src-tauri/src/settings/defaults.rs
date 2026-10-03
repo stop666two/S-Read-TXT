@@ -11,7 +11,7 @@ use crate::settings::reader::{BackgroundFill, TextAlign};
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
 /// v2：新增 `hardLimitMB` / `startup` / `statusBar` / 排版扩展等字段（字段补齐式迁移，见 `settings::migrate`）。
 /// v3：主题升级为 id 体系（旧值 `eye` 迁移为 `paper-cream`；新增主题动画字段）。
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 // ---------- settings.json ----------
 
@@ -47,6 +47,15 @@ pub const HISTORY_RETENTION_DAYS_RANGE: (u32, u32) = (1, 36500);
 pub const DEFAULT_SAVE_BACKUP_ENABLED: bool = true;
 /// 默认是否显示首启引导
 pub const DEFAULT_SHOW_ONBOARDING: bool = true;
+
+// ---------- settings.json / editor.clipboard（P1-5） ----------
+
+/// 默认剪贴板历史上限（条；0 = 禁用）
+pub const DEFAULT_CLIPBOARD_HISTORY_LIMIT: u32 = 200;
+/// 剪贴板历史上限允许范围（闭区间；0 = 禁用）
+pub const CLIPBOARD_HISTORY_LIMIT_RANGE: (u32, u32) = (0, 5000);
+/// 默认是否持久化剪贴板历史到 `data/clipboard-history.json`
+pub const DEFAULT_CLIPBOARD_PERSIST: bool = true;
 
 // ---------- reader.json ----------
 

@@ -174,6 +174,9 @@ fn normalize_editor(editor: &mut EditorSettings) {
     multi.rect_modifier = multi.rect_modifier.normalized();
     let (min_count, max_count) = defaults::MULTI_CURSOR_MAX_COUNT_RANGE;
     multi.max_count = multi.max_count.clamp(min_count, max_count);
+    let clipboard = &mut editor.clipboard;
+    let (min_limit, max_limit) = defaults::CLIPBOARD_HISTORY_LIMIT_RANGE;
+    clipboard.history_limit = clipboard.history_limit.clamp(min_limit, max_limit);
 }
 
 /// 阅读排版归一：主题回退、字体去空白、数值裁剪。
@@ -420,6 +423,25 @@ mod tests {
     }
 
     /// 旧版 reader.json（无 pagePaddingY 字段）加载 → 取默认 48（向后兼容）。
+    /// 剪贴板历史设置归一：上限钳制（0 = 禁用保留），持久化开关原样。
+    #[test]
+    fn editor_clipboard_normalizes_on_load() {
+        let dir = data_dir();
+        let mut app = AppSettings::default();
+        app.editor.clipboard.history_limit = 9999;
+        app.editor.clipboard.persist = false;
+        save_app_settings(dir.path(), &app).expect("保存失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded.editor.clipboard.history_limit, 5000);
+        assert!(!loaded.editor.clipboard.persist);
+        app.editor.clipboard.history_limit = 0;
+        save_app_settings(dir.path(), &app).expect("保存失败");
+        assert_eq!(
+            load_app_settings(dir.path()).editor.clipboard.history_limit,
+            0
+        );
+    }
+
     /// 编辑器多光标设置归一：未知修饰键回退 Alt、上限钳制到 2。
     #[test]
     fn editor_multi_cursor_normalizes_on_load() {
