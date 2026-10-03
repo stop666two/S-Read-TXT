@@ -170,6 +170,10 @@ fn normalize_editor(editor: &mut EditorSettings) {
     if !delimiter_ok {
         lines.column_delimiter = defaults::DEFAULT_LINE_COLUMN_DELIMITER.to_string();
     }
+    let multi = &mut editor.multi_cursor;
+    multi.rect_modifier = multi.rect_modifier.normalized();
+    let (min_count, max_count) = defaults::MULTI_CURSOR_MAX_COUNT_RANGE;
+    multi.max_count = multi.max_count.clamp(min_count, max_count);
 }
 
 /// 阅读排版归一：主题回退、字体去空白、数值裁剪。
@@ -416,6 +420,21 @@ mod tests {
     }
 
     /// 旧版 reader.json（无 pagePaddingY 字段）加载 → 取默认 48（向后兼容）。
+    /// 编辑器多光标设置归一：未知修饰键回退 Alt、上限钳制到 2。
+    #[test]
+    fn editor_multi_cursor_normalizes_on_load() {
+        use crate::settings::editor::RectModifier;
+        let dir = data_dir();
+        let mut app = AppSettings::default();
+        app.editor.multi_cursor.rect_modifier = RectModifier::Unknown;
+        app.editor.multi_cursor.max_count = 1;
+        save_app_settings(dir.path(), &app).expect("保存失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded.editor.multi_cursor.rect_modifier, RectModifier::Alt);
+        assert_eq!(loaded.editor.multi_cursor.max_count, 2);
+        assert!(loaded.editor.multi_cursor.enabled);
+    }
+
     #[test]
     fn reader_settings_missing_padding_y_defaults() {
         let dir = data_dir();

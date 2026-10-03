@@ -387,6 +387,28 @@ pub const SPECS: &[SettingSpec] = &[
             integer: true,
         },
     },
+    // ---------- editor.multiCursor（P1-3） ----------
+    SettingSpec {
+        id: "app.editor.multiCursor.enabled",
+        group: "app.editor.multiCursor",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.editor.multiCursor.rectModifier",
+        group: "app.editor.multiCursor",
+        kind: SettingKind::Enum {
+            values: &["alt", "ctrlAlt"],
+        },
+    },
+    SettingSpec {
+        id: "app.editor.multiCursor.maxCount",
+        group: "app.editor.multiCursor",
+        kind: SettingKind::Number {
+            min: defaults::MULTI_CURSOR_MAX_COUNT_RANGE.0 as f64,
+            max: defaults::MULTI_CURSOR_MAX_COUNT_RANGE.1 as f64,
+            integer: true,
+        },
+    },
     // ---------- shortcuts.json ----------
     SettingSpec {
         id: "shortcuts.bindings",

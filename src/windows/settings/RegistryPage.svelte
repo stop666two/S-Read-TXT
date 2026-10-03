@@ -73,7 +73,11 @@
     keepFirst: 'setting.enum.dedupeMode.keepFirst',
     keepLast: 'setting.enum.dedupeMode.keepLast',
   },
-  'app.editor.lines.indentStyle': {
+    'app.editor.multiCursor.rectModifier': {
+      alt: 'setting.enum.rectModifier.alt',
+      ctrlAlt: 'setting.enum.rectModifier.ctrlAlt',
+    },
+    'app.editor.lines.indentStyle': {
     spaces: 'setting.enum.indentStyle.spaces',
     tab: 'setting.enum.indentStyle.tab',
   },

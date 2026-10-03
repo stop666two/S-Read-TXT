@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::settings::editor::{
-    LineCaseMode, LineDedupeMode, LineIndentStyle, LineScopeKind, LineSortMode,
+    LineCaseMode, LineDedupeMode, LineIndentStyle, LineScopeKind, LineSortMode, RectModifier,
 };
 use crate::settings::model::{Language, LogLevel};
 use crate::settings::reader::{BackgroundFill, TextAlign};
@@ -11,7 +11,7 @@ use crate::settings::reader::{BackgroundFill, TextAlign};
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
 /// v2：新增 `hardLimitMB` / `startup` / `statusBar` / 排版扩展等字段（字段补齐式迁移，见 `settings::migrate`）。
 /// v3：主题升级为 id 体系（旧值 `eye` 迁移为 `paper-cream`；新增主题动画字段）。
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 // ---------- settings.json ----------
 
@@ -157,6 +157,14 @@ pub const LINE_COLUMN_DELIMITER_MAX_CHARS: usize = 16;
 pub const DEFAULT_LINE_PREVIEW: bool = true;
 /// 行操作默认跳过空行
 pub const DEFAULT_LINE_SKIP_EMPTY: bool = false;
+/// 默认启用多光标与矩形选择
+pub const DEFAULT_MULTI_CURSOR_ENABLED: bool = true;
+/// 默认矩形选择修饰键（Alt）
+pub const DEFAULT_MULTI_CURSOR_RECT_MODIFIER: RectModifier = RectModifier::Alt;
+/// 默认多光标数量上限
+pub const DEFAULT_MULTI_CURSOR_MAX_COUNT: u32 = 1000;
+/// 多光标数量上限允许范围（闭区间）
+pub const MULTI_CURSOR_MAX_COUNT_RANGE: (u32, u32) = (2, 10_000);
 
 // ---------- shortcuts.json ----------
 

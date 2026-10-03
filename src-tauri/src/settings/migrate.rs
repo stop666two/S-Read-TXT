@@ -60,13 +60,17 @@ type MigrationStep = fn(&mut Value);
 /// 由模型的 serde 默认值在反序列化时补齐，本步骤只做版本号提升；
 /// v2 → v3：主题升级为 id 体系（`eye` → `paper-cream`）；
 /// v3 → v4：新增 `editor.lines` 节（字段补齐式）。
-const STEPS: &[(u32, MigrationStep)] = &[(1, v1_to_v2), (2, v2_to_v3), (3, v3_to_v4)];
+const STEPS: &[(u32, MigrationStep)] =
+    &[(1, v1_to_v2), (2, v2_to_v3), (3, v3_to_v4), (4, v4_to_v5)];
 
 /// v1 → v2：字段补齐式迁移（无结构变换）。
 fn v1_to_v2(_value: &mut Value) {}
 
 /// v3 → v4：新增 `editor.lines` 节（字段补齐式迁移，无结构变换）。
 fn v3_to_v4(_value: &mut Value) {}
+
+/// v4 → v5：新增 `editor.multiCursor`（字段补齐由 serde 默认值完成，无显式改写）。
+fn v4_to_v5(_value: &mut Value) {}
 
 /// v2 → v3：主题 id 体系升级——旧内置「护眼（米黄）」`eye` 迁移为 `paper-cream`。
 /// 对不含 `theme` 字段的配置（settings.json / shortcuts.json）为空操作。

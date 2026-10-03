@@ -301,18 +301,87 @@ impl Default for LineOpsSettings {
     }
 }
 
+/// 矩形（列）选择修饰键。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RectModifier {
+    /// `Alt`（默认）
+    Alt,
+    /// `Ctrl+Alt`
+    CtrlAlt,
+    /// 未知取值（向前兼容；载入时归一为默认）
+    Unknown,
+}
+
+/// 手写反序列化：未知字符串宽容归入 `Unknown`。
+impl<'de> Deserialize<'de> for RectModifier {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.trim().to_ascii_lowercase().as_str() {
+            "alt" => Self::Alt,
+            "ctrlalt" | "ctrl+alt" => Self::CtrlAlt,
+            _ => Self::Unknown,
+        })
+    }
+}
+
+impl Default for RectModifier {
+    fn default() -> Self {
+        defaults::DEFAULT_MULTI_CURSOR_RECT_MODIFIER
+    }
+}
+
+impl RectModifier {
+    /// 归一：`Unknown` 回退默认，其余原样。
+    pub fn normalized(self) -> Self {
+        if self == Self::Unknown {
+            defaults::DEFAULT_MULTI_CURSOR_RECT_MODIFIER
+        } else {
+            self
+        }
+    }
+}
+
+/// 多光标设置（`editor.multiCursor`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MultiCursorSettings {
+    /// 是否启用多光标与矩形选择
+    pub enabled: bool,
+    /// 矩形选择修饰键
+    pub rect_modifier: RectModifier,
+    /// 多光标数量上限（性能保护）
+    pub max_count: u32,
+}
+
+impl Default for MultiCursorSettings {
+    fn default() -> Self {
+        Self {
+            enabled: defaults::DEFAULT_MULTI_CURSOR_ENABLED,
+            rect_modifier: defaults::DEFAULT_MULTI_CURSOR_RECT_MODIFIER,
+            max_count: defaults::DEFAULT_MULTI_CURSOR_MAX_COUNT,
+        }
+    }
+}
+
 /// 编辑器节（`settings.json` 的嵌套对象 `editor`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct EditorSettings {
     /// 行操作默认值
     pub lines: LineOpsSettings,
+    /// 多光标设置
+    pub multi_cursor: MultiCursorSettings,
 }
 
 impl Default for EditorSettings {
     fn default() -> Self {
         Self {
             lines: LineOpsSettings::default(),
+            multi_cursor: MultiCursorSettings::default(),
         }
     }
 }

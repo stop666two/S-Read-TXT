@@ -296,8 +296,16 @@ export interface EditorLinesSettings {
 }
 
 /** 编辑器设置分组。 */
+/** 编辑器多光标设置（与 Rust `MultiCursorSettings` 对应）。 */
+export interface MultiCursorSettings {
+  enabled: boolean;
+  rectModifier: 'alt' | 'ctrlAlt';
+  maxCount: number;
+}
+
 export interface EditorSettings {
   lines: EditorLinesSettings;
+  multiCursor: MultiCursorSettings;
 }
 
 /** 保存结果（与 Rust commands::SaveTabResult 对齐）。 */
