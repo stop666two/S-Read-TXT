@@ -433,6 +433,55 @@ pub const SPECS: &[SettingSpec] = &[
         group: "app.editor.clipboard",
         kind: SettingKind::Bool,
     },
+    // ---------- editor.insert / autoPairs / cleanup（P1-7） ----------
+    SettingSpec {
+        id: "app.editor.insert.timestampFormat",
+        group: "app.editor.insert",
+        kind: SettingKind::Enum {
+            values: &[
+                "localDateTime",
+                "dateOnly",
+                "timeOnly",
+                "iso8601",
+                "rfc3339Utc",
+            ],
+        },
+    },
+    SettingSpec {
+        id: "app.editor.autoPairs.enabled",
+        group: "app.editor.autoPairs",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.editor.autoPairs.autoClose",
+        group: "app.editor.autoPairs",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.editor.autoPairs.autoIndent",
+        group: "app.editor.autoPairs",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.editor.autoPairs.highlightMatch",
+        group: "app.editor.autoPairs",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.editor.cleanup.trailingWhitespace",
+        group: "app.editor.cleanup",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.editor.cleanup.collapseBlankLines",
+        group: "app.editor.cleanup",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.editor.cleanup.trailingNewline",
+        group: "app.editor.cleanup",
+        kind: SettingKind::Bool,
+    },
     // ---------- settings.json / 查找与正则 ----------
     SettingSpec {
         id: "app.find.caseSensitive",

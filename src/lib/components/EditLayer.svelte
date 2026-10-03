@@ -47,12 +47,16 @@
   import LineOpsDialog from './LineOpsDialog.svelte';
 import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
   import type {
+    AutoPairsSettings,
+    CleanupSettings,
     EditOp,
     EditorLinesSettings,
+    InsertSettings,
     LineOpConfig,
     LineOpOutcome,
     LineOpPreview,
     MultiCursorSettings,
+    TimestampFormat,
   } from '../ipc';
   import type { EditActionType, EditorAction } from '../edit/actions';
 
@@ -83,6 +87,12 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
     multiCursor?: MultiCursorSettings | null;
     /** 查找设置（未就绪为 null 时使用兜底常量） */
     findSettings?: FindSettings | null;
+    /** 时间戳插入设置（未就绪为 null 时使用兜底常量） */
+    insertSettings?: InsertSettings | null;
+    /** 括号匹配/自动缩进设置（未就绪为 null 时使用兜底常量） */
+    autoPairs?: AutoPairsSettings | null;
+    /** 清理类操作设置（未就绪为 null 时使用兜底常量） */
+    cleanupSettings?: CleanupSettings | null;
   }
   let {
     tabId,
@@ -98,6 +108,9 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
     lineDefaults,
     multiCursor,
     findSettings,
+    insertSettings,
+    autoPairs,
+    cleanupSettings,
   }: Props = $props();
 
   /** 叠加层盒子（相对 .page 的像素坐标） */
@@ -138,6 +151,10 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
   const MATCH_HIGHLIGHT_MAX = 800;
   /** 文档内全部命中高亮盒（当前可见行窗口内） */
   let matchBoxes = $state<Box[]>([]);
+  /** 括号配对高亮盒（P1-7；空=无高亮）。 */
+  let bracketBoxes = $state<Box[]>([]);
+  /** 当前括号配对结果（[光标侧, 配对侧] 显示坐标；null=无）。 */
+  let bracketMatch = $state<CaretPos[] | null>(null);
   /** 查找设置兜底（与 Rust 默认一致）。 */
   const FALLBACK_FIND: FindSettings = {
     caseSensitive: false,
@@ -205,6 +222,33 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
 
   /** 生效的多光标设置。 */
   const multi = $derived(multiCursor ?? FALLBACK_MULTI);
+
+  /** 时间戳插入设置兜底（与 Rust 默认一致）。 */
+  const FALLBACK_INSERT: InsertSettings = { timestampFormat: 'localDateTime' };
+
+  /** 生效的时间戳插入设置。 */
+  const insertCfg = $derived(insertSettings ?? FALLBACK_INSERT);
+
+  /** 括号匹配/自动缩进设置兜底（与 Rust 默认一致）。 */
+  const FALLBACK_AUTO_PAIRS: AutoPairsSettings = {
+    enabled: true,
+    autoClose: true,
+    autoIndent: true,
+    highlightMatch: true,
+  };
+
+  /** 生效的括号匹配设置。 */
+  const autoPairsCfg = $derived(autoPairs ?? FALLBACK_AUTO_PAIRS);
+
+  /** 清理设置兜底（与 Rust 默认一致）。 */
+  const FALLBACK_CLEANUP: CleanupSettings = {
+    trailingWhitespace: true,
+    collapseBlankLines: true,
+    trailingNewline: true,
+  };
+
+  /** 生效的清理设置。 */
+  const cleanupCfg = $derived(cleanupSettings ?? FALLBACK_CLEANUP);
 
   /** 附加光标（多光标；显示坐标，不含主光标） */
   let extraCarets = $state<CaretPos[]>([]);
@@ -347,6 +391,89 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     return boxes;
   }
 
+  /** 自动补对字符表（开→闭；成对引号亦在此）。 */
+  const PAIR_OPENERS: Record<string, string> = {
+    '(': ')',
+    '[': ']',
+    '{': '}',
+    '"': '"',
+    "'": "'",
+    '`': '`',
+  };
+
+  /** 闭括号反查表（开括号；用于跳过与配对扫描）。 */
+  const PAIR_CLOSERS: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
+
+  /** 括号配对高亮盒（从 bracketMatch 换算）。 */
+  function bracketMatchRects(pageRect: DOMRect): Box[] {
+    const match = bracketMatch;
+    if (!match || match.length !== 2) return [];
+    const boxes: Box[] = [];
+    for (const pos of match) {
+      boxes.push(...rowRangeRects(pos.row, pos.utf16, pos.utf16 + 1, pageRect));
+    }
+    return boxes;
+  }
+
+  /** 光标旁括号 → 配对位置（同/跨显示行按字符流扫描；限额 400 行 / 20 万字符）。 */
+  async function findBracketMatch(pos: CaretPos): Promise<CaretPos | null> {
+    const cur = rowText(pos.row) ?? (await ensureRow(pos.row));
+    if (cur === undefined) return null;
+    const before = pos.utf16 > 0 ? cur.charAt(pos.utf16 - 1) : '';
+    const at = pos.utf16 < cur.length ? cur.charAt(pos.utf16) : '';
+    let ch = '';
+    let index = 0;
+    if (before && (before in PAIR_OPENERS || before in PAIR_CLOSERS)) {
+      ch = before;
+      index = pos.utf16 - 1;
+    } else if (at && (at in PAIR_OPENERS || at in PAIR_CLOSERS)) {
+      ch = at;
+      index = pos.utf16;
+    } else {
+      return null;
+    }
+    const opener = PAIR_OPENERS[ch];
+    const forward = opener !== undefined;
+    const counterpart = forward ? opener : PAIR_CLOSERS[ch];
+    if (!counterpart) return null;
+    let depth = 0;
+    let budget = 200_000;
+    if (forward) {
+      const lastRow = Math.min(rowsTotal - 1, pos.row + 400);
+      for (let row = pos.row; row <= lastRow && budget > 0; row += 1) {
+        const text = row === pos.row ? cur : rowText(row) ?? (await ensureRow(row));
+        if (text === undefined) break;
+        const from = row === pos.row ? index : 0;
+        for (let i = from; i < text.length && budget > 0; i += 1) {
+          budget -= 1;
+          const c = text.charAt(i);
+          if (c === ch) depth += 1;
+          else if (c === counterpart) {
+            depth -= 1;
+            if (depth === 0) return { row, utf16: i };
+          }
+        }
+      }
+    } else {
+      const firstRow = Math.max(0, pos.row - 400);
+      for (let row = pos.row; row >= firstRow && budget > 0; row -= 1) {
+        const text = row === pos.row ? cur : rowText(row) ?? (await ensureRow(row));
+        if (text === undefined) break;
+        const from = row === pos.row ? index : text.length - 1;
+        for (let i = from; i >= 0 && budget > 0; i -= 1) {
+          budget -= 1;
+          const c = text.charAt(i);
+          if (c === ch) depth += 1;
+          else if (c === counterpart) {
+            depth -= 1;
+            if (depth === 0) return { row, utf16: i };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   /** 重算光标、多光标与选区叠加层。 */
   function refreshOverlay(): void {
     const page = pageEl();
@@ -355,6 +482,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       selBoxes = [];
       extraBoxes = [];
       rectBoxes = [];
+      bracketBoxes = [];
       return;
     }
     const pageRect = page.getBoundingClientRect();
@@ -364,7 +492,29 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       .map((pos) => caretRectAt(pos, pageRect))
       .filter((box): box is Box => box !== null);
     rectBoxes = rectSelectionRects(rectRange, pageRect);
+    bracketBoxes = bracketMatchRects(pageRect);
   }
+
+  /** 括号配对高亮：折叠光标且开关开启时防抖扫描（否则清除）。 */
+  $effect(() => {
+    void selection;
+    void revision;
+    const active = autoPairsCfg.enabled && autoPairsCfg.highlightMatch && isCollapsed(selection);
+    if (!active) {
+      bracketMatch = null;
+      return;
+    }
+    const pos = selection.head;
+    const timer = setTimeout(() => {
+      void (async () => {
+        const found = await findBracketMatch(pos);
+        bracketMatch = found ? [pos, found] : null;
+        await tick();
+        refreshOverlay();
+      })();
+    }, 80);
+    return () => clearTimeout(timer);
+  });
 
   /** 光标移出可视区时滚动容器（保持安全边距）。 */
   function scrollCaretIntoView(): void {
@@ -703,6 +853,20 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     const pos = await resolveLoadedPos(selection.head);
     const cur = segOf(pos.row);
     if (!cur) return;
+    // 自动补对：光标恰在空对（如 `()`）之间时，退格一次删除整对。
+    const pairPrev = pos.utf16 > 0 ? cur.text.charAt(pos.utf16 - 1) : '';
+    const pairNext = pos.utf16 < cur.text.length ? cur.text.charAt(pos.utf16) : '';
+    if (
+      autoPairsCfg.enabled &&
+      autoPairsCfg.autoClose &&
+      pairPrev &&
+      PAIR_OPENERS[pairPrev] === pairNext
+    ) {
+      const start = logicalOf({ row: pos.row, utf16: pos.utf16 - 1 });
+      const end = logicalOf({ row: pos.row, utf16: pos.utf16 + 1 });
+      await applyResult(() => ipc.applyEdits(tabId, [deleteOp({ anchor: start, head: end })]));
+      return;
+    }
     let prev: SegMeta | null = null;
     if (pos.utf16 === 0 && pos.row > 0) {
       const text = rowText(pos.row - 1) ?? (await ensureRow(pos.row - 1));
@@ -1427,6 +1591,157 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     await doCopy(false);
   }
 
+  /** 键入文本：启用自动补对时优先走括号/引号处理。 */
+  async function handleTypedText(text: string): Promise<void> {
+    if (
+      text.length === 1 &&
+      autoPairsCfg.enabled &&
+      autoPairsCfg.autoClose &&
+      extraCarets.length === 0 &&
+      !(rectRange && !rectIsCollapsed(rectRange))
+    ) {
+      if (await tryAutoPair(text)) return;
+    }
+    await doInsert(text);
+  }
+
+  /** 自动补对（返回 true 表示已处理，不再常规插入）。 */
+  async function tryAutoPair(ch: string): Promise<boolean> {
+    const closer = PAIR_OPENERS[ch];
+    if (closer !== undefined) {
+      if (!isCollapsed(selection)) {
+        const resolved = await resolveSelection();
+        const selected = await gatherSelectedText();
+        if (selected === null) return false;
+        await applyResult(async () =>
+          ipc.applyEdits(tabId, [replaceOp(logicalSelection(resolved), ch + selected + closer)]),
+        );
+        return true;
+      }
+      const pos = await resolveLoadedPos(selection.head);
+      const row = segOf(pos.row);
+      if (row && pos.utf16 < row.text.length && row.text.charAt(pos.utf16) === closer) {
+        // 下一个字符已是右符号：跳过（不重复插入）
+        setSelection(collapsed(moveRight(pos, rowsTotal, rowText)));
+        refreshOverlay();
+        return true;
+      }
+      const result = await ipc.applyEdits(tabId, [insertOp(logicalOf(pos), ch + closer)]);
+      await applyResult(async () => result);
+      // 光标回退到左右符号之间（applyResult 落点在右符号之后）
+      setSelection(collapsed({ row: result.caretRow, utf16: Math.max(0, result.caretUtf16 - 1) }));
+      await tick();
+      refreshOverlay();
+      return true;
+    }
+    if (ch in PAIR_CLOSERS && isCollapsed(selection)) {
+      const pos = await resolveLoadedPos(selection.head);
+      const row = segOf(pos.row);
+      if (row && pos.utf16 < row.text.length && row.text.charAt(pos.utf16) === ch) {
+        setSelection(collapsed(moveRight(pos, rowsTotal, rowText)));
+        refreshOverlay();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 回车：启用自动缩进时继承当前行行首空白。 */
+  async function handleEnter(): Promise<void> {
+    if (
+      autoPairsCfg.enabled &&
+      autoPairsCfg.autoIndent &&
+      extraCarets.length === 0 &&
+      !(rectRange && !rectIsCollapsed(rectRange)) &&
+      isCollapsed(selection)
+    ) {
+      const pos = await resolveLoadedPos(selection.head);
+      const cur = segOf(pos.row);
+      const indent = cur ? /^[ \t]*/.exec(cur.text)?.[0] ?? '' : '';
+      if (indent) {
+        await doInsert('\n' + indent);
+        return;
+      }
+    }
+    await doInsert('\n');
+  }
+
+  /** 生成当前时间戳字符串（格式取设置；RFC 3339 为 UTC）。 */
+  function formatTimestamp(format: TimestampFormat): string {
+    const now = new Date();
+    const pad = (value: number, width = 2): string => String(value).padStart(width, '0');
+    const y = now.getFullYear();
+    const mo = pad(now.getMonth() + 1);
+    const d = pad(now.getDate());
+    const h = pad(now.getHours());
+    const mi = pad(now.getMinutes());
+    const s = pad(now.getSeconds());
+    switch (format) {
+      case 'dateOnly':
+        return `${y}-${mo}-${d}`;
+      case 'timeOnly':
+        return `${h}:${mi}:${s}`;
+      case 'iso8601': {
+        const offset = -now.getTimezoneOffset();
+        const sign = offset >= 0 ? '+' : '-';
+        const oh = pad(Math.floor(Math.abs(offset) / 60));
+        const om = pad(Math.abs(offset) % 60);
+        return `${y}-${mo}-${d}T${h}:${mi}:${s}${sign}${oh}:${om}`;
+      }
+      case 'rfc3339Utc':
+        return now.toISOString().replace(/\.\d{3}Z$/, 'Z');
+      case 'localDateTime':
+      default:
+        return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+    }
+  }
+
+  /** 插入日期时间（多光标/矩形按现有插入路径批量处理）。 */
+  async function insertTimestamp(): Promise<void> {
+    await doInsert(formatTimestamp(insertCfg.timestampFormat));
+  }
+
+  /** 清理类操作：执行单个行操作（单撤销步），返回有效变更数。 */
+  async function runCleanup(op: LineOpConfig['op'], report: boolean): Promise<number> {
+    const base = lineDefaults ?? FALLBACK_LINE_DEFAULTS;
+    const outcome = await ipc.applyLineOp(tabId, {
+      op,
+      scope: { kind: 'all' },
+      sortOrder: base.sortMode,
+      sortSeed: 1,
+      dedupeMode: base.dedupeMode,
+      dedupeIgnoreCase: base.dedupeIgnoreCase,
+      dedupeFuzzy: base.dedupeFuzzy,
+      indentWidth: base.indentWidth,
+      indentStyle: base.indentStyle,
+      caseMode: base.caseDefault,
+      widthDirection: 'toHalf',
+      text: '',
+      count: 1,
+      delimiter: base.columnDelimiter,
+      delimiterTo: ',',
+      skipEmpty: false,
+      previewLines: 10,
+    });
+    const applied = outcome.applied;
+    if (applied) {
+      await applyResult(async () => applied);
+    }
+    if (report) {
+      toasts.show(t(outcome.affected > 0 ? 'cleanup.done' : 'cleanup.none'));
+    }
+    return outcome.affected;
+  }
+
+  /** 一键清理：按设置勾选依次执行（每项各自为一个撤销步）。 */
+  async function runCleanupAll(): Promise<void> {
+    let affected = 0;
+    if (cleanupCfg.trailingWhitespace) affected += await runCleanup('trimTrailingWhitespace', false);
+    if (cleanupCfg.collapseBlankLines) affected += await runCleanup('collapseEmptyLines', false);
+    if (cleanupCfg.trailingNewline) affected += await runCleanup('ensureTrailingNewline', false);
+    toasts.show(t(affected > 0 ? 'cleanup.done' : 'cleanup.none'));
+  }
+
   /** 外部动作分发（菜单触发）。 */
   function handleAction(type: EditActionType): void {
     switch (type) {
@@ -1468,6 +1783,21 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
         break;
       case 'copyMarkdown':
         void copyAsMarkdown();
+        break;
+      case 'insertTimestamp':
+        void insertTimestamp();
+        break;
+      case 'cleanupTrailingWhitespace':
+        void runCleanup('trimTrailingWhitespace', true);
+        break;
+      case 'cleanupCollapseBlankLines':
+        void runCleanup('collapseEmptyLines', true);
+        break;
+      case 'cleanupTrailingNewline':
+        void runCleanup('ensureTrailingNewline', true);
+        break;
+      case 'cleanupAll':
+        void runCleanupAll();
         break;
     }
   }
@@ -1535,7 +1865,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
         void doDeleteForward();
         break;
       case 'Enter':
-        void doInsert('\n');
+        void handleEnter();
         break;
       case 'Tab':
         void doInsert('\t');
@@ -1558,13 +1888,13 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       case 'insertText':
         if (event.data) {
           event.preventDefault();
-          void doInsert(event.data);
+          void handleTypedText(event.data);
         }
         break;
       case 'insertLineBreak':
       case 'insertParagraph':
         event.preventDefault();
-        void doInsert('\n');
+        void handleEnter();
         break;
       case 'deleteContentBackward':
         event.preventDefault();
@@ -1851,6 +2181,13 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
   ></div>
 {/each}
 
+{#each bracketBoxes as box, index (index)}
+  <div
+    class="bracket-match"
+    style="left: {box.left}px; top: {box.top}px; width: {box.width}px; height: {box.height}px"
+  ></div>
+{/each}
+
 {#each rectBoxes as box, index (index)}
   <div
     class="selection rect"
@@ -1984,6 +2321,12 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     pointer-events: none;
   }
 
+  .bracket-match {
+    position: absolute;
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+    pointer-events: none;
+  }
   .selection.rect {
     background: rgba(59, 110, 165, 0.2);
   }

@@ -178,6 +178,7 @@ fn normalize_editor(editor: &mut EditorSettings) {
     let clipboard = &mut editor.clipboard;
     let (min_limit, max_limit) = defaults::CLIPBOARD_HISTORY_LIMIT_RANGE;
     clipboard.history_limit = clipboard.history_limit.clamp(min_limit, max_limit);
+    editor.insert.timestamp_format = editor.insert.timestamp_format.normalized();
 }
 
 /// 查找/正则归一：范围钳制、枚举回退、颜色与正则库合法性校验。
@@ -549,6 +550,22 @@ mod tests {
         assert_eq!(
             load_app_settings(dir.path()).editor.clipboard.history_limit,
             0
+        );
+    }
+
+    /// 时间戳格式未知取值归一（P1-7）。
+    #[test]
+    fn editor_timestamp_format_normalizes_on_load() {
+        let dir = data_dir();
+        std::fs::write(
+            app_settings_path(dir.path()),
+            br#"{"schemaVersion": 8, "editor": {"insert": {"timestampFormat": "weird"}}}"#,
+        )
+        .expect("写测试文件失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(
+            loaded.editor.insert.timestamp_format,
+            crate::settings::editor::TimestampFormat::LocalDateTime
         );
     }
 

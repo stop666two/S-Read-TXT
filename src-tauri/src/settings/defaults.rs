@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::settings::editor::{
     LineCaseMode, LineDedupeMode, LineIndentStyle, LineScopeKind, LineSortMode, RectModifier,
+    TimestampFormat,
 };
 use crate::settings::model::{FindScope, Language, LogLevel};
 use crate::settings::reader::{BackgroundFill, TextAlign};
@@ -13,7 +14,8 @@ use crate::settings::reader::{BackgroundFill, TextAlign};
 /// v3：主题升级为 id 体系（旧值 `eye` 迁移为 `paper-cream`；新增主题动画字段）。
 /// v4–v6：编辑器行操作/多光标/剪贴板设置节（字段补齐式）。
 /// v7：新增查找与正则设置节（find/regex）。
-pub const SCHEMA_VERSION: u32 = 7;
+/// v8：新增辅助编辑设置节（editor.insert / autoPairs / cleanup，P1-7）。
+pub const SCHEMA_VERSION: u32 = 8;
 
 // ---------- settings.json ----------
 
@@ -176,6 +178,23 @@ pub const DEFAULT_MULTI_CURSOR_RECT_MODIFIER: RectModifier = RectModifier::Alt;
 pub const DEFAULT_MULTI_CURSOR_MAX_COUNT: u32 = 1000;
 /// 多光标数量上限允许范围（闭区间）
 pub const MULTI_CURSOR_MAX_COUNT_RANGE: (u32, u32) = (2, 10_000);
+
+/// 默认时间戳插入格式（本地日期时间，`YYYY-MM-DD HH:mm:ss`）
+pub const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = TimestampFormat::LocalDateTime;
+/// 默认启用括号匹配/自动缩进总开关
+pub const DEFAULT_AUTO_PAIRS_ENABLED: bool = true;
+/// 默认启用自动补对（选区包裹、右符号跳过、空对退格）
+pub const DEFAULT_AUTO_PAIRS_AUTO_CLOSE: bool = true;
+/// 默认启用回车自动继承缩进
+pub const DEFAULT_AUTO_PAIRS_AUTO_INDENT: bool = true;
+/// 默认启用括号配对高亮
+pub const DEFAULT_AUTO_PAIRS_HIGHLIGHT_MATCH: bool = true;
+/// 默认「一键清理」包含：删除行尾空白
+pub const DEFAULT_CLEANUP_TRAILING_WHITESPACE: bool = true;
+/// 默认「一键清理」包含：合并重复空行
+pub const DEFAULT_CLEANUP_COLLAPSE_BLANK_LINES: bool = true;
+/// 默认「一键清理」包含：统一末尾换行
+pub const DEFAULT_CLEANUP_TRAILING_NEWLINE: bool = true;
 
 // ---------- settings.json / 查找与正则 ----------
 

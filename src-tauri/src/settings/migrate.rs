@@ -67,7 +67,11 @@ const STEPS: &[(u32, MigrationStep)] = &[
     (4, v4_to_v5),
     (5, v5_to_v6),
     (6, v6_to_v7),
+    (7, v7_to_v8),
 ];
+
+/// v7 → v8：新增 `editor.insert` / `editor.autoPairs` / `editor.cleanup` 字段（serde default 补齐）。
+fn v7_to_v8(_value: &mut Value) {}
 
 /// v1 → v2：字段补齐式迁移（无结构变换）。
 fn v1_to_v2(_value: &mut Value) {}

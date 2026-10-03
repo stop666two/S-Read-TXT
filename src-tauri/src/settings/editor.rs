@@ -386,6 +386,125 @@ impl Default for ClipboardSettings {
     }
 }
 
+/// 时间戳插入格式（`editor.insert.timestampFormat`）。
+///
+/// 宽容反序列化：未知取值归入 [`TimestampFormat::Unknown`]，保存前经
+/// [`TimestampFormat::normalized`] 回退默认；`Unknown` 不会落盘。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TimestampFormat {
+    /// 本地日期时间（`YYYY-MM-DD HH:mm:ss`，默认）
+    LocalDateTime,
+    /// 仅日期（`YYYY-MM-DD`）
+    DateOnly,
+    /// 仅时间（`HH:mm:ss`）
+    TimeOnly,
+    /// ISO 8601（本地时间带偏移，如 `2026-10-03T14:30:00+08:00`）
+    Iso8601,
+    /// RFC 3339（UTC，`2026-10-03T06:30:00Z`）
+    Rfc3339Utc,
+    /// 未知取值（向前兼容；载入时归一为默认）
+    Unknown,
+}
+
+/// 手写反序列化：未知字符串宽容归入 `Unknown`（避免整份配置回退）。
+impl<'de> Deserialize<'de> for TimestampFormat {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.trim().to_ascii_lowercase().as_str() {
+            "localdatetime" | "local" => Self::LocalDateTime,
+            "dateonly" | "date" => Self::DateOnly,
+            "timeonly" | "time" => Self::TimeOnly,
+            "iso8601" | "iso" => Self::Iso8601,
+            "rfc3339utc" | "rfc3339" | "utc" => Self::Rfc3339Utc,
+            _ => Self::Unknown,
+        })
+    }
+}
+
+impl Default for TimestampFormat {
+    fn default() -> Self {
+        defaults::DEFAULT_TIMESTAMP_FORMAT
+    }
+}
+
+impl TimestampFormat {
+    /// 归一：`Unknown` 回退默认，其余原样。
+    pub fn normalized(self) -> Self {
+        if self == Self::Unknown {
+            defaults::DEFAULT_TIMESTAMP_FORMAT
+        } else {
+            self
+        }
+    }
+}
+
+/// 时间戳插入设置（`editor.insert`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct InsertSettings {
+    /// 插入格式（见 [`TimestampFormat`]）
+    pub timestamp_format: TimestampFormat,
+}
+
+impl Default for InsertSettings {
+    fn default() -> Self {
+        Self {
+            timestamp_format: defaults::DEFAULT_TIMESTAMP_FORMAT,
+        }
+    }
+}
+
+/// 括号匹配/自动缩进设置（`editor.autoPairs`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AutoPairsSettings {
+    /// 总开关（关闭后其余分项不生效）
+    pub enabled: bool,
+    /// 自动补对（含选区包裹、右符号跳过、空对退格）
+    pub auto_close: bool,
+    /// 回车自动继承行首缩进
+    pub auto_indent: bool,
+    /// 光标旁括号与其配对括号高亮
+    pub highlight_match: bool,
+}
+
+impl Default for AutoPairsSettings {
+    fn default() -> Self {
+        Self {
+            enabled: defaults::DEFAULT_AUTO_PAIRS_ENABLED,
+            auto_close: defaults::DEFAULT_AUTO_PAIRS_AUTO_CLOSE,
+            auto_indent: defaults::DEFAULT_AUTO_PAIRS_AUTO_INDENT,
+            highlight_match: defaults::DEFAULT_AUTO_PAIRS_HIGHLIGHT_MATCH,
+        }
+    }
+}
+
+/// 清理类操作设置（`editor.cleanup`；控制「一键清理」的参与项）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CleanupSettings {
+    /// 一键清理包含：删除行尾空白
+    pub trailing_whitespace: bool,
+    /// 一键清理包含：合并重复空行
+    pub collapse_blank_lines: bool,
+    /// 一键清理包含：统一末尾换行（文件不以换行结尾时补一个）
+    pub trailing_newline: bool,
+}
+
+impl Default for CleanupSettings {
+    fn default() -> Self {
+        Self {
+            trailing_whitespace: defaults::DEFAULT_CLEANUP_TRAILING_WHITESPACE,
+            collapse_blank_lines: defaults::DEFAULT_CLEANUP_COLLAPSE_BLANK_LINES,
+            trailing_newline: defaults::DEFAULT_CLEANUP_TRAILING_NEWLINE,
+        }
+    }
+}
+
 /// 编辑器节（`settings.json` 的嵌套对象 `editor`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -396,6 +515,12 @@ pub struct EditorSettings {
     pub multi_cursor: MultiCursorSettings,
     /// 剪贴板历史设置
     pub clipboard: ClipboardSettings,
+    /// 时间戳插入设置
+    pub insert: InsertSettings,
+    /// 括号匹配/自动缩进设置
+    pub auto_pairs: AutoPairsSettings,
+    /// 清理类操作设置
+    pub cleanup: CleanupSettings,
 }
 
 impl Default for EditorSettings {
@@ -404,6 +529,9 @@ impl Default for EditorSettings {
             lines: LineOpsSettings::default(),
             multi_cursor: MultiCursorSettings::default(),
             clipboard: ClipboardSettings::default(),
+            insert: InsertSettings::default(),
+            auto_pairs: AutoPairsSettings::default(),
+            cleanup: CleanupSettings::default(),
         }
     }
 }

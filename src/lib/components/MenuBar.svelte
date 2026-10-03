@@ -91,6 +91,8 @@
   let recentOpen = $state(false);
   /** 「复制为」子菜单展开（悬停控制；P1-5） */
   let copyAsOpen = $state(false);
+  /** 清理子菜单展开态（P1-7）。 */
+  let cleanupOpen = $state(false);
 
   /** 切换菜单开合 */
   function toggle(name: MenuName): void {
@@ -220,6 +222,47 @@
       >
         <span>{t('menu.edit.lineOps')}</span>
       </button>
+      <button
+        class="item"
+        disabled={!editing}
+        onclick={() => run(() => onEditorAction?.('insertTimestamp'))}
+      >
+        <span>{t('menu.edit.insertTimestamp')}</span>
+      </button>
+      <div
+        class="submenu-wrap"
+        role="presentation"
+        onmouseenter={() => (cleanupOpen = true)}
+        onmouseleave={() => (cleanupOpen = false)}
+      >
+        <button
+          class="item"
+          disabled={!editing}
+          aria-haspopup="menu"
+          aria-expanded={cleanupOpen}
+          onclick={() => (cleanupOpen = !cleanupOpen)}
+        >
+          <span>{t('menu.edit.cleanup')}</span>
+          <span class="arrow">▸</span>
+        </button>
+        {#if cleanupOpen}
+          <div class="flyout" role="menu" aria-label={t('menu.edit.cleanup')}>
+            <button class="item" onclick={() => run(() => onEditorAction?.('cleanupTrailingWhitespace'))}>
+              <span>{t('cleanup.trailingWhitespace')}</span>
+            </button>
+            <button class="item" onclick={() => run(() => onEditorAction?.('cleanupCollapseBlankLines'))}>
+              <span>{t('cleanup.collapseBlankLines')}</span>
+            </button>
+            <button class="item" onclick={() => run(() => onEditorAction?.('cleanupTrailingNewline'))}>
+              <span>{t('cleanup.trailingNewline')}</span>
+            </button>
+            <div class="separator"></div>
+            <button class="item" onclick={() => run(() => onEditorAction?.('cleanupAll'))}>
+              <span>{t('cleanup.all')}</span>
+            </button>
+          </div>
+        {/if}
+      </div>
       <div
         class="submenu-wrap"
         role="presentation"

@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `7` | `7` | 配置格式版本（当前 v7；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `8` | `8` | 配置格式版本（当前 v8；启动自动迁移旧版，见 §2.7） |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
 | `maxFileSizeMB` | number | 1–2048 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
 | `hardLimitMB` | number | 100–16384 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
@@ -52,6 +52,14 @@
 | `editor.multiCursor.maxCount` | number | 2–10000 整数 | `1000` | 多光标数量上限（性能保护） |
 | `editor.clipboard.historyLimit` | number | 0–5000 整数 | `200` | 剪贴板历史上限（0 = 禁用；新条目置顶、重复去重、单条最长 10 万字符） |
 | `editor.clipboard.persist` | boolean | `true`/`false` | `true` | 是否持久化到 `data/clipboard-history.json`（关闭时仅进程内会话内存） |
+| `editor.insert.timestampFormat` | string | `localDateTime`/`dateOnly`/`timeOnly`/`iso8601`/`rfc3339Utc` | `localDateTime` | 「插入日期时间」使用的格式（RFC 3339 为 UTC；其余为本地时间） |
+| `editor.autoPairs.enabled` | boolean | `true`/`false` | `true` | 括号匹配/自动缩进总开关（关闭后其余分项不生效） |
+| `editor.autoPairs.autoClose` | boolean | `true`/`false` | `true` | 自动补对（含选区包裹、右符号跳过、空对退格） |
+| `editor.autoPairs.autoIndent` | boolean | `true`/`false` | `true` | 回车换行自动继承当前行行首空白 |
+| `editor.autoPairs.highlightMatch` | boolean | `true`/`false` | `true` | 光标旁括号与其配对括号高亮 |
+| `editor.cleanup.trailingWhitespace` | boolean | `true`/`false` | `true` | 「一键清理」包含：删除行尾空白 |
+| `editor.cleanup.collapseBlankLines` | boolean | `true`/`false` | `true` | 「一键清理」包含：合并重复空行 |
+| `editor.cleanup.trailingNewline` | boolean | `true`/`false` | `true` | 「一键清理」包含：统一末尾换行 |
 | `find.caseSensitive` | boolean | `true`/`false` | `false` | 查找默认区分大小写（F-01） |
 | `find.wholeWord` | boolean | `true`/`false` | `false` | 查找默认全词匹配（`\b` 边界；F-02） |
 | `find.wrapAround` | boolean | `true`/`false` | `true` | 循环查找：到文末从文首继续（F-05） |
@@ -154,7 +162,7 @@
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v7）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐）：
+**schema 版本（当前 v8）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`）：
 
 | 情况 | 行为 |
 |---|---|

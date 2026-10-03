@@ -295,7 +295,6 @@ export interface EditorLinesSettings {
   skipEmptyLines: boolean;
 }
 
-/** 编辑器设置分组。 */
 /** 编辑器多光标设置（与 Rust `MultiCursorSettings` 对应）。 */
 export interface MultiCursorSettings {
   enabled: boolean;
@@ -303,9 +302,42 @@ export interface MultiCursorSettings {
   maxCount: number;
 }
 
+/** 剪贴板历史设置（与 Rust `ClipboardSettings` 对应）。 */
+export interface ClipboardSettings {
+  historyLimit: number;
+  persist: boolean;
+}
+
+/** 时间戳插入格式（与 Rust `TimestampFormat` 对应）。 */
+export type TimestampFormat = 'localDateTime' | 'dateOnly' | 'timeOnly' | 'iso8601' | 'rfc3339Utc';
+
+/** 时间戳插入设置（与 Rust `InsertSettings` 对应）。 */
+export interface InsertSettings {
+  timestampFormat: TimestampFormat;
+}
+
+/** 括号匹配/自动缩进设置（与 Rust `AutoPairsSettings` 对应）。 */
+export interface AutoPairsSettings {
+  enabled: boolean;
+  autoClose: boolean;
+  autoIndent: boolean;
+  highlightMatch: boolean;
+}
+
+/** 清理类操作设置（与 Rust `CleanupSettings` 对应）。 */
+export interface CleanupSettings {
+  trailingWhitespace: boolean;
+  collapseBlankLines: boolean;
+  trailingNewline: boolean;
+}
+
 export interface EditorSettings {
   lines: EditorLinesSettings;
   multiCursor: MultiCursorSettings;
+  clipboard: ClipboardSettings;
+  insert: InsertSettings;
+  autoPairs: AutoPairsSettings;
+  cleanup: CleanupSettings;
 }
 
 /** 保存结果（与 Rust commands::SaveTabResult 对齐）。 */

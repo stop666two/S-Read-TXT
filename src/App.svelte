@@ -1127,6 +1127,9 @@
         lineDefaults={appSettings?.editor.lines ?? null}
         multiCursor={appSettings?.editor.multiCursor ?? null}
         findSettings={appSettings?.find ?? null}
+        insertSettings={appSettings?.editor.insert ?? null}
+        autoPairs={appSettings?.editor.autoPairs ?? null}
+        cleanupSettings={appSettings?.editor.cleanup ?? null}
         layoutKey={typographyKey}
       />
     {:else}
