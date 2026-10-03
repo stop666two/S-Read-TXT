@@ -72,6 +72,7 @@ const steps = [
   { name: 'E2E 设置窗口（smoke-settings）', cmd: 'node scripts/smoke-settings.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 设置 I/O（smoke-settings-io）', cmd: 'node scripts/smoke-settings-io.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 设置 v2（smoke-settings-v2）', cmd: 'node scripts/smoke-settings-v2.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 磁盘占用（smoke-disk）', cmd: 'node scripts/smoke-disk.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 快捷键（smoke-shortcuts）', cmd: 'node scripts/smoke-shortcuts.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 多标签（smoke-tabs）', cmd: 'node scripts/smoke-tabs.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 历史记录（smoke-history）', cmd: 'node scripts/smoke-history.mjs', cwd: root, env: process.env, timeout: 600_000 },
