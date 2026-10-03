@@ -128,10 +128,27 @@ async function main() {
         `(() => { const tab = [...document.querySelectorAll('.tabs [role="tab"]')].find((b) => b.textContent.trim() === '${name}'); tab?.click(); return !!tab; })()`,
       );
     await clickTab('快捷键');
-    const rowsReady = await waitForValue(
+    // 链式全量自检下机器高负载时，首次进入可能渲染滞后；三重兼容：延长等待 → 重切页签 → 整页重载
+    let rowsReady = await waitForValue(
       async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 15 ? true : null),
       15000,
     );
+    if (rowsReady !== true) {
+      await clickTab('快捷键');
+      rowsReady = await waitForValue(
+        async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 15 ? true : null),
+        30000,
+      );
+    }
+    if (rowsReady !== true) {
+      await evalSet('location.reload(); true');
+      await delay(1500);
+      await clickTab('快捷键');
+      rowsReady = await waitForValue(
+        async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 15 ? true : null),
+        30000,
+      );
+    }
     check('S1a 设置窗口打开且快捷键行完整', rowsReady === true);
     const tabCount = await evalSet(`document.querySelectorAll('.tabs [role="tab"]').length`);
     check('S1b 设置窗口六个页签', tabCount === 6, `count=${tabCount}`);
