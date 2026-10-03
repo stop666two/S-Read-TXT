@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 380（358 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 96；E2E 29 套 ≈480 项；verify-all 38 步。
+- 计数口径：Rust 384（362 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 96；E2E 30 套 ≈498 项；verify-all 39 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -16,6 +16,7 @@
 | smoke-filter | 13 | 过滤视图（P1-4）：入口可见/字面量过滤与计数/隐藏空行/大小写开关与无匹配/非法正则就地报错/清除恢复/切标签清空/编辑态隐藏入口/截图 |
 | smoke-clipboard | 19 | 剪贴板历史与复制格式（P1-5）：复制入库与持久化/弹窗插入/删除单条/清空确认/上限 0 禁用/菜单「复制为→HTML」（HTML 剪贴板 + 纯文本兜底）/截图 |
 | smoke-tools | 16 | 辅助编辑（P1-7）：时间戳插入（默认格式）/输入左括号自动补对/右符号跳过/空对退格整体删除/回车继承行首缩进/括号配对高亮（两个字符盒）/清理单项（行尾空白）与一键清理（行数 5→4）/设置页含时间戳与清理分组/截图 |
+| smoke-workspace | 18 | 工作区查找替换（P1-8）：菜单入口/双文件汇总（2 文件 3 处）与编辑中·只读徽标/跳转编辑态（切换标签+选区建立）与只读命中/全部替换（确认框+仅编辑态 2 处+跳过 1 只读）/单步撤销（脏回落）/开关关闭后拒绝（MULTIFILE_DISABLED）/Esc/截图 |
 | smoke-ime | 7 | 输入法组合：preedit/候选/提交/取消/保存 |
 | smoke-i18n | 27 | 8 语言渲染/查找/替换/编码往返/切换 |
 | smoke-titlebar | 10 | 标题栏：拖拽/三键/双击/最小化/主题/齿轮入口 |
@@ -62,6 +63,7 @@
 | preview_replace_all_in_edit / apply_replace_all_in_edit / match_window_in_edit | smoke-find F15–F19；smoke-i18n 高亮 |
 | count_matches_in_edit | smoke-find F20/F23a；Rust search（计数） |
 | list_find_history / add_find_history / clear_find_history | smoke-find F22a–c；Rust find_history 4 项 |
+| search_workspace / replace_workspace | smoke-workspace W1–W10；Rust workspace_scan 4 项 |
 | export_settings / import_settings / reset_settings / get_settings_registry | **smoke-settings-io E1–E10 + L1–L4（语言持久化）**；**smoke-settings-v2 V1–V10（搜索/单项·分组·全部重置/导入导出按钮/语言下拉/折叠）**；Rust bundle 11 项 / reset 5 项 / registry 7 项 |
 
 ## 3. 错误码 × 证据（24 个）
@@ -134,3 +136,4 @@
 - 2026-10-03 P1-5：剪贴板历史与复制格式（设置节 v6 + clipboard_history 存储 8 项 + 历史弹窗/插入/删除/清空 + 「复制为」纯文本·HTML·Markdown + write-html 权限；smoke-clipboard 19/19 并入 verify-all）。
 - 2026-10-03 P1-6：查找增强（全词（`\b` 包裹）/计数 20 万上限/正则超时中断/查找历史去重置顶；设置节 v7：`app.find` 9 项 + `app.regex` 2 项，注册表新类型 Color/StringList；FindBar v2：W/计数/历史下拉/范围（文档·选区·行区间）；高亮颜色与高亮全部·计数·循环开关接线；smoke-find 增至 27/27）。
 - 2026-10-03 P1-7：辅助编辑（设置节 v8：`editor.insert`/`editor.autoPairs`/`editor.cleanup`；时间戳 5 种格式；自动补对（含选区包裹/跳过/空对退格）与回车缩进、括号配对高亮（跨行受限扫描）；编辑菜单「插入日期时间」与「清理」子菜单（单项 + 一键，参与项可配）；修复两处真实缺陷：自动补对跳过路径 `moveRight` 实参顺序、物理 `Enter` 未接自动缩进；陈旧断言同步（settings 页签数 6、settings-io 版本断言 v8）；smoke-tools 16/16 并入 verify-all（现 38 步）。
+- 2026-10-03 P1-8：工作区（多文件）查找与替换（设置 v9：`find.multifileEnabled`/`find.multifileConcurrency`；编辑态复用流式引擎（跨行一致）、只读逐行匹配；受限并发扫描与超时保留；结果树含行文本摘要/徽标/截断与超时标注；命中跳转自动切标签并定位（编辑态选区 + 只读滚动）；全部替换仅作用编辑态标签、逐文件单撤销步；smoke-workspace 18/18 并入 verify-all（现 39 步））。
