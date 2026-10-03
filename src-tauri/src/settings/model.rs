@@ -64,6 +64,57 @@ impl LogLevel {
     }
 }
 
+/// 界面语言（BCP 47 语言标签；命名对齐国际标准）。
+///
+/// 语义与 [`LogLevel`] 相同：加载时未知/大小写异常取值归入 `Unknown`，
+/// 再经 [`Language::normalized`] 归一为默认（简体中文）；保存前必先归一，
+/// 故 `Unknown` 不会落盘。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum Language {
+    /// 简体中文（zh-CN，默认）
+    #[serde(rename = "zh-CN")]
+    ZhCn,
+    /// 英语（en）
+    #[serde(rename = "en")]
+    En,
+    /// 未知取值（向前兼容；载入时归一为默认）
+    #[serde(rename = "unknown")]
+    Unknown,
+}
+
+/// 手写反序列化：未知字符串宽容归入 `Unknown`（避免整份配置回退）。
+/// 接受常见变体（`zh`、`zh-Hans`、`en-US` 等），统一小写后匹配。
+impl<'de> Deserialize<'de> for Language {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.trim().to_ascii_lowercase().as_str() {
+            "zh-cn" | "zh" | "zh-hans" => Self::ZhCn,
+            "en" | "en-us" | "en-gb" => Self::En,
+            _ => Self::Unknown,
+        })
+    }
+}
+
+impl Default for Language {
+    fn default() -> Self {
+        defaults::DEFAULT_LOCALE
+    }
+}
+
+impl Language {
+    /// 归一：`Unknown` 回退默认语言，其余原样。
+    pub fn normalized(self) -> Self {
+        if self == Self::Unknown {
+            defaults::DEFAULT_LOCALE
+        } else {
+            self
+        }
+    }
+}
+
 /// 历史保留策略（`settings.json` 的嵌套对象 `history`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -127,6 +178,8 @@ pub struct AppSettings {
     pub save_backup_enabled: bool,
     /// 是否显示首启引导（用户勾选「不再显示」后置 `false`）
     pub show_onboarding: bool,
+    /// 界面语言（BCP 47 标签：`zh-CN` / `en`）
+    pub locale: Language,
     /// 启动行为
     pub startup: StartupSettings,
 }
@@ -142,6 +195,7 @@ impl Default for AppSettings {
             history: HistorySettings::default(),
             save_backup_enabled: defaults::DEFAULT_SAVE_BACKUP_ENABLED,
             show_onboarding: defaults::DEFAULT_SHOW_ONBOARDING,
+            locale: defaults::DEFAULT_LOCALE,
             startup: StartupSettings::default(),
         }
     }

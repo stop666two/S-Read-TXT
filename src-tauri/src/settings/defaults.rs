@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::settings::model::LogLevel;
+use crate::settings::model::{Language, LogLevel};
 use crate::settings::reader::{TextAlign, Theme};
 
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
@@ -13,6 +13,8 @@ pub const SCHEMA_VERSION: u32 = 2;
 
 /// 默认日志级别
 pub const DEFAULT_LOG_LEVEL: LogLevel = LogLevel::Info;
+/// 默认界面语言（BCP 47：简体中文；允许值见注册表 `app.locale`）
+pub const DEFAULT_LOCALE: Language = Language::ZhCn;
 /// 默认可打开文件大小上限（MB）
 pub const DEFAULT_MAX_FILE_SIZE_MB: u32 = 100;
 /// 文件大小上限允许范围（MB，闭区间）

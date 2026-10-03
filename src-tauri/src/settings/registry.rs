@@ -74,6 +74,14 @@ pub const SPECS: &[SettingSpec] = &[
         },
     },
     SettingSpec {
+        id: "app.locale",
+        group: "app.basic",
+        label: "界面语言",
+        kind: SettingKind::Enum {
+            values: &["zh-CN", "en"],
+        },
+    },
+    SettingSpec {
         id: "app.maxFileSizeMB",
         group: "app.basic",
         label: "只读阈值（MB）",
@@ -408,7 +416,7 @@ pub fn validate_value(spec: &SettingSpec, value: &Value) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::model::LogLevel;
+    use crate::settings::model::{Language, LogLevel};
     use crate::settings::reader::{TextAlign, Theme};
 
     /// id 唯一、前缀合法、分组/标签非空、数值范围不倒挂。
@@ -465,10 +473,12 @@ mod tests {
             LogLevel::Info,
             LogLevel::Debug,
         ]);
+        let language = names(&[Language::ZhCn, Language::En]);
         let theme = names(&[Theme::Light, Theme::Dark, Theme::Eye, Theme::System]);
         let align = names(&[TextAlign::Left, TextAlign::Justify]);
         for (id, expected) in [
             ("app.logLevel", log),
+            ("app.locale", language),
             ("reader.theme", theme),
             ("reader.typography.textAlign", align),
         ] {

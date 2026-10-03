@@ -136,6 +136,7 @@ pub fn to_overrides(effective: &BTreeMap<String, String>) -> BTreeMap<String, St
 fn normalize_app(settings: &mut AppSettings) {
     settings.schema_version = defaults::SCHEMA_VERSION;
     settings.log_level = settings.log_level.normalized();
+    settings.locale = settings.locale.normalized();
     let (min_size, max_size) = defaults::MAX_FILE_SIZE_MB_RANGE;
     settings.max_file_size_mb = settings.max_file_size_mb.clamp(min_size, max_size);
     let (min_hard, max_hard) = defaults::HARD_LIMIT_MB_RANGE;
@@ -260,6 +261,28 @@ mod tests {
             .filter(|name| name.starts_with("settings.json.corrupt-"))
             .collect();
         assert_eq!(backups.len(), 1, "应生成一个备份：{backups:?}");
+    }
+
+    /// 界面语言：未知值归一为 zh-CN；已知值往返保留。
+    #[test]
+    fn app_settings_normalizes_locale() {
+        let dir = data_dir();
+        let mut settings = AppSettings::default();
+        settings.locale = crate::settings::model::Language::Unknown;
+        save_app_settings(dir.path(), &settings).expect("保存失败");
+        assert_eq!(
+            load_app_settings(dir.path()).locale,
+            crate::settings::model::Language::ZhCn
+        );
+
+        settings.locale = crate::settings::model::Language::En;
+        save_app_settings(dir.path(), &settings).expect("保存失败");
+        let raw = std::fs::read_to_string(app_settings_path(dir.path())).expect("读取失败");
+        assert!(raw.contains("\"locale\": \"en\""), "en 应落盘：{raw}");
+        assert_eq!(
+            load_app_settings(dir.path()).locale,
+            crate::settings::model::Language::En
+        );
     }
 
     /// 主配置数值裁剪 + 未知日志级别归一。
