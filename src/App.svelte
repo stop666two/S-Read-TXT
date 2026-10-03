@@ -28,21 +28,23 @@
   import { formatBytes } from './lib/format';
   import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
-  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type SessionState } from './lib/ipc';
+  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type SessionState, type ThemeSummary } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
   import { saveSessionNow } from './lib/session';
   import { dataDirStore } from './lib/state/data-dir.svelte';
   import { historyStore } from './lib/state/history.svelte';
   import { tabs } from './lib/state/tabs.svelte';
   import { toasts } from './lib/state/toasts.svelte';
-  import { setLocale, t } from './lib/i18n/index.svelte';
+  import { i18n, setLocale, t } from './lib/i18n/index.svelte';
   import { decideShortcut, isEditorContext, modalOpen } from './lib/shortcuts/engine';
   import { comboFromEvent } from './lib/shortcuts/keys';
   import type { ShortcutAction, ShortcutMap } from './lib/shortcuts/types';
-  import type { ResolvedTheme, ThemeChoice } from './lib/types';
+  import { applyThemeTokens } from './lib/theme';
 
-  /** 主题选择（默认跟随系统；阶段 8 起由设置加载/保存） */
-  let themeChoice = $state<ThemeChoice>('system');
+  /** 当前主题 id（设置值；`system` 表示跟随系统） */
+  let themeId = $state('system');
+  /** 可用主题清单（内置 + 用户主题；工具栏/菜单共用） */
+  let themes = $state<ThemeSummary[]>([]);
   /** 文件拖拽悬停（控制遮罩显示） */
   let dragging = $state(false);
   /** 应用版本（无文件时状态栏展示） */
@@ -111,8 +113,9 @@
       appSettings = snapshot.app;
       readerSettings = snapshot.reader;
         shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
-        themeChoice = snapshot.reader.theme as ThemeChoice;
+        themeId = snapshot.reader.theme;
         setLocale(snapshot.app.locale);
+        void loadThemes();
       } catch (error) {
         if (import.meta.env.DEV) console.error('[app] 载入配置失败', error);
     }
@@ -136,7 +139,7 @@
       appSettings = snapshot.app;
       readerSettings = snapshot.reader;
         shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
-        themeChoice = snapshot.reader.theme as ThemeChoice;
+        themeId = snapshot.reader.theme;
         setLocale(snapshot.app.locale);
       } catch (error) {
         toasts.error(describeIpcError(toIpcError(error)));
@@ -376,10 +379,70 @@
     document.title = windowTitle;
   });
 
-  /** 主题切换入口（菜单/工具栏；修改即存） */
-  function setTheme(theme: ThemeChoice): void {
-    themeChoice = theme;
-    void persistReader({ theme });
+  /** 主题切换入口（菜单/工具栏/主题菜单；修改即存） */
+  function setTheme(id: string): void {
+    themeId = id;
+    void persistReader({ theme: id });
+  }
+
+  /** 主题清单本地化名（当前语言） */
+  function themeDisplayName(theme: ThemeSummary): string {
+    return i18n.locale === 'en' ? theme.nameEn : theme.name;
+  }
+
+  /** 重新载入主题清单（启动 / 导入 / 删除后；失败保持现状） */
+  async function loadThemes(): Promise<void> {
+    try {
+      themes = await ipc.listThemes();
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('[app] 载入主题清单失败', error);
+    }
+  }
+
+  /** 解析并应用当前主题（设置变化 / 系统明暗切换；失败保持现状） */
+  async function applyTheme(): Promise<void> {
+    try {
+      const resolved = await ipc.getTheme(null);
+      applyThemeTokens(resolved, {
+        enabled: readerSettings?.themeAnimEnabled ?? true,
+        durationMs: readerSettings?.themeAnimMs ?? 200,
+      });
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('[app] 应用主题失败', error);
+    }
+  }
+
+  /** 导入用户主题（原生文件选择 → 强校验入库；与内置同名拒绝） */
+  async function importThemeFlow(): Promise<void> {
+    try {
+      const path = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: t('theme.jsonFilter'), extensions: ['json'] }],
+      });
+      if (typeof path !== 'string') return;
+      const summary = await ipc.importTheme(path);
+      await loadThemes();
+      toasts.show(t('theme.imported', { name: themeDisplayName(summary) }));
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 导出当前主题（system 导出解析后的实际主题） */
+  async function exportThemeFlow(): Promise<void> {
+    try {
+      const resolved = await ipc.getTheme(null);
+      const path = await save({
+        defaultPath: `${resolved.id}.json`,
+        filters: [{ name: t('theme.jsonFilter'), extensions: ['json'] }],
+      });
+      if (typeof path !== 'string') return;
+      await ipc.exportTheme(resolved.id, path);
+      toasts.show(t('theme.exported'));
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
   }
 
   /** 切换全屏（查看菜单 / F11；阶段 5 快捷键引擎接入后统一管理） */
@@ -748,18 +811,31 @@
   /** 保存弹窗当前服务的标签信息（默认编码显示用） */
   const saveDialogTab = $derived(tabs.tabs.find((item) => item.tabId === saveRequest?.tabId) ?? null);
 
-  // 解析主题：「跟随系统」依据 prefers-color-scheme，其余直接采用；
-  // 结果写入 <html data-theme>，全部令牌随之切换。
+  // 主题应用（P0-5）：设置变化时解析令牌写入 CSS 变量；跟随系统时监听系统明暗切换。
   $effect(() => {
+    void themeId;
+    void readerSettings?.themeAnimEnabled;
+    void readerSettings?.themeAnimMs;
+    void applyTheme();
     const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = (): void => {
-      const resolved: ResolvedTheme =
-        themeChoice === 'system' ? (media.matches ? 'dark' : 'light') : themeChoice;
-      document.documentElement.dataset.theme = resolved;
+    const onChange = (): void => {
+      if (themeId === 'system') void applyTheme();
     };
-    apply();
-    media.addEventListener('change', apply);
-    return () => media.removeEventListener('change', apply);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  });
+
+  /** 主题菜单条目（跟随系统 + 清单，当前语言） */
+  const themeEntries = $derived.by(() => [
+    { id: 'system', label: t('theme.system') },
+    ...themes.map((theme) => ({ id: theme.id, label: themeDisplayName(theme) })),
+  ]);
+
+  /** 当前主题显示名（未知 id 原样展示，避免空文案） */
+  const themeLabel = $derived.by(() => {
+    if (themeId === 'system') return t('theme.system');
+    const found = themes.find((theme) => theme.id === themeId);
+    return found ? themeDisplayName(found) : themeId;
   });
 
   /** 排版变更键（传给 ReaderView 触发行高失效重排；值变化即重排） */
@@ -823,6 +899,8 @@
     );
     // 数据目录可写性探测（不可写 → 弹引导：选择可写目录 / 仅本次只读运行）
     void dataDirStore.check();
+    // 自动化测试钩子：主题切换走真实应用路径（E2E 截图与断言用）
+    if (window.__srt) window.__srt.setTheme = (id: string) => setTheme(id);
     // 历史记录预载（面板与「最近打开」子菜单共用数据源）
     void historyStore.load();
 
@@ -940,7 +1018,8 @@
     onSettings={() => void ipc.openSettings()}
   />
   <MenuBar
-    {themeChoice}
+    {themeId}
+    {themeEntries}
     onThemeChange={setTheme}
     onOpenFile={openFile}
     onQuit={() => void quit()}
@@ -965,8 +1044,12 @@
     onSettings={() => void ipc.openSettings()}
   />
   <ToolBar
-    {themeChoice}
+    {themeId}
+    {themeEntries}
+    themeLabel={themeLabel}
     onThemeChange={setTheme}
+    onThemeImport={() => void importThemeFlow()}
+    onThemeExport={() => void exportThemeFlow()}
     {encodings}
     encodingOverride={active?.encodingOverride ?? null}
     onEncodingChange={(label) => void changeEncoding(label)}

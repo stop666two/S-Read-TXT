@@ -10,6 +10,7 @@
   import type { MessageKey } from '../../lib/i18n/zh-CN';
   import type { ResetScope, SettingSpec } from '../../lib/ipc';
   import ChoiceRow from './parts/ChoiceRow.svelte';
+  import ThemeRow from './parts/ThemeRow.svelte';
   import FontFamilyRow from './parts/FontFamilyRow.svelte';
   import SliderRow from './parts/SliderRow.svelte';
   import ToggleRow from './parts/ToggleRow.svelte';
@@ -55,12 +56,6 @@
       debug: 'setting.enum.logLevel.debug',
     },
     'app.locale': { 'zh-CN': 'setting.enum.locale.zh-CN', en: 'setting.enum.locale.en' },
-    'reader.theme': {
-      system: 'theme.system',
-      light: 'theme.light',
-      dark: 'theme.dark',
-      eye: 'theme.eye',
-    },
     'reader.typography.textAlign': {
       left: 'setting.enum.align.left',
       justify: 'setting.enum.align.justify',
@@ -193,7 +188,15 @@
           {#each group.specs as spec (spec.id)}
             {@const label = specLabel(spec)}
             {@const desc = specDesc(spec)}
-            {#if spec.id === 'reader.typography.fontFamily'}
+            {#if spec.id === 'reader.theme'}
+              <ThemeRow
+                {label}
+                {desc}
+                setting={spec.id}
+                onReset={() => applyScope({ kind: 'field', id: spec.id })}
+                resetLabel={t('settings.resetField')}
+              />
+            {:else if spec.id === 'reader.typography.fontFamily'}
               <FontFamilyRow
                 {label}
                 {desc}

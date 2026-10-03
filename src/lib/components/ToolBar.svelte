@@ -1,16 +1,23 @@
 <script lang="ts">
 // 工具栏：打开 / 历史（阶段 6 起可用）/ 编码（共享下拉）/ 主题（循环）/ 设置。
   import { t } from '../i18n/index.svelte';
-  import type { MessageKey } from '../i18n/zh-CN';
   import EncodingMenu from './EncodingMenu.svelte';
   import Icon from './Icon.svelte';
-  import type { ThemeChoice } from '../types';
+  import ThemeMenu from './ThemeMenu.svelte';
 
   interface Props {
-    /** 当前主题选择 */
-    themeChoice: ThemeChoice;
+    /** 当前主题 id（system 或具体主题） */
+    themeId: string;
+    /** 主题菜单条目（App 按当前语言构建） */
+    themeEntries: { id: string; label: string }[];
+    /** 当前主题显示名（按钮提示文案） */
+    themeLabel: string;
     /** 主题切换回调 */
-    onThemeChange: (theme: ThemeChoice) => void;
+    onThemeChange: (id: string) => void;
+    /** 导入主题回调（原生对话框由 App 处理） */
+    onThemeImport: () => void;
+    /** 导出当前主题回调 */
+    onThemeExport: () => void;
     /** 支持的编码列表（后端提供；空数组时下拉只显示自动检测） */
     encodings: string[];
     /** 当前手动编码（null = 自动检测） */
@@ -35,8 +42,12 @@
     onSave?: () => void;
   }
   let {
-    themeChoice,
+    themeId,
+    themeEntries,
+    themeLabel,
     onThemeChange,
+    onThemeImport,
+    onThemeExport,
     encodings,
     encodingOverride,
     onEncodingChange,
@@ -49,22 +60,6 @@
     onToggleEdit,
     onSave,
   }: Props = $props();
-
-  /** 主题循环顺序（含跟随系统） */
-  const themeCycle: ThemeChoice[] = ['light', 'dark', 'eye', 'system'];
-  /** 主题名 → 语言包键（提示文案由 t() 渲染） */
-  const themeLabelKeys: Record<ThemeChoice, MessageKey> = {
-    light: 'theme.light',
-    dark: 'theme.dark',
-    eye: 'theme.eye',
-    system: 'theme.system',
-  };
-
-  /** 循环切换主题 */
-  function cycleTheme(): void {
-    const index = themeCycle.indexOf(themeChoice);
-    onThemeChange(themeCycle[(index + 1) % themeCycle.length]);
-  }
 </script>
 
 <div class="toolbar">
@@ -107,14 +102,14 @@
     onPick={onEncodingChange}
   />
   <div class="sep"></div>
-  <button
-    class="icon-btn"
-    title={t('toolbar.theme', { name: t(themeLabelKeys[themeChoice]) })}
-    aria-label={t('toolbar.themeCycle')}
-    onclick={cycleTheme}
-  >
-    <Icon name="palette" />
-  </button>
+  <ThemeMenu
+    {themeId}
+    entries={themeEntries}
+    currentLabel={themeLabel}
+    onPick={onThemeChange}
+    onImport={onThemeImport}
+    onExport={onThemeExport}
+  />
   <button class="icon-btn with-text" title={t('toolbar.settings')} aria-label={t('toolbar.settings')} onclick={() => onSettings?.()}>
     <Icon name="settings" />
     <span>{t('toolbar.settings')}</span>

@@ -3,16 +3,16 @@
   // 阶段 2b：完成结构、下拉交互与主题动作；其余动作在后续切片接线（回调缺省即无操作）。
   // 交互约定：点击标题开合；已有菜单打开时悬停切换；点击菜单项执行；Esc / 点击外部关闭。
   import { t } from '../i18n/index.svelte';
-  import type { MessageKey } from '../i18n/zh-CN';
-  import type { ThemeChoice } from '../types';
   import type { EditActionType } from '../edit/actions';
   import type { HistoryEntry } from '../ipc';
 
   interface Props {
-    /** 当前主题选择（用于「查看」菜单的单选标记） */
-    themeChoice: ThemeChoice;
+    /** 当前主题 id（用于「查看」菜单的单选标记） */
+    themeId: string;
+    /** 主题菜单条目（App 按当前语言构建） */
+    themeEntries: { id: string; label: string }[];
     /** 主题切换回调 */
-    onThemeChange: (theme: ThemeChoice) => void;
+    onThemeChange: (id: string) => void;
     /** 打开文件回调（阶段 2c 接线） */
     onOpenFile?: () => void;
     /** 退出回调（阶段 2c 接线） */
@@ -57,7 +57,8 @@
     hasTab: boolean;
   }
   let {
-    themeChoice,
+    themeId,
+    themeEntries,
     onThemeChange,
     onOpenFile,
     onQuit,
@@ -88,14 +89,6 @@
   let openMenu = $state<MenuName | null>(null);
   /** 「最近打开」子菜单展开（悬停/点击切换） */
   let recentOpen = $state(false);
-
-  /** 主题菜单项（查看菜单内；labelKey 经 i18n 解析） */
-  const themeItems: { value: ThemeChoice; labelKey: MessageKey }[] = [
-    { value: 'light', labelKey: 'theme.light' },
-    { value: 'dark', labelKey: 'theme.dark' },
-    { value: 'eye', labelKey: 'theme.eye' },
-    { value: 'system', labelKey: 'theme.system' },
-  ];
 
   /** 切换菜单开合 */
   function toggle(name: MenuName): void {
@@ -232,10 +225,10 @@
     </div>
   {:else if openMenu === 'view'}
     <div class="dropdown" role="menu" style="left: 88px">
-      {#each themeItems as item (item.value)}
-        <button class="item" onclick={() => run(() => onThemeChange(item.value))}>
-          <span class="radio" class:on={themeChoice === item.value}></span>
-          <span>{t(item.labelKey)}</span>
+      {#each themeEntries as item (item.id)}
+        <button class="item" onclick={() => run(() => onThemeChange(item.id))}>
+          <span class="radio" class:on={themeId === item.id}></span>
+          <span>{item.label}</span>
         </button>
       {/each}
       <div class="separator"></div>

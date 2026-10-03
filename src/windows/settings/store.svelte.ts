@@ -16,6 +16,7 @@ import {
   type ResetScope,
   type SettingSpec,
   type SettingsSnapshot,
+  type ThemeSummary,
 } from '../../lib/ipc';
 import { toasts } from '../../lib/state/toasts.svelte';
 
@@ -134,6 +135,58 @@ class SettingsStore {
 
   /** 磁盘占用（P0-8；打开「常规」页时载入） */
   disk = $state<DiskUsageReport | null>(null);
+
+  /** 主题清单（P0-5；主题行与设置窗口主题应用共用） */
+  themes = $state<ThemeSummary[]>([]);
+
+  /** 载入主题清单（内置 + 用户主题） */
+  async loadThemes(): Promise<void> {
+    try {
+      this.themes = await ipc.listThemes();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 选择主题（修改即存；主窗口经广播热更新） */
+  async pickTheme(id: string): Promise<void> {
+    await this.saveReader({ theme: id });
+  }
+
+  /** 导入用户主题（强校验失败提示具体原因；成功后刷新清单） */
+  async importThemeFrom(path: string): Promise<void> {
+    try {
+      const summary = await ipc.importTheme(path);
+      await this.loadThemes();
+      toasts.show(t('theme.imported', { name: summary.name }));
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 导出主题到指定路径（system 由调用方先解析为实际主题 id） */
+  async exportThemeTo(path: string, id: string): Promise<void> {
+    try {
+      await ipc.exportTheme(id, path);
+      toasts.show(t('theme.exported'));
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 删除用户主题（内置拒绝）；若删除的是当前主题则回退跟随系统 */
+  async removeTheme(id: string): Promise<void> {
+    try {
+      await ipc.removeTheme(id);
+      if (this.snapshot?.reader.theme === id) {
+        await this.saveReader({ theme: 'system' });
+      }
+      await this.loadThemes();
+      toasts.show(t('theme.removed'));
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
 
   /** 载入磁盘占用分项 */
   async loadDisk(): Promise<void> {

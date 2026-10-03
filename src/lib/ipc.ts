@@ -234,9 +234,30 @@ export interface StatusBarSettings {
 /** 阅读配置（与 Rust `ReaderSettings` 对应）。 */
 export interface ReaderSettings {
   schemaVersion: number;
+  /** 主题 id：`system` / 内置（light、dark、eye-green、paper-cream、high-contrast、minimal-gray）/ 用户主题 */
   theme: string;
+  /** 主题切换过渡动画开关 */
+  themeAnimEnabled: boolean;
+  /** 主题切换过渡时长（ms；0 = 无过渡） */
+  themeAnimMs: number;
   typography: TypographySettings;
   statusBar: StatusBarSettings;
+}
+
+/** 主题清单摘要（与 Rust `ThemeSummary` 对应；名称按当前语言取 `name`/`nameEn`）。 */
+export interface ThemeSummary {
+  id: string;
+  name: string;
+  nameEn: string;
+  base: 'light' | 'dark';
+  builtin: boolean;
+}
+
+/** 解析后的主题（与 Rust `ResolvedTheme` 对应；`tokens` 为颜色令牌，键为 camelCase）。 */
+export interface ResolvedTheme {
+  id: string;
+  base: 'light' | 'dark';
+  tokens: Record<string, string>;
 }
 
 /** 自定义字体条目（与 Rust `FontEntry` 对应）。 */
@@ -515,6 +536,11 @@ export const ipc = {
   importShortcuts: (path: string) => invoke<SettingsSnapshot>('import_shortcuts', { path }),
   /** 重置设置（全部 / 分组 / 单项；返回重置后的快照）。 */
   resetSettings: (scope: ResetScope) => invoke<SettingsSnapshot>('reset_settings', { scope }),
+  listThemes: () => invoke<ThemeSummary[]>('list_themes'),
+  getTheme: (id?: string | null) => invoke<ResolvedTheme>('get_theme', { id: id ?? null }),
+  importTheme: (path: string) => invoke<ThemeSummary>('import_theme', { path }),
+  exportTheme: (id: string, path: string) => invoke<void>('export_theme', { id, path }),
+  removeTheme: (id: string) => invoke<void>('remove_theme', { id }),
   getDiskUsage: () => invoke<DiskUsageReport>('get_disk_usage'),
   clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
   /** 迁移数据目录（复制校验后写指针；需重启生效）。 */

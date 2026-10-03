@@ -6,8 +6,10 @@ import 'virtual:uno.css';
 // 基础样式与主题令牌（CSS 变量：浅色/深色/护眼）
 import './styles/base.css';
 import App from './App.svelte';
+import { ipc } from './lib/ipc';
 import { dataDirStore } from './lib/state/data-dir.svelte';
 import { tabs } from './lib/state/tabs.svelte';
+import { applyThemeTokens } from './lib/theme';
 
 // 挂载点由 index.html 提供；缺失视为入口页被破坏，直接抛错（启动自检，fail fast）
 const target = document.getElementById('app');
@@ -17,6 +19,13 @@ if (!target) {
 
 // 启动占位（index.html 内置）在挂载前清除：避免占位与 Svelte 首帧同屏重叠。
 target.replaceChildren();
+// FOUC 防护（P0-5）：挂载前先应用持久化主题令牌（后端解析 system/用户主题；失败保持默认浅色）。
+try {
+  const resolved = await ipc.getTheme(null);
+  applyThemeTokens(resolved);
+} catch (error) {
+  console.error('[srt] 主题预载失败（回退默认浅色）：', error);
+}
 // Svelte 5 函数式挂载；返回实例供将来可能的销毁/热更场景使用
 const app = mount(App, { target });
 
@@ -28,6 +37,8 @@ declare global {
       openPath: (path: string) => Promise<void>;
       /** 数据目录不可写引导：等价于用户在弹窗中选择目录后的应用动作（E2E 用） */
       setDataDir: (dir: string) => Promise<void>;
+      /** 切换主题（真实应用路径：保存设置并应用令牌；E2E 截图/断言用；App 挂载后可用） */
+      setTheme?: (id: string) => void;
     };
   }
 }

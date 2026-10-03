@@ -1,13 +1,13 @@
 /*
  * 全局基础样式与主题令牌（src/styles/base.css）
  *
- * 主题策略：
- * - 由前端在 <html> 上写 data-theme="light|dark|eye"；
- *   「跟随系统」在解析为具体值后写入，因此本文件无需媒体查询。
- * - 所有颜色经 CSS 变量中转，UnoCSS 颜色令牌（uno.config.ts）映射到同一批变量，
+ * 主题策略（P0-5）：
+ * - 颜色令牌由主题加载器（src/lib/theme.ts）在挂载前写入 `<html>`（--base/--ink/…），
+ *   明暗基底写 `data-theme-base`；本文件只保留默认（浅色）保底值与基础布局。
+ * - 全部颜色经 CSS 变量中转，UnoCSS 颜色令牌（uno.config.ts）映射到同一批变量，
  *   主题切换不触发原子类重新生成。
  *
- * 对比度：各主题正文/背景组合满足 WCAG 2.2 AA（≥4.5:1）。
+ * 对比度：各主题正文/背景组合满足 WCAG 2.2 AA（≥4.5:1，由 scripts/check-theme-contrast.mjs 校验）。
  */
 
 /* 浅色主题（默认）：暖白基调 */
@@ -42,32 +42,18 @@
   --reading-pad-x: 48px; /* 阅读区左右留白（设置可改） */
 }
 
-/* 深色主题：Notepad++ 风深灰（非纯黑，降低对比疲劳） */
-:root[data-theme='dark'] {
+/* 明暗基底（主题加载器写入；驱动 color-scheme 与原生控件明暗） */
+:root[data-theme-base='dark'] {
   color-scheme: dark;
-  --base: #1e1e1e;
-  --surface: #252526;
-  --chrome: #2a2a2b;
-  --ink: #d4d4d4;
-  --muted: #9a9a9a;
-  --line: #3a3a3a;
-  --hover: #333334;
-  --accent: #6fa3d8;
-  --tab-active: #1e1e1e;
 }
 
-/* 护眼主题：米黄纸感 */
-:root[data-theme='eye'] {
-  color-scheme: light;
-  --base: #f5efe0;
-  --surface: #faf5e8;
-  --chrome: #efe8d5;
-  --ink: #33302a;
-  --muted: #6e675a;
-  --line: #e3dcc9;
-  --hover: #e9e1cc;
-  --accent: #3b6ea5;
-  --tab-active: #f5efe0;
+/* 主题切换过渡：加载器临时挂 .theme-anim（按设置时长过渡颜色；尊重“减少动态效果”） */
+:root.theme-anim,
+:root.theme-anim * {
+  transition:
+    background-color var(--theme-anim-ms, 200ms) ease,
+    color var(--theme-anim-ms, 200ms) ease,
+    border-color var(--theme-anim-ms, 200ms) ease;
 }
 
 /* 全屏布局基线：应用为单窗口桌面 UI，禁止页面级滚动 */

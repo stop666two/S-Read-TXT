@@ -11,6 +11,7 @@
   import TitleBar from '../../lib/components/TitleBar.svelte';
   import { setLocale, t } from '../../lib/i18n/index.svelte';
   import { ipc } from '../../lib/ipc';
+  import { applyThemeTokens } from '../../lib/theme';
   import AboutTab from './AboutTab.svelte';
 import BackupSection from './BackupSection.svelte';
 import DataSection from './DataSection.svelte';
@@ -64,6 +65,35 @@ import DiskSection from './DiskSection.svelte';
     setLocale(settings.snapshot?.app.locale ?? 'zh-CN');
   });
 
+  /** 设置窗口自身主题（P0-5）：按当前主题解析令牌并写入 CSS 变量（失败保持默认浅色） */
+  async function applySettingsWindowTheme(): Promise<void> {
+    try {
+      const resolved = await ipc.getTheme(settings.snapshot?.reader.theme ?? null);
+      applyThemeTokens(resolved, {
+        enabled: settings.snapshot?.reader.themeAnimEnabled ?? true,
+        durationMs: settings.snapshot?.reader.themeAnimMs ?? 200,
+      });
+    } catch {
+      // 主题解析失败：保持 base.css 默认浅色兜底
+    }
+  }
+
+  // 主题变化（本窗选择 / 其他来源）时重新应用；跟随系统时监听系统明暗切换
+  $effect(() => {
+    void settings.snapshot?.reader.theme;
+    void settings.snapshot?.reader.themeAnimEnabled;
+    void settings.snapshot?.reader.themeAnimMs;
+    void applySettingsWindowTheme();
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (): void => {
+      if ((settings.snapshot?.reader.theme ?? 'system') === 'system') {
+        void applySettingsWindowTheme();
+      }
+    };
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  });
+
   onMount(() => {
     // 菜单请求的初始页签（如 帮助→快捷键/关于；读取即清空）
     void ipc.takeSettingsTab().then((pending) => {
@@ -71,21 +101,10 @@ import DiskSection from './DiskSection.svelte';
         tab = pending as TabId;
       }
     });
-    // 应用已保存主题：设置窗口与主窗口同一套令牌
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    let choice = 'system';
-    const apply = (): void => {
-      const resolved = choice === 'system' ? (media.matches ? 'dark' : 'light') : choice;
-      document.documentElement.dataset.theme = resolved;
-    };
-    void settings.load().then(() => {
-      choice = settings.snapshot?.reader.theme ?? 'system';
-      apply();
-      media.addEventListener('change', apply);
-    });
+    void settings.load();
     void settings.loadRegistry();
     void settings.loadDisk();
-    return () => media.removeEventListener('change', apply);
+    void settings.loadThemes();
   });
 </script>
 
