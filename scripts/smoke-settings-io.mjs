@@ -134,7 +134,7 @@ try {
 
   // ---- M1–M5：启动迁移 ----
   const appAfter = readJson(join(dataDir, 'settings.json'));
-  chk('M1 settings.json 迁移到 v3', appAfter.schemaVersion === 3, `schemaVersion=${appAfter.schemaVersion}`);
+  chk('M1 settings.json 迁移到 v8', appAfter.schemaVersion === 8, `schemaVersion=${appAfter.schemaVersion}`);
   const bakPath = join(dataDir, 'settings.json.v1.bak');
   chk(
     'M2 迁移前备份 .v1.bak（内容为 v1）',
@@ -153,9 +153,9 @@ try {
   const shortcutsAfter = readJson(join(dataDir, 'shortcuts.json'));
   chk(
     'M4 三文件版本升级 + 阅读/快捷键值保留',
-    readerAfter.schemaVersion === 3 &&
+    readerAfter.schemaVersion === 8 &&
       readerAfter.typography.fontSize === 20 &&
-      shortcutsAfter.schemaVersion === 3 &&
+      shortcutsAfter.schemaVersion === 8 &&
       snapshot.value.shortcuts.bindings.openFile === 'Ctrl+Shift+O',
   );
   chk(
@@ -171,7 +171,7 @@ try {
     'E1 导出落盘且结构完整',
     exported.ok &&
       bundle?.bundleVersion === 1 &&
-      bundle?.schemaVersion === 3 &&
+      bundle?.schemaVersion === 8 &&
       bundle?.app?.maxTabs === 33 &&
       bundle?.reader &&
       bundle?.shortcuts,
