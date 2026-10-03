@@ -438,4 +438,47 @@ mod tests {
         let after = std::fs::read_to_string(store::app_settings_path(dir.path())).expect("读回");
         assert_eq!(before, after, "app 配置应回滚为导入前内容");
     }
+
+    /// 超过大小上限的文件：拒绝并给出上限说明（不解析内容）。
+    #[test]
+    fn import_rejects_oversized_file() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let big = dir.path().join("big.json");
+        let file = std::fs::File::create(&big).expect("建文件");
+        file.set_len(MAX_BUNDLE_BYTES + 1).expect("扩展大小");
+        drop(file);
+        let err = import_from_file(dir.path(), &big).expect_err("应拒绝");
+        assert!(err.contains("过大"), "{err}");
+    }
+
+    /// 导出格式版本不符：拒绝并指出不支持的版本。
+    #[test]
+    fn import_rejects_wrong_bundle_version() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let mut value = serde_json::to_value(build_bundle(dir.path()).expect("组装")).expect("值");
+        value["bundleVersion"] = serde_json::json!(2);
+        let err = import_value(dir.path(), &value).expect_err("应拒绝");
+        assert!(
+            err.contains("不支持的导出格式版本") && err.contains("v2"),
+            "{err}"
+        );
+    }
+
+    /// 顶层未知字段：拒绝并指出字段名。
+    #[test]
+    fn import_rejects_unknown_top_level_key() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let mut value = serde_json::to_value(build_bundle(dir.path()).expect("组装")).expect("值");
+        value["extra"] = serde_json::json!(1);
+        let err = import_value(dir.path(), &value).expect_err("应拒绝");
+        assert!(err.contains("extra"), "{err}");
+    }
+
+    /// 顶层非对象：拒绝并给出说明。
+    #[test]
+    fn import_rejects_non_object_top_level() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let err = import_value(dir.path(), &serde_json::json!([1, 2])).expect_err("应拒绝");
+        assert!(err.contains("JSON 对象"), "{err}");
+    }
 }

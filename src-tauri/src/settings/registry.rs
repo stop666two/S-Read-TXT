@@ -521,4 +521,111 @@ mod tests {
             serde_json::json!(1)
         ));
     }
+
+    /// 完备性：默认配置的每个叶子字段都必须登记在注册表（`schemaVersion` 与
+    /// `shortcuts.bindings.<动作>` 按白名单豁免）；每个 `app.`/`reader.` 注册项
+    /// 都必须能导航到默认配置中的真实字段——双向防漂移。
+    #[test]
+    fn registry_covers_every_default_field() {
+        use crate::settings::model::AppSettings;
+        use crate::settings::reader::ReaderSettings;
+        use crate::settings::shortcuts::ShortcutSettings;
+
+        fn leaves(value: &Value, prefix: &str, out: &mut Vec<String>) {
+            match value {
+                Value::Object(map) => {
+                    for (key, child) in map {
+                        leaves(child, &format!("{prefix}.{key}"), out);
+                    }
+                }
+                _ => out.push(prefix.to_string()),
+            }
+        }
+        let app_tree = serde_json::to_value(AppSettings::default()).expect("app 树");
+        let reader_tree = serde_json::to_value(ReaderSettings::default()).expect("reader 树");
+        let shortcuts_tree = serde_json::to_value(ShortcutSettings {
+            schema_version: crate::settings::defaults::SCHEMA_VERSION,
+            bindings: crate::settings::defaults::default_bindings(),
+        })
+        .expect("shortcuts 树");
+        for (section, tree) in [
+            ("app", &app_tree),
+            ("reader", &reader_tree),
+            ("shortcuts", &shortcuts_tree),
+        ] {
+            let mut paths = Vec::new();
+            leaves(tree, section, &mut paths);
+            for path in paths {
+                if path.ends_with(".schemaVersion") || path.starts_with("shortcuts.bindings.") {
+                    continue;
+                }
+                assert!(spec_by_id(&path).is_some(), "字段 {path} 未登记注册表");
+            }
+        }
+        for spec in SPECS {
+            match spec.id.split_once('.') {
+                Some(("app", rest)) => {
+                    assert!(
+                        navigate(&app_tree, rest).is_some(),
+                        "注册项 {} 无法导航",
+                        spec.id
+                    );
+                }
+                Some(("reader", rest)) => {
+                    assert!(
+                        navigate(&reader_tree, rest).is_some(),
+                        "注册项 {} 无法导航",
+                        spec.id
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// 边界校验：整数项拒绝浮点；文本超长；快捷键空值/超长/类型；枚举未知值；
+    /// 布尔类型错误；边界值本身应通过。
+    #[test]
+    fn validate_value_boundary_cases() {
+        let spec = |id: &str| spec_by_id(id).expect(id);
+        let err =
+            validate_value(spec("app.maxTabs"), &serde_json::json!(1.5)).expect_err("浮点应拒绝");
+        assert!(err.contains("非负整数"), "{err}");
+
+        let long = "字".repeat(201);
+        let err = validate_value(
+            spec("reader.typography.fontFamily"),
+            &serde_json::json!(long),
+        )
+        .expect_err("超长应拒绝");
+        assert!(err.contains("过长"), "{err}");
+
+        let long_combo = format!("Ctrl+{}", "A".repeat(70));
+        let err = validate_value(
+            spec("shortcuts.bindings"),
+            &serde_json::json!({ "openFile": long_combo }),
+        )
+        .expect_err("绑定过长应拒绝");
+        assert!(err.contains("过长"), "{err}");
+
+        let err =
+            validate_value(spec("app.locale"), &serde_json::json!("fr")).expect_err("枚举应拒绝");
+        assert!(err.contains("非法取值"), "{err}");
+
+        let err = validate_value(spec("reader.statusBar.showSize"), &serde_json::json!("yes"))
+            .expect_err("类型应拒绝");
+        assert!(err.contains("true/false"), "{err}");
+
+        assert!(validate_value(spec("app.maxTabs"), &serde_json::json!(200)).is_ok());
+        assert!(validate_value(
+            spec("reader.typography.fontFamily"),
+            &serde_json::json!("微软雅黑")
+        )
+        .is_ok());
+        assert!(validate_value(
+            spec("shortcuts.bindings"),
+            &serde_json::json!({"openFile": "Ctrl+O"})
+        )
+        .is_ok());
+    }
 }

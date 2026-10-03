@@ -285,6 +285,25 @@ mod tests {
         );
     }
 
+    /// 界面语言反序列化：常见变体归一（zh / zh-Hans / en-US / EN）；未知值归入默认。
+    #[test]
+    fn locale_deserialization_accepts_variants() {
+        use crate::settings::model::Language;
+        for (raw, expected) in [
+            ("zh-CN", Language::ZhCn),
+            ("zh", Language::ZhCn),
+            ("zh-Hans", Language::ZhCn),
+            ("en-US", Language::En),
+            ("EN", Language::En),
+        ] {
+            let parsed: Language = serde_json::from_value(serde_json::json!(raw)).expect("解析");
+            assert_eq!(parsed, expected, "{raw}");
+        }
+        let unknown: Language = serde_json::from_value(serde_json::json!("fr")).expect("解析");
+        assert_eq!(unknown, Language::Unknown);
+        assert_eq!(unknown.normalized(), Language::ZhCn);
+    }
+
     /// 主配置数值裁剪 + 未知日志级别归一。
     #[test]
     fn app_settings_clamps_and_normalizes_unknown_values() {
