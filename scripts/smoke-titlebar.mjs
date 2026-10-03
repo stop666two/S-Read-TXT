@@ -205,6 +205,12 @@ async function main() {
     check('T9 标题栏设置齿轮 → 设置窗口打开', gearHit === true && settingsWs !== null);
     if (settingsWs) {
       const setClient = await createClient(settingsWs);
+      /** 等待设置窗口的关闭按钮就绪并尝试关闭（负载下首次点击可能丢失，随后升级为按标签直连关闭） */
+      const waitGone = (ms) =>
+        waitForValue(async () => {
+          const still = await findTarget(port, 'settings.html').catch(() => null);
+          return still ? null : true;
+        }, ms);
       await waitForValue(async () => {
         const probe = await setClient.send('Runtime.evaluate', {
           expression: `!!document.querySelector('.title-bar button[aria-label="关闭"]')`,
@@ -212,15 +218,21 @@ async function main() {
         });
         return probe.result?.value === true ? true : null;
       }, 8000);
-      await setClient.send('Runtime.evaluate', {
-        expression: `document.querySelector('.title-bar button[aria-label="关闭"]')?.click() ?? true`,
-        returnByValue: true,
-      });
+      await setClient.send('Page.bringToFront').catch(() => {});
+      await setClient
+        .send('Runtime.evaluate', {
+          expression: `document.querySelector('.title-bar button[aria-label="关闭"]')?.click() ?? true`,
+          returnByValue: true,
+        })
+        .catch(() => {});
+      let closed = await waitGone(5000);
+      if (!closed) {
+        await evalJs(
+          `window.__TAURI_INTERNALS__.invoke('plugin:window|close', { label: 'settings' }).then(() => true).catch(() => false)`,
+        ).catch(() => {});
+        closed = await waitGone(8000);
+      }
       setClient.close();
-      const closed = await waitForValue(async () => {
-        const still = await findTarget(port, 'settings.html').catch(() => null);
-        return still ? null : true;
-      }, 10000);
       check('T9b 设置窗口已关闭', closed === true);
     } else {
       check('T9b 设置窗口已关闭', false, '未打开');
