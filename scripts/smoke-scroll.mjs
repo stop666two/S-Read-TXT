@@ -148,9 +148,9 @@ try {
     const viaSlider = idx % 2 === 1;
     // 奇数轮走真实滑块路径（input 实时 + change 提交），偶数轮走数字框（change 提交）
     if (viaSlider) {
-      await setNumber('input[data-setting="fontSize"]', String(size), ['input', 'change']);
+      await setNumber('input[data-setting="reader.typography.fontSize"]', String(size), ['input', 'change']);
     } else {
-      await setNumber('input[data-setting-num="fontSize"]', String(size), ['change']);
+      await setNumber('input[data-setting-num="reader.typography.fontSize"]', String(size), ['change']);
     }
     await waitForValue(async () => ((await evalMain(`getComputedStyle(document.documentElement).getPropertyValue('--reading-size').trim()`)) === `${size}px` ? true : null), 5000);
     await delay(320);

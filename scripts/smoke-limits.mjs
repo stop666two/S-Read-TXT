@@ -168,7 +168,7 @@ try {
   const sliders = await evalSettings(
     `(() => [...document.querySelectorAll('[data-setting]')].map((el) => el.getAttribute('data-setting')).join('|'))()`,
   );
-  if (typeof sliders === 'string' && sliders.includes('maxFileSizeMB') && sliders.includes('hardLimitMB')) {
+  if (typeof sliders === 'string' && sliders.includes('app.maxFileSizeMB') && sliders.includes('app.hardLimitMB')) {
     ok('L6 设置窗口双阈值滑块', sliders);
   } else {
     bad('L6 双阈值滑块', `sliders=${sliders}`);

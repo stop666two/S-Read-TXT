@@ -379,7 +379,7 @@ async function main() {
     const setFontSize = async (size) => {
       await evalSet(
         `(() => {
-          const range = document.querySelector('input[data-setting="fontSize"]');
+          const range = document.querySelector('input[data-setting="reader.typography.fontSize"]');
           if (!range) return false;
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
           setter.call(range, '${size}');
@@ -443,18 +443,18 @@ async function main() {
     };
     check(
       'S14a 段间距实时生效',
-      (await setRangeValue('paragraphSpacing', 12, '--reading-para-spacing', '12px')) === true,
+      (await setRangeValue('reader.typography.paragraphSpacing', 12, '--reading-para-spacing', '12px')) === true,
     );
     check(
       'S14b 首行缩进实时生效（2 字 ×16px=32px）',
-      (await setRangeValue('firstLineIndent', 2, '--reading-indent', '32px')) === true,
+      (await setRangeValue('reader.typography.firstLineIndent', 2, '--reading-indent', '32px')) === true,
     );
-    await setRangeValue('paragraphSpacing', 0, '--reading-para-spacing', '0px');
-    await setRangeValue('firstLineIndent', 0, '--reading-indent', '0px');
+    await setRangeValue('reader.typography.paragraphSpacing', 0, '--reading-para-spacing', '0px');
+    await setRangeValue('reader.typography.firstLineIndent', 0, '--reading-indent', '0px');
     const applyAlign = async (value, expect) => {
       await evalSet(
         `(() => {
-          const sel = document.querySelector('select[data-setting="textAlign"]');
+          const sel = document.querySelector('select[data-setting="reader.typography.textAlign"]');
           if (!sel) return false;
           const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
           setter.call(sel, '${value}');
@@ -487,8 +487,8 @@ async function main() {
         return now === checked ? true : null;
       }, 6000);
     };
-    check('S14d 平滑滚动开关可切换', (await toggleRow('smoothScroll', false)) === true);
-    check('S14e 平滑滚动恢复默认', (await toggleRow('smoothScroll', true)) === true);
+    check('S14d 平滑滚动开关可切换', (await toggleRow('reader.typography.smoothScroll', false)) === true);
+    check('S14e 平滑滚动恢复默认', (await toggleRow('reader.typography.smoothScroll', true)) === true);
 
     // S15 自定义字体：按钮 → 原生对话框（取消）；直接链路导入 / 应用 / 删除（确认框取消）
     currentStep = 'S15 字体导入';
@@ -528,18 +528,18 @@ async function main() {
     }
     const listed = await waitForValue(async () => {
       const values = await evalSet(
-        `(() => [...document.querySelectorAll('select[data-setting="fontFamily"] option')].map((o) => o.value))()`,
+        `(() => [...document.querySelectorAll('select[data-setting="reader.typography.fontFamily"] option')].map((o) => o.value))()`,
       );
       return Array.isArray(values) && values.some((value) => value.startsWith('custom:')) ? true : null;
     }, 8000);
     check('S15d 自定义字体出现在字体列表', listed === true);
     const customValue = await evalSet(
-      `(() => [...document.querySelectorAll('select[data-setting="fontFamily"] option')].map((o) => o.value).find((value) => value.startsWith('custom:')) ?? null)()`,
+      `(() => [...document.querySelectorAll('select[data-setting="reader.typography.fontFamily"] option')].map((o) => o.value).find((value) => value.startsWith('custom:')) ?? null)()`,
     );
     if (customValue) {
       await evalSet(
         `(() => {
-          const sel = document.querySelector('select[data-setting="fontFamily"]');
+          const sel = document.querySelector('select[data-setting="reader.typography.fontFamily"]');
           const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
           setter.call(sel, ${JSON.stringify(customValue)});
           sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -570,13 +570,13 @@ async function main() {
     await waitForValue(async () => ((await waitDialog(false, 4000)) ? true : null), 6000);
     await delay(300);
     const stillThere = await evalSet(
-      `(() => [...document.querySelectorAll('select[data-setting="fontFamily"] option')].some((o) => o.value.startsWith('custom:')))()`,
+      `(() => [...document.querySelectorAll('select[data-setting="reader.typography.fontFamily"] option')].some((o) => o.value.startsWith('custom:')))()`,
     );
     check('S15g 取消删除后字体保留', stillThere === true);
     // 恢复默认字体，再走删除链路（确认框无法自动点「是」，此处直连命令验证）
     await evalSet(
       `(() => {
-        const sel = document.querySelector('select[data-setting="fontFamily"]');
+        const sel = document.querySelector('select[data-setting="reader.typography.fontFamily"]');
         const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
         setter.call(sel, 'Microsoft YaHei');
         sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -595,19 +595,17 @@ async function main() {
     );
     check('S15i 删除后自定义字体列表为空', fontsLeft === 0, `count=${fontsLeft}`);
 
-    // S16 状态栏元素开关 + 启动行为开关（写盘、可还原）
+    // S16 状态栏元素开关（阅读排版页）与启动行为开关（常规页）
     currentStep = 'S16 界面与启动开关';
-    await evalSet(
-      `(() => { const tab = [...document.querySelectorAll('.tabs [role="tab"]')].find((b) => b.textContent.trim() === '常规'); tab?.click(); return true; })()`,
-    );
-    await delay(250);
-    check('S16a 状态栏开关切换', (await toggleRow('statusBar.showSize', false)) === true);
-    check('S16b 状态栏开关还原', (await toggleRow('statusBar.showSize', true)) === true);
-    check('S16c 启动恢复会话开关切换', (await toggleRow('startup.restoreSession', false)) === true);
-    check('S16d 启动恢复会话开关还原', (await toggleRow('startup.restoreSession', true)) === true);
+    await clickTab('阅读排版');
+    check('S16a 状态栏开关切换', (await toggleRow('reader.statusBar.showSize', false)) === true);
+    check('S16b 状态栏开关还原', (await toggleRow('reader.statusBar.showSize', true)) === true);
+    await clickTab('常规');
+    check('S16c 启动恢复会话开关切换', (await toggleRow('app.startup.restoreSession', false)) === true);
+    check('S16d 启动恢复会话开关还原', (await toggleRow('app.startup.restoreSession', true)) === true);
     check(
       'S16e 启动恢复窗口开关存在',
-      (await evalSet(`!!document.querySelector('input[data-setting="startup.restoreWindow"]')`)) === true,
+      (await evalSet(`!!document.querySelector('input[data-setting="app.startup.restoreWindow"]')`)) === true,
     );
 
     // 汇总
