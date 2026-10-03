@@ -45,6 +45,12 @@
 | `theme` | string | `system` / `light` / `dark` / `eye-green` / `paper-cream` / `high-contrast` / `minimal-gray` / 用户主题 id | `system` | 主题 id；`system` 跟随系统明暗解析；用户主题来自 `data/themes/<id>.json`（导入生成） |
 | `themeAnimEnabled` | boolean | `true`/`false` | `true` | 主题切换过渡动画（尊重系统「减少动态效果」） |
 | `themeAnimMs` | number | 0–1000 整数 | `200` | 主题过渡时长（ms；0 = 无过渡） |
+| `background.enabled` | boolean | `true`/`false` | `false` | 启用背景图（阅读区/空状态图层） |
+| `background.file` | string | `data/backgrounds/` 内文件名 | 缺省（无） | 背景图文件（png/jpg/jpeg/webp，≤10MB；导入时复制入库、单文件驻留） |
+| `background.opacity` | number | 0–100 整数 | `40` | 背景图不透明度（%） |
+| `background.fill` | string | `cover`/`contain`/`stretch`/`tile` | `cover` | 填充方式（覆盖/包含/拉伸/平铺） |
+| `background.blur` | number | 0–40 整数 | `0` | 模糊半径（px） |
+| `background.dim` | number | -50–50 整数 | `0` | 亮度调整（%；负=暗化，正=亮化） |
 | `typography.fontFamily` | string | 系统字体名 或 `custom:<文件名>` | `Microsoft YaHei` | 正文主字体；`custom:` 前缀指向 `data/fonts/` 中导入的自定义字体 |
 | `typography.fontSize` | number | 8–72（px） | `16` | 正文字号 |
 | `typography.lineHeight` | number | 1.0–3.2 | `1.8` | 行高倍数 |
