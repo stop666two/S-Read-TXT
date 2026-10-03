@@ -266,6 +266,48 @@ async function main() {
     check('H7 Ctrl+Shift+H 打开历史面板', shortcutPanel === true);
     await evalJs(`(document.querySelector('.panel button[aria-label="关闭历史面板"]')?.click(), true)`);
 
+    // ---- H8/H9 长列表虚拟滚动（种子 60 条历史，走真实 UI 刷新与渲染） ----
+    const seedLines = Array.from({ length: 60 }, (_, i) => {
+      const name = `seed-${String(i).padStart(3, '0')}.txt`;
+      return JSON.stringify({
+        path: join(workDir, name),
+        name,
+        size: 1000 + i,
+        encoding: 'UTF-8',
+        openedAt: new Date(Date.now() - i * 60_000).toISOString(),
+        lastRow: i,
+        lastPercent: (i / 60) * 100,
+      });
+    }).join('\n');
+    writeFileSync(join(dataDir, 'history.jsonl'), `${seedLines}\n`, 'utf8');
+    // 触发前端历史 store 刷新：打开新文件（活动标签变化 → 800ms 防抖刷新）
+    await evalJs(openPathDone(fileD));
+    await delay(1400);
+    await openPanelViaToolbar();
+    await waitForValue(async () => ((await panelOpen()) ? true : null), 6000);
+    const totalEntries = await historyCount();
+    const renderedCount = await evalJs(`document.querySelectorAll('.panel .entry').length`);
+    check(
+      'H8 长列表虚拟滚动（渲染数远小于总数）',
+      totalEntries >= 60 && renderedCount >= 5 && renderedCount < totalEntries / 2,
+      `total=${totalEntries} rendered=${renderedCount}`,
+    );
+    const firstRendered = () =>
+      evalJs(`document.querySelector('.panel .entry .name')?.textContent?.trim() ?? null`);
+    const beforeScroll = await firstRendered();
+    const scrolled = await evalJs(
+      `(() => { const el = [...document.querySelectorAll('.panel *')].find((n) => n.scrollHeight > n.clientHeight + 200); if (!el) return false; el.scrollTop = el.scrollHeight; return true; })()`,
+    );
+    await delay(400);
+    const afterScroll = await firstRendered();
+    check(
+      'H9 滚动后渲染窗口移动（首条变化）',
+      scrolled === true && beforeScroll !== null && afterScroll !== beforeScroll,
+      `${beforeScroll} → ${afterScroll}`,
+    );
+    await evalJs(`(document.querySelector('.panel button[aria-label="关闭历史面板"]')?.click(), true)`);
+    await waitForValue(async () => ((await panelOpen()) === false ? true : null), 4000);
+
     if (process.argv.includes('--screenshot')) {
       await openPanelViaToolbar();
       await waitForValue(async () => ((await panelOpen()) ? true : null), 6000);

@@ -61,6 +61,9 @@ async function main() {
   writeFileSync(fileA, 'A1\nA2\nA3\n', 'utf8');
   writeFileSync(fileB, 'B1\nB2\nB3\n', 'utf8');
   writeFileSync(fileC, 'C1\nC2\nC3\n', 'utf8');
+  for (let i = 0; i < 10; i += 1) {
+    writeFileSync(join(workDir, `extra-${i}.txt`), `E${i}-1\nE${i}-2\n`, 'utf8');
+  }
 
   child = spawn(exePath, [], {
     env: {
@@ -207,6 +210,55 @@ async function main() {
       'T6 超出上限提示且不新增标签',
       (await count()) === 2 && /上限/.test(toastText ?? ''),
       `count=${await count()} toast=${toastText}`,
+    );
+
+    // ---- T7 标签溢出：横向滚动（滚轮纵向转横向） ----
+    await evalJs(
+      `(async () => { const s = await window.__TAURI_INTERNALS__.invoke('get_settings');
+          await window.__TAURI_INTERNALS__.invoke('save_settings', { request: { app: { ...s.app, maxTabs: 20 }, reader: s.reader, shortcuts: s.shortcuts.bindings } });
+          return true; })()`,
+    );
+    for (let i = 0; i < 10; i += 1) await evalJs(openPathDone(join(workDir, `extra-${i}.txt`)));
+    await waitForValue(async () => ((await count()) === 12 ? true : null), 12000);
+    const barBox = await evalJs(
+      `(() => { const bar = document.querySelector('.tab-bar'); if (!bar) return null; const r = bar.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width - 30), y: Math.round(r.top + r.height / 2), sw: bar.scrollWidth, cw: bar.clientWidth }); })()`,
+    ).then((raw) => (raw ? JSON.parse(raw) : null));
+    check('T7a 标签栏出现横向溢出', barBox !== null && barBox.sw > barBox.cw, JSON.stringify(barBox));
+    if (barBox) {
+      await client.send('Input.dispatchMouseEvent', {
+        type: 'mouseWheel',
+        x: barBox.x,
+        y: barBox.y,
+        deltaX: 0,
+        deltaY: 240,
+      });
+      await delay(400);
+    }
+    const scrollLeft = await evalJs(`document.querySelector('.tab-bar')?.scrollLeft ?? -1`);
+    check('T7b 滚轮纵向转横向滚动', scrollLeft > 0, `scrollLeft=${scrollLeft}`);
+
+    // ---- T8 拖拽取消（pointercancel）不产生重排且清理状态 ----
+    const orderBefore = JSON.stringify(await names());
+    await evalJs(
+      `(() => { const el = [...document.querySelectorAll('[data-tab-id]')][1]; if (!el) return false;
+          const r = el.getBoundingClientRect(); const y = r.top + r.height / 2;
+          const opts = (x) => ({ bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 7, button: 0, buttons: 1, isPrimary: true });
+          el.dispatchEvent(new PointerEvent('pointerdown', opts(r.left + 8)));
+          el.dispatchEvent(new PointerEvent('pointermove', opts(r.left + 80)));
+          el.dispatchEvent(new PointerEvent('pointercancel', opts(r.left + 80)));
+          return true; })()`,
+    );
+    await delay(300);
+    const dragState = await evalJs(
+      `(() => JSON.stringify({ dragging: !!document.querySelector('.tab-bar .dragging'), drop: !!document.querySelector('.tab-bar .drop-line') }))()`,
+    );
+    const orderAfter = JSON.stringify(await names());
+    check(
+      'T8 拖拽取消：顺序不变且状态清理',
+      orderBefore === orderAfter &&
+        JSON.parse(dragState).dragging === false &&
+        JSON.parse(dragState).drop === false,
+      `${orderAfter} ${dragState}`,
     );
 
     if (process.argv.includes('--screenshot')) {

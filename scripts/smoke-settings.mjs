@@ -361,7 +361,7 @@ async function main() {
     );
     await delay(300);
     const generalHasField = await evalSet(
-      `(() => { const labels = [...document.querySelectorAll('.rows .label')].map((el) => el.textContent ?? ''); return labels.some((t) => t.includes('可打开文件大小上限')); })()`,
+      `(() => { const labels = [...document.querySelectorAll('.rows .label')].map((el) => el.textContent ?? ''); return labels.some((t) => t.includes('只读阈值')); })()`,
     );
     check('S13a 常规页签显示真实字段', generalHasField === true);
     await evalSet(
@@ -554,6 +554,13 @@ async function main() {
       return stack.includes('SRT Custom') ? true : null;
     }, 15000);
     check('S15e 自定义字体加载并应用', fontApplied === true);
+    const fontFaceLoaded = await waitForValue(async () => {
+      const status = await evalMain(
+        `(() => { const face = [...document.fonts].find((f) => f.family.includes('SRT Custom')); return face ? face.status : 'missing'; })()`,
+      );
+      return status === 'loaded' ? true : null;
+    }, 8000);
+    check('S15e2 FontFace 实际加载（read_font_data 生效）', fontFaceLoaded === true);
     await evalSet(
       `(() => { const btn = document.querySelector('button.btn.danger'); btn?.click(); return true; })()`,
     );
