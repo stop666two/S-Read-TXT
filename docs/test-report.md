@@ -151,3 +151,10 @@
 - **红线复测（release 重建）**：NSIS 安装包 **1.89 MiB**（<10MB，占 19%）；release exe 5.24MB；冷启动与内存口径不受本批次影响（只读态不加载字体资源，字体仅在选用时载入）。
 - **测试口径说明**：字体删除的原生确认框中「是」按钮无法自动化（Windows TaskDialog），E2E 覆盖「弹框 + 取消保留」路径，删除链路经直连命令验证（S15h/i）；详见 `docs/plan/progress.md`。
 - **产物**：`src-tauri/target/release/bundle/nsis/S-Read-TXT_0.0.1-beta_x64-setup.exe`（2026-10-03 09:29 重建）。
+
+## 附：测试覆盖补测（2026-10-03）
+
+- 新增 docs/verify/coverage-matrix.md：43 个 IPC 命令 / 24 个错误码 / 27 个设置项 / 18 套 E2E 的逐项证据索引（新增功能必须登记）。
+- 本轮新增：smoke-settings-io **15/15**（v1 启动迁移端到端、导出结构校验、三类篡改拒绝、合法导入 + import-bak、重置单项/分组/全部、注册表断言）；smoke-history 长列表虚拟滚动 **13/13**；smoke-tabs 溢出滚轮/拖拽取消 **10/10**；smoke-settings **48/48**（含 FontFace 实际加载）；offline-check 并入 verify-all。
+- Rust 单测补强 **+7**（注册表完备性双向断言、边界校验、bundle 边界 4 项、locale 变体）→ 合计 **283**。
+- 全量自检（verify-all）**24/24 通过**，总耗时 687.6s（对应提交 33fa3e6）。
