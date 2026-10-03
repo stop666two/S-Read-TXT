@@ -6,7 +6,8 @@
 //! - 前提：目标必须为空目录（防误覆盖）；目标不能等于/包含/被包含于当前目录；
 //! - 复制：对被占用文件宽容跳过（`skipped` 计数，典型场景是 WebView2 缓存），
 //!   其余任何失败 → 清理目标、保留原目录、返回错误；
-//! - 校验：目标文件数/字节数 = 源（扣除跳过）；
+//! - 校验：目标统计 == **复制记录**（复制时逐文件累计）；不使用实时源统计——
+//!   源目录在迁移期间可能被 WebView2 等继续写入，实时比对存在竞态（P0-11 验收暴露）；
 //! - 原目录清理：尽力删除；被占用时写入目标目录 `.cleanup.json` 标记，
 //!   下次启动由 [`cleanup_pending`] 重试（此时 WebView2 尚未启动、文件锁已释放）。
 
@@ -38,14 +39,14 @@ pub enum MigrationError {
     Copy(#[source] io::Error),
     /// 校验失败（复制不完整）
     #[error(
-        "迁移校验失败（目标文件 {dst_files} ≠ 源 {src_files}，目标字节 {dst_bytes} ≠ 源 {src_bytes}）"
+        "迁移校验失败（目标文件 {dst_files} ≠ 复制记录 {src_files}，目标字节 {dst_bytes} ≠ 复制记录 {src_bytes}）"
     )]
     Verify {
-        /// 源文件数
+        /// 复制记录文件数（含跳过）
         src_files: u64,
         /// 目标文件数
         dst_files: u64,
-        /// 源字节数
+        /// 复制记录字节数
         src_bytes: u64,
         /// 目标字节数
         dst_bytes: u64,
@@ -84,10 +85,10 @@ struct CopyStats {
     files: u64,
     bytes: u64,
     skipped: u64,
-    skipped_bytes: u64,
 }
 
 /// 递归复制目录树；被占用/复制失败的文件计入 `skipped`（不中断整体迁移）。
+/// 字节数取 `fs::copy` 的返回值（实际写入量），确保校验与目标完全一致。
 fn copy_tree(src: &Path, dst: &Path, stats: &mut CopyStats) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
@@ -97,15 +98,13 @@ fn copy_tree(src: &Path, dst: &Path, stats: &mut CopyStats) -> io::Result<()> {
         if entry.file_type()?.is_dir() {
             copy_tree(&from, &to, stats)?;
         } else {
-            let len = entry.metadata().map(|meta| meta.len()).unwrap_or(0);
             match fs::copy(&from, &to) {
-                Ok(_) => {
+                Ok(copied) => {
                     stats.files += 1;
-                    stats.bytes += len;
+                    stats.bytes += copied;
                 }
                 Err(_) => {
                     stats.skipped += 1;
-                    stats.skipped_bytes += len;
                 }
             }
         }
@@ -171,14 +170,15 @@ pub fn migrate_data_dir(
         return Err(MigrationError::Copy(err));
     }
 
-    let (src_files, src_bytes) = tree_stats(current).map_err(MigrationError::Copy)?;
+    // 校验：目标统计 == 复制记录（源在迁移期间可能被 WebView2 等继续写入，
+    // 因此不使用实时源统计；目标从空目录开始且期间无其他写入者，统计应恰好相等）。
     let (dst_files, dst_bytes) = tree_stats(target).map_err(MigrationError::Copy)?;
-    if dst_files != src_files - stats.skipped || dst_bytes != src_bytes - stats.skipped_bytes {
+    if dst_files != stats.files || dst_bytes != stats.bytes {
         rollback_target(target, preexisted);
         return Err(MigrationError::Verify {
-            src_files,
+            src_files: stats.files,
             dst_files,
-            src_bytes,
+            src_bytes: stats.bytes,
             dst_bytes,
         });
     }

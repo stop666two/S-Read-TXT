@@ -64,6 +64,7 @@
 
 ### 修复
 
+- 数据目录迁移在 WebView2 活跃写入时的校验竞态（改为以复制记录为准，避免迁移偶发失败）
 - Windows GNU 工具链构建失败：PATH 中旧版 `libgcc_s_seh-1.dll`（Tesseract-OCR）遮蔽 MSYS2 运行库，导致 `cc1.exe` 启动失败（`0xC0000139 STATUS_ENTRYPOINT_NOT_FOUND`）而 `windres` 报 `preprocessing failed.`；修复方式见 README「Windows 构建环境注意」
 - Windows GNU 工具链下，链接 GUI 依赖的测试目标因缺少 Common-Controls v6 清单而加载旧版 comctl32（导入 `TaskDialogIndirect` 失败，`0xC0000139`）；通过 lib+bin 拆分（库 = 纯逻辑，测试不链接 GUI）规避，应用二进制不受影响
 - 冷启动窗口可能在内容就绪前显示为空白：窗口默认隐藏，前端在真实首帧（双 rAF）后显示，并加 8 秒兜底；补齐 `core:window:allow-show`/`allow-set-focus` 权限（缺失时显示调用被静默拒绝）
