@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 315（293 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 88；E2E 23 套 ≈373 项；verify-all 26 步。
+- 计数口径：Rust 315（293 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 88；E2E 23 套 ≈374 项；verify-all 26 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -13,7 +13,7 @@
 | smoke-ime | 7 | 输入法组合：preedit/候选/提交/取消/保存 |
 | smoke-i18n | 27 | 8 语言渲染/查找/替换/编码往返/切换 |
 | smoke-titlebar | 10 | 标题栏：拖拽/三键/双击/最小化/主题/齿轮入口 |
-| smoke-buttons | 32 | 全按钮审计：工具栏/菜单/标签栏/状态栏/退出流 |
+| smoke-buttons | 33 | 全按钮审计：欢迎页区块/工具栏/菜单/标签栏/状态栏/退出流 |
 | smoke-settings | 48 | 设置窗口全控件：常规/排版/字体导入/开关/页签 |
 | smoke-shortcuts | 30 | 快捷键：固定键/循环/翻页/全屏/录制/持久化/模态挂起 |
 | smoke-tabs | 10 | 多标签：顺序/中键/拖拽/菜单/上限/溢出滚轮/拖拽取消 |
@@ -96,6 +96,7 @@
 | P0-4 设置 UI v2（**完成**：注册表驱动动态生成、分组卡片+折叠、全局搜索、单项/分组/全部恢复默认、导入/导出界面、语言下拉即时切换；data-setting 契约 = 完整设置项 id） | smoke-settings-v2 V1–V10；smoke-settings 48/48；smoke-limits L6 / smoke-scroll D 选择器迁移后全绿 |
 | P0-5 主题系统 v2（**完成**：7 套 = system + 6 文件化内置、单主题驻留缓存、导入/导出/删除用户主题、切换过渡动画、挂载前令牌预载防闪烁、schema v3 迁移 eye→paper-cream、设置窗主题行 + 工具栏/菜单主题菜单） | smoke-theme T1–T10；theme.rs 单测 9 项（内置解析/校验拒绝/导入导出/删除规则/系统解析与驻留）；check-theme-contrast 全通过 |
 | P0-6 背景图（**完成**：文件级管理（png/jpg/jpeg/webp ≤10MB、单文件驻留、防穿越）；`reader.background.*` 六项设置与注册表校验（含负值范围）；工作区图层渲染（data URL、填充/重复/模糊/亮度、缺失优雅降级）；设置「背景图」分组行；`save_settings` 命令统一广播（原设置窗自广播移除） | smoke-bg B1–B9（10 项）；Rust background 6 项 + 注册表负值 1 项；回归 settings 48/settings-v2 10/settings-io 24/theme 10 |
+| P0-7 欢迎页/空状态改版（**完成**：品牌区 + 主按钮 + 最近打开（≤3 条直达）+ 生效快捷键提示行 + 拖拽/编辑提示；「新建文件/载入示例文本」待 P3 功能落地后加入） | smoke-buttons B2；settings-io L6 保持；按已确认设计稿实现 |
 | P0-3 i18n 前端（**已收口**：设置窗口经 P0-4 重写为 i18n 原生 + 语言下拉） | 见 P0-4 |
 | 性能套件（stress / measure-startup / memory-report） | 手动执行（时长与负载原因不入 verify-all），结论入 docs/test-report.md |
 | 覆盖率度量（llvm-cov / vitest coverage） | 待评估 GNU 工具链可行性；当前以「表面覆盖 + 本矩阵」为准 |
@@ -103,6 +104,7 @@
 
 ## 6. 变更记录
 
+- 2026-10-03 P0-7：欢迎页/空状态按已确认设计稿改版（品牌区/主按钮/最近打开直达/生效快捷键提示行/拖拽与编辑提示）；「新建文件 / 载入示例文本」待 P3 功能落地后加入；smoke-buttons 增至 33/33。
 - 2026-10-03 P0-6：背景图（文件级管理 + 单文件驻留；`reader.background.*` 设置与注册表校验（含负值范围）；工作区背景图层（data URL/填充/模糊/亮度，缺失降级）；`save_settings` 命令统一广播设置变更（修复直接 invoke 无广播的缺口）；smoke-bg 10/10 并入 verify-all）。
 - 2026-10-03 P0-5：主题系统 v2（6 套内置文件化 JSON + `system` 伪主题；单主题驻留缓存；导入/导出/删除用户主题（强校验）；切换过渡动画（尊重减少动态效果）；挂载前令牌预载防闪烁；schema v3 迁移 `eye`→`paper-cream`；工具栏/查看菜单主题菜单 + 设置「阅读排版」主题行；smoke-theme 10/10 并入 verify-all）。
 - 2026-10-03 P0-10：数据目录迁移（复制校验→写指针→延迟清理；`config.json` 指针优先级、`migrate_data_dir`/`restart_app` 命令、设置「数据位置」卡片；smoke-migrate 13/13 并入 verify-all）。
