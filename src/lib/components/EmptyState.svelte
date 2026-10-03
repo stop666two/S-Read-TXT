@@ -43,19 +43,27 @@
   }
 
   .open-btn {
-    margin: 8px 0 2px;
-    padding: 6px 22px;
+    margin: 10px 0 2px;
+    padding: 7px 24px;
     border: 1px solid var(--accent);
-    border-radius: 6px;
+    border-radius: 8px;
     background: transparent;
     color: var(--accent);
     font: inherit;
     font-size: 13px;
     cursor: default;
+    transition:
+      background-color 90ms ease,
+      color 90ms ease;
   }
 
   .open-btn:hover {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+
+  .open-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .hint {
