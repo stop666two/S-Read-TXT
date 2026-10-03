@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 300（278 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 88；E2E 21 套 ≈353 项；verify-all 24 步。
+- 计数口径：Rust 308（286 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 88；E2E 22 套 ≈363 项；verify-all 25 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -28,6 +28,7 @@
 | smoke-settings-v2 | 10 | 设置 v2（P0-4）：搜索过滤/无匹配/清空恢复/单项重置/分组重置/全部重置/导入导出按钮原生对话框/语言下拉即时切换/分组折叠 |
 | smoke-disk | 6 | 磁盘占用（P0-8）：分项与总量、设置卡片、清理日志/备份/WebView（UI+确认框）、未知范围拒绝 |
 | smoke-migrate | 13 | 数据目录迁移（P0-10）：便携副本运行、迁移报告/指针、重启 persisted、数据完整、旧目录清理、restart_app 自我替换 |
+| smoke-theme | 10 | 主题 v2（P0-5）：默认跟随系统、六套切换与令牌、系统解析、重启预载、导入/删除用户主题、非法导入与内置删除拒绝、动画类出现后移除、双主题截图 |
 | smoke-longline | 9 | 100MB 无换行：分段/滚动/编辑/保存字节级 |
 | offline-check | 4 | 离线核查：依赖树（静态）+ 运行时零外联（动态） |
 
@@ -92,6 +93,7 @@
 | 缺口 | 处置 |
 |---|---|
 | P0-4 设置 UI v2（**完成**：注册表驱动动态生成、分组卡片+折叠、全局搜索、单项/分组/全部恢复默认、导入/导出界面、语言下拉即时切换；data-setting 契约 = 完整设置项 id） | smoke-settings-v2 V1–V10；smoke-settings 48/48；smoke-limits L6 / smoke-scroll D 选择器迁移后全绿 |
+| P0-5 主题系统 v2（**完成**：7 套 = system + 6 文件化内置、单主题驻留缓存、导入/导出/删除用户主题、切换过渡动画、挂载前令牌预载防闪烁、schema v3 迁移 eye→paper-cream、设置窗主题行 + 工具栏/菜单主题菜单） | smoke-theme T1–T10；theme.rs 单测 9 项（内置解析/校验拒绝/导入导出/删除规则/系统解析与驻留）；check-theme-contrast 全通过 |
 | P0-3 i18n 前端（**已收口**：设置窗口经 P0-4 重写为 i18n 原生 + 语言下拉） | 见 P0-4 |
 | 性能套件（stress / measure-startup / memory-report） | 手动执行（时长与负载原因不入 verify-all），结论入 docs/test-report.md |
 | 覆盖率度量（llvm-cov / vitest coverage） | 待评估 GNU 工具链可行性；当前以「表面覆盖 + 本矩阵」为准 |
@@ -99,6 +101,7 @@
 
 ## 6. 变更记录
 
+- 2026-10-03 P0-5：主题系统 v2（6 套内置文件化 JSON + `system` 伪主题；单主题驻留缓存；导入/导出/删除用户主题（强校验）；切换过渡动画（尊重减少动态效果）；挂载前令牌预载防闪烁；schema v3 迁移 `eye`→`paper-cream`；工具栏/查看菜单主题菜单 + 设置「阅读排版」主题行；smoke-theme 10/10 并入 verify-all）。
 - 2026-10-03 P0-10：数据目录迁移（复制校验→写指针→延迟清理；`config.json` 指针优先级、`migrate_data_dir`/`restart_app` 命令、设置「数据位置」卡片；smoke-migrate 13/13 并入 verify-all）。
 - 2026-10-03 P0-9：快捷键扩展框架（导出「生效绑定」JSON / 导入强校验（未知动作·空值·超长·超大）·导入前备份回滚·整体替换语义；设置窗快捷键页导入导出入口 + 录制页文案全量 i18n；`check-shortcut-parity.mjs` 双端动作对齐检查并入 verify-all；smoke-settings-io 扩至 24/24）。
 - 2026-10-03 P0-8：磁盘占用与缓存清理（resources 模块：分项统计/范围清理/逐文件容错；`get_disk_usage`/`clear_cache` 命令 + INVALID_SCOPE；设置「常规」页磁盘卡片 + 三清理按钮；smoke-disk 6/6 并入 verify-all）；release 复测：NSIS 1.93MiB、启动可见 max 631ms/就绪 median 763ms PASS。

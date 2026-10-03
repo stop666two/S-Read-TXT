@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `2` | `2` | 配置格式版本（当前 v2；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `3` | `3` | 配置格式版本（当前 v3；启动自动迁移旧版，见 §2.7） |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
 | `maxFileSizeMB` | number | 1–2048 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
 | `hardLimitMB` | number | 100–16384 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
@@ -41,8 +41,10 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `2` | `2` | 配置格式版本（当前 v2；启动自动迁移旧版，见 §2.7） |
-| `theme` | string | `light`/`dark`/`eye`/`system` | `system` | 主题；`system` 跟随系统明暗解析 |
+| `schemaVersion` | number | 固定 `3` | `3` | 配置格式版本（当前 v3；启动自动迁移旧版，见 §2.7） |
+| `theme` | string | `system` / `light` / `dark` / `eye-green` / `paper-cream` / `high-contrast` / `minimal-gray` / 用户主题 id | `system` | 主题 id；`system` 跟随系统明暗解析；用户主题来自 `data/themes/<id>.json`（导入生成） |
+| `themeAnimEnabled` | boolean | `true`/`false` | `true` | 主题切换过渡动画（尊重系统「减少动态效果」） |
+| `themeAnimMs` | number | 0–1000 整数 | `200` | 主题过渡时长（ms；0 = 无过渡） |
 | `typography.fontFamily` | string | 系统字体名 或 `custom:<文件名>` | `Microsoft YaHei` | 正文主字体；`custom:` 前缀指向 `data/fonts/` 中导入的自定义字体 |
 | `typography.fontSize` | number | 8–72（px） | `16` | 正文字号 |
 | `typography.lineHeight` | number | 1.0–3.2 | `1.8` | 行高倍数 |
@@ -64,7 +66,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `2` | `2` | 配置格式版本（当前 v2；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `3` | `3` | 配置格式版本（当前 v3；启动自动迁移旧版，见 §2.7） |
 | `bindings` | object | 动作 id → 组合键字符串 | 见下表 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
 
 组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`）。
@@ -119,7 +121,7 @@
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v2）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件：
+**schema 版本（当前 v3）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`）：
 
 | 情况 | 行为 |
 |---|---|
@@ -197,7 +199,7 @@
 | `border-line` | `--c-border` | 边框/分隔线 |
 | `text-accent` / `bg-accent` | `--c-accent` | 强调色（交互/信息） |
 
-主题切换由 `<html data-theme="light|dark|eye">` 驱动（CSS 变量替换），类名不重建。色值见设计文档 §8。
+主题令牌由 `src/lib/theme.ts` 在挂载前写入 `<html>`（CSS 变量 + `data-theme-base`；后端 `get_theme` 解析，启动时经 `main.ts` 预载以防闪烁）；内置主题 `src-tauri/resources/themes/*.json`（编译期嵌入），用户主题 `data/themes/<id>.json`（导入生成，单主题驻留）。色值见设计文档 §8 与主题清单。
 
 ## 5. `package.json` / `Cargo.toml` 版本策略
 
