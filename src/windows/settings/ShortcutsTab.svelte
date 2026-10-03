@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
   import { emitTo } from '@tauri-apps/api/event';
+  import { open, save } from '@tauri-apps/plugin-dialog';
   import { onMount } from 'svelte';
 
   import { describeIpcError, ipc, toIpcError } from '../../lib/ipc';
@@ -20,6 +21,8 @@
   let recording = $state<ShortcutAction | null>(null);
   /** 保存进行中（防止并发保存互相覆盖） */
   let saving = $state(false);
+  /** 导入/导出进行中（防止并发对话框） */
+  let ioBusy = $state(false);
 
   onMount(() => {
     void load();
@@ -100,14 +103,74 @@
   /** 该动作是否被修改过（与默认不同） */
   const isModified = (action: ShortcutAction): boolean =>
     effective[action] !== undefined && effective[action] !== defaults[action];
+
+  /** 导出快捷键（P0-9）：写「生效绑定」全表为 JSON 文件 */
+  async function exportShortcuts(): Promise<void> {
+    if (ioBusy) return;
+    const path = await save({
+      title: t('shortcutIo.exportTitle'),
+      defaultPath: 's-read-txt-shortcuts.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (path === null) return;
+    ioBusy = true;
+    try {
+      const bytes = await ipc.exportShortcuts(path);
+      toasts.show(t('shortcutIo.exported', { bytes }));
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    } finally {
+      ioBusy = false;
+    }
+  }
+
+  /** 导入快捷键（P0-9）：整体替换覆盖项；后端强校验（未知动作/空值/超长/超大拒绝） */
+  async function importShortcuts(): Promise<void> {
+    if (ioBusy) return;
+    const selected = await open({
+      title: t('shortcutIo.importTitle'),
+      multiple: false,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (typeof selected !== 'string') return;
+    ioBusy = true;
+    try {
+      const snapshot = await ipc.importShortcuts(selected);
+      effective = snapshot.shortcuts.bindings;
+      toasts.show(t('shortcutIo.imported'));
+      await emitTo('main', 'srt://settings-changed', { kind: 'import' });
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    } finally {
+      ioBusy = false;
+    }
+  }
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
 <div class="wrap">
-  <p class="hint">
-    点击组合键后按下新按键（Esc 取消）；修改立即保存。Ctrl+1~9 为固定标签跳转键，不可占用。
-  </p>
+  <p class="hint">{t('shortcutRecorder.hint')}</p>
+  <div class="io-row">
+    <button
+      class="io-btn"
+      type="button"
+      data-setting="exportShortcuts"
+      disabled={ioBusy}
+      onclick={() => void exportShortcuts()}
+    >
+      {t('shortcutIo.export')}
+    </button>
+    <button
+      class="io-btn"
+      type="button"
+      data-setting="importShortcuts"
+      disabled={ioBusy}
+      onclick={() => void importShortcuts()}
+    >
+      {t('shortcutIo.import')}
+    </button>
+  </div>
   <ul class="rows">
     {#each SHORTCUT_ACTIONS as action (action)}
       <li class="row">
@@ -119,16 +182,16 @@
           type="button"
           onclick={() => startRecording(action)}
         >
-          {recording === action ? '按下新组合…（Esc 取消）' : (effective[action] ?? '未设置')}
+          {recording === action ? t('shortcutRecorder.recording') : (effective[action] ?? t('shortcutRecorder.unset'))}
         </button>
         {#if isModified(action)}
-          <button class="reset" type="button" onclick={() => resetOne(action)}>恢复默认</button>
+          <button class="reset" type="button" onclick={() => resetOne(action)}>{t('shortcutRecorder.resetOne')}</button>
         {/if}
       </li>
     {/each}
   </ul>
   <div class="footer">
-    <button class="reset-all" type="button" disabled={saving} onclick={resetAll}>全部恢复默认</button>
+    <button class="reset-all" type="button" disabled={saving} onclick={resetAll}>{t('shortcutRecorder.resetAll')}</button>
   </div>
 </div>
 
@@ -144,6 +207,32 @@
     color: var(--muted);
     font-size: 12px;
     line-height: 1.6;
+  }
+
+  .io-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .io-btn {
+    padding: 5px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 90ms ease, color 90ms ease;
+  }
+
+  .io-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .io-btn:disabled {
+    opacity: 0.55;
+    cursor: default;
   }
 
   .rows {

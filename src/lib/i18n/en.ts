@@ -255,6 +255,18 @@ export const en: Record<MessageKey, string> = {
     'This combination would interfere with typing; combine with Ctrl / Shift / Alt or use a function key',
   'shortcutRecorder.reserved': 'Ctrl+1~9 are fixed tab-switch keys and cannot be reassigned',
   'shortcutRecorder.duplicate': 'This combination is already used by another action',
+  'shortcutRecorder.hint':
+    'Click a combination then press the new keys (Esc to cancel). Changes save immediately. Ctrl+1~9 are fixed tab-switch keys.',
+  'shortcutRecorder.recording': 'Press new combo… (Esc to cancel)',
+  'shortcutRecorder.unset': 'Not set',
+  'shortcutRecorder.resetOne': 'Reset',
+  'shortcutRecorder.resetAll': 'Reset all',
+  'shortcutIo.export': 'Export…',
+  'shortcutIo.import': 'Import…',
+  'shortcutIo.exportTitle': 'Export shortcuts',
+  'shortcutIo.importTitle': 'Import shortcuts',
+  'shortcutIo.exported': 'Shortcuts exported ({bytes} bytes)',
+  'shortcutIo.imported': 'Shortcuts imported',
 
   // ---------- Settings window (P0-4: registry-driven) ----------
   'settings.title': 'Settings',

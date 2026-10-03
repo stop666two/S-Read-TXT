@@ -243,6 +243,17 @@ export const zhCN = {
   'shortcutRecorder.needsModifier': '该组合会干扰正常输入，请配合 Ctrl / Shift / Alt 或改用功能键',
   'shortcutRecorder.reserved': 'Ctrl+1~9 是固定的标签跳转键，不可占用',
   'shortcutRecorder.duplicate': '该组合已被其他动作使用',
+  'shortcutRecorder.hint': '点击组合键后按下新按键（Esc 取消）；修改立即保存。Ctrl+1~9 为固定标签跳转键，不可占用。',
+  'shortcutRecorder.recording': '按下新组合…（Esc 取消）',
+  'shortcutRecorder.unset': '未设置',
+  'shortcutRecorder.resetOne': '恢复默认',
+  'shortcutRecorder.resetAll': '全部恢复默认',
+  'shortcutIo.export': '导出…',
+  'shortcutIo.import': '导入…',
+  'shortcutIo.exportTitle': '导出快捷键',
+  'shortcutIo.importTitle': '导入快捷键',
+  'shortcutIo.exported': '快捷键已导出（{bytes} 字节）',
+  'shortcutIo.imported': '快捷键已导入',
 
   // ---------- 设置窗口（P0-4：注册表驱动） ----------
   'settings.title': '设置',

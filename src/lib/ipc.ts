@@ -497,6 +497,8 @@ export const ipc = {
   exportSettings: (path: string) => invoke<number>('export_settings', { path }),
   /** 从导出文件导入设置（强校验；返回导入后的快照）。 */
   importSettings: (path: string) => invoke<SettingsSnapshot>('import_settings', { path }),
+  exportShortcuts: (path: string) => invoke<number>('export_shortcuts', { path }),
+  importShortcuts: (path: string) => invoke<SettingsSnapshot>('import_shortcuts', { path }),
   /** 重置设置（全部 / 分组 / 单项；返回重置后的快照）。 */
   resetSettings: (scope: ResetScope) => invoke<SettingsSnapshot>('reset_settings', { scope }),
   getDiskUsage: () => invoke<DiskUsageReport>('get_disk_usage'),
