@@ -46,11 +46,16 @@ class TabStore {
     }
   }
 
-  /** 打开单个路径：打开成功后以 list_tabs 返回的完整视图校准状态。 */
+  /** 打开单个路径：打开成功后以 list_tabs 返回的完整视图校准状态。
+   *  新打开的只读文件（超过只读阈值）给出一次性提示。 */
   async openPath(path: string): Promise<void> {
     try {
-      await ipc.openFile(path);
+      const info = await ipc.openFile(path);
+      const isNew = !this.tabs.some((tab) => tab.tabId === info.tabId);
       this.applyView(await ipc.listTabs());
+      if (isNew && info.readOnly) {
+        toasts.show('文件超过只读阈值，已以只读模式打开（可在设置中调整）', 'warn', 5000);
+      }
     } catch (error) {
       const payload = toIpcError(error);
       if (import.meta.env.DEV) console.error('[tabs] 打开失败', payload);

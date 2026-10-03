@@ -36,8 +36,8 @@
   <p class="section-title">文件与标签</p>
   <div class="rows">
     <SliderRow
-      label="可打开文件大小上限"
-      desc="超过该大小的文件将拒绝打开（1–2048 MB）"
+      label="只读阈值"
+      desc="超过该大小的文件以只读模式打开（可浏览、不可编辑；1–2048 MB）"
       value={app.maxFileSizeMB}
       min={1}
       max={2048}
@@ -45,6 +45,17 @@
       unit="MB"
       setting="maxFileSizeMB"
       onCommit={(value) => void settings.saveApp({ maxFileSizeMB: value })}
+    />
+    <SliderRow
+      label="硬上限"
+      desc="超过该大小的文件直接拒绝打开（绝对上限；100–16384 MB）"
+      value={app.hardLimitMB}
+      min={100}
+      max={16384}
+      step={1}
+      unit="MB"
+      setting="hardLimitMB"
+      onCommit={(value) => void settings.saveApp({ hardLimitMB: value })}
     />
     <SliderRow
       label="标签数量上限"

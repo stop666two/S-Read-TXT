@@ -16,6 +16,14 @@ pub const DEFAULT_LOG_LEVEL: LogLevel = LogLevel::Info;
 pub const DEFAULT_MAX_FILE_SIZE_MB: u32 = 100;
 /// 文件大小上限允许范围（MB，闭区间）
 pub const MAX_FILE_SIZE_MB_RANGE: (u32, u32) = (1, 2048);
+/// 默认只读阈值（MB）：超过此大小以只读模式打开（可浏览、不可编辑）
+pub const DEFAULT_READ_ONLY_THRESHOLD_MB: u32 = 100;
+/// 只读阈值允许范围（MB，闭区间）
+pub const READ_ONLY_THRESHOLD_MB_RANGE: (u32, u32) = (1, 2048);
+/// 默认硬上限（MB）：超过此大小拒绝打开（比只读阈值更宽的绝对上限）
+pub const DEFAULT_HARD_LIMIT_MB: u32 = 2048;
+/// 硬上限允许范围（MB，闭区间）
+pub const HARD_LIMIT_MB_RANGE: (u32, u32) = (100, 16384);
 /// 默认标签数量上限
 pub const DEFAULT_MAX_TABS: u32 = 20;
 /// 标签数量上限允许范围（闭区间）

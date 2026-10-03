@@ -63,6 +63,9 @@ pub enum AppStateError {
     /// 存在未保存修改，破坏性操作被阻止
     #[error("标签 {0} 有未保存的修改")]
     DirtyEdit(u64),
+    /// 文件超过只读阈值，不允许进入编辑模式
+    #[error("文件大小 {size_bytes} 字节超过只读阈值 {limit_mb} MB")]
+    EditTooLarge { size_bytes: u64, limit_mb: u32 },
 }
 
 /// 标签的对外描述（IPC 载荷；不暴露 mmap 等内部状态）。
@@ -83,6 +86,8 @@ pub struct TabInfo {
     pub editing: bool,
     /// 是否有未保存修改（编辑文档存在且脏）
     pub dirty: bool,
+    /// 是否只读（文件超过只读阈值：可浏览、不可进入编辑）
+    pub read_only: bool,
     /// 总显示行数
     pub rows_total: u64,
     /// 文件总字节数
@@ -114,6 +119,8 @@ struct Tab {
     edit: Option<EditDoc>,
     /// 是否处于编辑模式（UI 开关；与编辑文档是否存在解耦）
     editing: bool,
+    /// 只读标记（文件超过只读阈值：打开/重载时按当时设置计算）
+    read_only: bool,
     /// 打开/上次保存时的磁盘快照（外部修改冲突检测基准）
     edit_baseline: Option<DiskSnapshot>,
 }
@@ -168,7 +175,8 @@ impl AppState {
                 limit: settings.max_tabs,
             });
         }
-        let session = FileSession::open(&canonical, None, settings.max_file_size_mb)?;
+        let session = FileSession::open(&canonical, None, settings.hard_limit_mb)?;
+        let read_only = session.byte_len() > read_threshold_bytes(settings);
         let id = self.next_tab_id;
         self.next_tab_id += 1;
         let tab = Tab {
@@ -176,6 +184,7 @@ impl AppState {
             session,
             edit: None,
             editing: false,
+            read_only,
             edit_baseline: None,
         };
         let info = tab_info(&tab);
@@ -255,6 +264,12 @@ impl AppState {
             .tabs
             .get_mut(&tab_id)
             .ok_or(AppStateError::TabNotFound(tab_id))?;
+        if tab.read_only {
+            return Err(AppStateError::EditTooLarge {
+                size_bytes: tab.session.byte_len(),
+                limit_mb: settings.max_file_size_mb,
+            });
+        }
         if tab.edit.is_none() {
             let doc = EditDoc::open(
                 tab.session.path(),
@@ -452,9 +467,11 @@ impl AppState {
 
         // 重定向标签到新路径
         let canonical = canonicalize_lossy(new_path);
-        let session =
-            FileSession::open(&canonical, Some(saved_encoding), settings.max_file_size_mb)?;
-        let reopened =
+        let session = FileSession::open(&canonical, Some(saved_encoding), settings.hard_limit_mb)?;
+        let read_only = session.byte_len() > read_threshold_bytes(settings);
+        let reopened = if read_only {
+            None
+        } else {
             match EditDoc::open(&canonical, Some(saved_encoding), settings.max_file_size_mb) {
                 Ok(doc) => Some(doc),
                 Err(err) => {
@@ -464,11 +481,13 @@ impl AppState {
                     );
                     None
                 }
-            };
+            }
+        };
         tab.edit_baseline = snapshot_of(&canonical)?;
         tab.editing = reopened.is_some();
         tab.edit = reopened;
         tab.session = session;
+        tab.read_only = read_only;
         Ok(outcome)
     }
 
@@ -484,7 +503,8 @@ impl AppState {
             .ok_or(AppStateError::TabNotFound(tab_id))?;
         let path = tab.session.path().to_path_buf();
         let override_encoding = tab.session.encoding_override();
-        tab.session = FileSession::open(&path, override_encoding, settings.max_file_size_mb)?;
+        tab.session = FileSession::open(&path, override_encoding, settings.hard_limit_mb)?;
+        tab.read_only = tab.session.byte_len() > read_threshold_bytes(settings);
         tab.edit = None;
         tab.editing = false;
         tab.edit_baseline = None;
@@ -607,9 +627,15 @@ fn tab_info(tab: &Tab) -> TabInfo {
             .map(|encoding| encoding.label().to_string()),
         editing: tab.editing,
         dirty: tab.edit.as_ref().is_some_and(|doc| doc.is_dirty()),
+        read_only: tab.read_only,
         rows_total: source.rows_total(),
         byte_len: source.byte_len(),
     }
+}
+
+/// 只读阈值字节数（超过 → 只读打开）。
+fn read_threshold_bytes(settings: &AppSettings) -> u64 {
+    u64::from(settings.max_file_size_mb) * 1024 * 1024
 }
 
 /// 取文件名（无法取得时退回完整路径字符串）。
@@ -1142,5 +1168,45 @@ mod tests {
         let payload = state.rows(info.tab_id, 0, 1).expect("取行失败");
         assert!(!payload.rows[0].text.is_empty());
         assert!(payload.rows[0].logical_row.is_some());
+    }
+
+    /// 双阈值：超过只读阈值 → 只读标记 + 进入编辑被拒；超过硬上限 → 打开被拒。
+    #[test]
+    fn dual_threshold_read_only_and_hard_limit() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        // 2 KB 文件 + 只读阈值 0 不可设 → 用 1 MB 阈值与 2 MB 内容构造「超阈值」
+        let content = "a".repeat(2 * 1024 * 1024);
+        let path = write_file(dir.path(), "big.txt", &content);
+        let mut state = AppState::new();
+        let mut settings = AppSettings::default();
+        settings.max_file_size_mb = 1; // 只读阈值 1MB
+        settings.hard_limit_mb = 4; // 硬上限 4MB
+
+        let (info, _) = state.open_file(&path, &settings).expect("应当只读打开");
+        assert!(info.read_only, "2MB > 1MB 阈值应标记只读");
+        assert!(matches!(
+            state.toggle_edit(info.tab_id, &settings),
+            Err(AppStateError::EditTooLarge { .. })
+        ));
+
+        // 超过硬上限 → 拒绝打开（全新状态，避免复用已开标签跳过校验）
+        let mut strict = AppSettings::default();
+        strict.max_file_size_mb = 1;
+        strict.hard_limit_mb = 1;
+        let mut fresh = AppState::new();
+        let err = fresh
+            .open_file(&path, &strict)
+            .expect_err("超过硬上限应被拒绝");
+        assert!(matches!(
+            err,
+            AppStateError::TextFile(TextFileError::TooLarge { .. })
+        ));
+
+        // 提高阈值后重载 → 恢复可编辑
+        let mut relaxed = AppSettings::default();
+        relaxed.max_file_size_mb = 4;
+        relaxed.hard_limit_mb = 8;
+        let info = state.reload_tab(info.tab_id, &relaxed).expect("重载失败");
+        assert!(!info.read_only, "阈值放宽后应可编辑");
     }
 }

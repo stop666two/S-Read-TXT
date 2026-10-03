@@ -43,6 +43,8 @@ export interface TabInfo {
   editing: boolean;
   /** 是否有未保存修改 */
   dirty: boolean;
+  /** 是否只读（文件超过只读阈值：可浏览、不可进入编辑） */
+  readOnly: boolean;
   rowsTotal: number;
   byteLen: number;
 }
@@ -194,6 +196,7 @@ export interface AppSettings {
   schemaVersion: number;
   logLevel: string;
   maxFileSizeMB: number;
+  hardLimitMB: number;
   maxTabs: number;
   history: HistorySettings;
   saveBackupEnabled: boolean;

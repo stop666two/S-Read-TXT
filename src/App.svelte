@@ -449,10 +449,14 @@
     });
   }
 
-  /** 切换编辑模式（失败走 Toast：超长行 / 标签不存在等） */
+  /** 切换编辑模式（失败走 Toast：只读 / 标签不存在等） */
   async function toggleEdit(): Promise<void> {
     const tab = active;
     if (!tab) return;
+    if (tab.readOnly) {
+      toasts.show('文件超过只读阈值，已以只读模式打开，不可编辑（可在设置中调整）', 'warn', 5000);
+      return;
+    }
     try {
       tabs.update(await ipc.toggleEdit(tab.tabId));
       focusEditorProxy();
@@ -934,6 +938,7 @@
     onOpenFile={openFile}
     onQuit={() => void quit()}
     editing={active?.editing ?? false}
+    readOnly={active?.readOnly ?? false}
     dirty={active?.dirty ?? false}
     onToggleEdit={() => void toggleEdit()}
     onSave={openSaveDialog}
@@ -960,6 +965,7 @@
     onEncodingChange={(label) => void changeEncoding(label)}
     onOpenFile={openFile}
     editing={active?.editing ?? false}
+    readOnly={active?.readOnly ?? false}
     canSave={active?.dirty ?? false}
     onToggleEdit={() => void toggleEdit()}
     onSave={openSaveDialog}
@@ -999,6 +1005,7 @@
     showPercent={readerSettings?.statusBar.showPercent ?? true}
     showSize={readerSettings?.statusBar.showSize ?? true}
     showEncoding={readerSettings?.statusBar.showEncoding ?? true}
+    readOnly={active?.readOnly ?? false}
   />
   <Toast />
 {#if onboardingOpen}

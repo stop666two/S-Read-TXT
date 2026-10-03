@@ -28,6 +28,8 @@
     showSize?: boolean;
     /** 显示编码切换（设置项） */
     showEncoding?: boolean;
+    /** 是否只读（文件超过只读阈值：状态栏展示「只读」标记） */
+    readOnly?: boolean;
   }
   let {
     fileName,
@@ -42,6 +44,7 @@
     showPercent = true,
     showSize = true,
     showEncoding = true,
+    readOnly = false,
   }: Props = $props();
 </script>
 
@@ -51,6 +54,9 @@
       {#if showFileName}{fileName}{/if}
       {#if showFileName && showPercent}<span class="dot"> · </span>{/if}
       {#if showPercent}阅读 {Math.round(percent ?? 0)}%{/if}
+      {#if readOnly}
+        <span class="readonly" title="文件超过只读阈值，不可编辑（可在设置中调整）">只读</span>
+      {/if}
     </span>
     <span class="right">
       {#if showSize && sizeLabel}
@@ -103,5 +109,14 @@
 
   .encoding {
     color: var(--muted);
+  }
+
+  .readonly {
+    margin-left: 8px;
+    padding: 0 5px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--warn, #8a5200);
   }
 </style>

@@ -42,6 +42,8 @@ pub const CODE_ENCODING_UNREPRESENTABLE: &str = "ENCODING_UNREPRESENTABLE";
 pub const CODE_NOT_EDITING: &str = "NOT_EDITING";
 /// 存在未保存修改，操作被阻止
 pub const CODE_EDIT_DIRTY: &str = "EDIT_DIRTY";
+/// 文件超过只读阈值，不允许进入编辑模式
+pub const CODE_FILE_READ_ONLY: &str = "FILE_READ_ONLY";
 /// 查找/替换命中过多（全部替换保护上限）
 pub const CODE_QUERY_TOO_BROAD: &str = "QUERY_TOO_BROAD";
 /// 正则表达式无效（编译失败；message 为引擎说明）
@@ -193,6 +195,16 @@ impl From<AppStateError> for IpcError {
             AppStateError::DirtyEdit(tab_id) => Self::new(
                 CODE_EDIT_DIRTY,
                 format!("标签 {tab_id} 有未保存的修改，请先保存或放弃修改"),
+            ),
+            AppStateError::EditTooLarge {
+                size_bytes,
+                limit_mb,
+            } => Self::new(
+                CODE_FILE_READ_ONLY,
+                format!(
+                    "文件大小 {:.1} MB 超过只读阈值 {limit_mb} MB，已以只读模式打开（可在设置中调整）",
+                    size_bytes as f64 / (1024.0 * 1024.0)
+                ),
             ),
         }
     }

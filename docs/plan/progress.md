@@ -346,3 +346,4 @@
 - **规划产物**：设计文档并入 §17（D39–D77 摘要）；docs/plan/2026-10-03-p0-plan.md（P0-1 双阈值 / P0-2 设置 v2 / P0-3 i18n / P0-4 设置 UI v2 / P0-5 主题 v2 / P0-6 背景图 / P0-7 欢迎页 / P0-8 资源策略 / P0-9 快捷键框架 / P0-10 配置迁移 / P0-11 验收）；三份提案状态改为「已批准执行」（维护者「完全开始」）。
 - **主题令牌**：src-tauri/resources/themes/*.json 6 套落盘（13 令牌/套），scripts/check-theme-contrast.mjs 实测全部 WCAG AA 通过（护眼绿 accent 首轮 4.34 不达标 → 调整为 #3A7449 后 4.53）。
 - **设计预览**：docs/design/previews/2026-10-03-themes-and-welcome.html（6 套色板 × 模拟窗口 + 浅/深欢迎页 mockup），待维护者确认后实施主题与欢迎页（其余 P0 任务不受阻）。
+- **P0-1 大文件双阈值**（完成）：只读阈值/硬上限分离（默认 100MB / 2048MB，倒挂自动修正）；`TabInfo.readOnly` + 状态栏「只读」标记 + 编辑入口禁用与 Ctrl+E 拦截提示 + `FILE_READ_ONLY` 错误码；打开/重载/另存为全路径按硬上限放开、编辑按只读阈值限制；Rust 253 全绿（新增 3 项：双阈值行为、归一一致性、存储往返）；E2E `smoke-limits` **6/6**（101MiB 只读打开/标记/禁用/Ctrl+E/硬上限拒绝/设置双滑块）；并入 verify-all（22 步）。

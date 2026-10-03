@@ -112,8 +112,13 @@ pub struct AppSettings {
     pub log_level: LogLevel,
     /// 可打开文件大小上限（MB）。
     /// JSON 名显式固定为 `maxFileSizeMB`（serde camelCase 会自动生成 `maxFileSizeMb`，与文档不符）。
+    /// 语义：只读阈值——超过此大小以只读模式打开（可浏览、不可编辑）。
     #[serde(rename = "maxFileSizeMB")]
     pub max_file_size_mb: u32,
+    /// 硬上限（MB）：超过此大小拒绝打开（绝对上限，正常应 ≥ 只读阈值）。
+    /// JSON 名显式固定为 `hardLimitMB`（与 `maxFileSizeMB` 同理）。
+    #[serde(rename = "hardLimitMB")]
+    pub hard_limit_mb: u32,
     /// 标签数量上限
     pub max_tabs: u32,
     /// 历史保留策略
@@ -132,6 +137,7 @@ impl Default for AppSettings {
             schema_version: defaults::SCHEMA_VERSION,
             log_level: defaults::DEFAULT_LOG_LEVEL,
             max_file_size_mb: defaults::DEFAULT_MAX_FILE_SIZE_MB,
+            hard_limit_mb: defaults::DEFAULT_HARD_LIMIT_MB,
             max_tabs: defaults::DEFAULT_MAX_TABS,
             history: HistorySettings::default(),
             save_backup_enabled: defaults::DEFAULT_SAVE_BACKUP_ENABLED,

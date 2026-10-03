@@ -132,11 +132,18 @@ pub fn to_overrides(effective: &BTreeMap<String, String>) -> BTreeMap<String, St
 }
 
 /// 主配置归一：版本对齐、枚举回退、数值裁剪。
+/// 双阈值一致性：只读阈值 ≤ 硬上限（若用户配置倒挂，以下方放宽准则修正硬上限）。
 fn normalize_app(settings: &mut AppSettings) {
     settings.schema_version = defaults::SCHEMA_VERSION;
     settings.log_level = settings.log_level.normalized();
     let (min_size, max_size) = defaults::MAX_FILE_SIZE_MB_RANGE;
     settings.max_file_size_mb = settings.max_file_size_mb.clamp(min_size, max_size);
+    let (min_hard, max_hard) = defaults::HARD_LIMIT_MB_RANGE;
+    settings.hard_limit_mb = settings.hard_limit_mb.clamp(min_hard, max_hard);
+    // 一致性：硬上限不得低于只读阈值（否则 只读阈值 < size ≤ 硬上限 的区间不存在）
+    if settings.hard_limit_mb < settings.max_file_size_mb {
+        settings.hard_limit_mb = settings.max_file_size_mb;
+    }
     let (min_tabs, max_tabs) = defaults::MAX_TABS_RANGE;
     settings.max_tabs = settings.max_tabs.clamp(min_tabs, max_tabs);
     let (min_entries, max_entries) = defaults::HISTORY_MAX_ENTRIES_RANGE;
@@ -218,6 +225,7 @@ mod tests {
         let dir = data_dir();
         let mut settings = AppSettings::default();
         settings.max_file_size_mb = 256;
+        settings.hard_limit_mb = 8192;
         settings.max_tabs = 30;
         settings.history.max_entries = 500;
         settings.log_level = crate::settings::model::LogLevel::Debug;
@@ -272,6 +280,30 @@ mod tests {
         assert_eq!(loaded.history.retention_days, 36500);
         assert!(!loaded.save_backup_enabled);
         assert!(!loaded.show_onboarding);
+        // 缺失 hardLimitMB → 默认 2048；一致性修正后仍 ≥ 只读阈值
+        assert_eq!(loaded.hard_limit_mb, 2048);
+    }
+
+    /// 双阈值一致性：硬上限低于只读阈值时修正为只读阈值；越界钳制。
+    #[test]
+    fn hard_limit_inverts_are_corrected() {
+        let dir = data_dir();
+        std::fs::write(
+            app_settings_path(dir.path()),
+            br#"{"maxFileSizeMB":512,"hardLimitMB":100}"#,
+        )
+        .expect("写配置失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded.max_file_size_mb, 512);
+        assert_eq!(loaded.hard_limit_mb, 512, "硬上限应被修正为不低于只读阈值");
+
+        std::fs::write(
+            app_settings_path(dir.path()),
+            br#"{"maxFileSizeMB":100,"hardLimitMB":99999999}"#,
+        )
+        .expect("写配置失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded.hard_limit_mb, 16384, "硬上限应钳制到范围上限");
     }
 
     /// 阅读配置：未知主题归一、空字体回退、数值裁剪。

@@ -23,6 +23,8 @@
     onSettings?: () => void;
     /** 是否处于编辑模式（编辑按钮激活态） */
     editing: boolean;
+    /** 是否只读（文件超过只读阈值：编辑按钮禁用并给出提示） */
+    readOnly?: boolean;
     /** 是否有未保存修改（保存按钮可用性） */
     canSave: boolean;
     /** 编辑模式切换回调 */
@@ -40,6 +42,7 @@
     onHistory,
     onSettings,
     editing,
+    readOnly = false,
     canSave,
     onToggleEdit,
     onSave,
@@ -73,9 +76,14 @@
   <button
     class="icon-btn"
     class:active={editing}
-    title={editing ? '退出编辑模式（Ctrl+E）' : '启用编辑模式（Ctrl+E）'}
+    title={readOnly
+      ? '文件超过只读阈值，不可编辑（可在设置中调整）'
+      : editing
+        ? '退出编辑模式（Ctrl+E）'
+        : '启用编辑模式（Ctrl+E）'}
     aria-label="切换编辑模式"
     aria-pressed={editing}
+    disabled={readOnly}
     onclick={() => onToggleEdit?.()}
   >
     <Icon name="edit" />

@@ -17,6 +17,8 @@
     onQuit?: () => void;
     /** 是否处于编辑模式（编辑菜单文案与可用性） */
     editing: boolean;
+    /** 是否只读（文件超过只读阈值：编辑模式项禁用并给出提示） */
+    readOnly?: boolean;
     /** 是否有未保存修改（保存项可用性） */
     dirty: boolean;
     /** 编辑模式切换回调 */
@@ -58,6 +60,7 @@
     onOpenFile,
     onQuit,
     editing,
+    readOnly = false,
     dirty,
     onToggleEdit,
     onSave,
@@ -207,7 +210,12 @@
         <span class="hint">Ctrl+H</span>
       </button>
       <div class="separator"></div>
-      <button class="item" onclick={() => run(onToggleEdit)}>
+      <button
+        class="item"
+        disabled={!hasTab || readOnly}
+        title={readOnly ? '文件超过只读阈值，不可编辑（可在设置中调整）' : ''}
+        onclick={() => run(onToggleEdit)}
+      >
         <span>{editing ? '退出编辑模式' : '启用编辑模式'}</span>
         <span class="hint">Ctrl+E</span>
       </button>
