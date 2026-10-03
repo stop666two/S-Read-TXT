@@ -399,6 +399,23 @@ async function main() {
     check('S13c 字号修改实时应用到主窗口', (await setFontSize(20)) === true);
     await setFontSize(16);
 
+    // S13d 阅读区重排回归：先放大到 30，再降到 16，滚动高度必须无需滚动即回落
+    // （历史缺陷：高度模型首轮测量拿到旧字号度量 → 滚动高度偏大、需滚动一次才修正）
+    currentStep = 'S13d 阅读区重排';
+    await setFontSize(30);
+    await delay(600);
+    const tallHeight = await evalMain(`document.querySelector('.reader')?.scrollHeight ?? -1`);
+    await setFontSize(16);
+    const shrank = await waitForValue(async () => {
+      const height = await evalMain(`document.querySelector('.reader')?.scrollHeight ?? -1`);
+      return height > 0 && height < tallHeight * 0.7 ? true : null;
+    }, 6000);
+    check(
+      'S13d 下调字号后阅读区无需滚动即重排',
+      shrank === true,
+      `h30=${tallHeight} h16=${await evalMain(`document.querySelector('.reader')?.scrollHeight ?? -1`)}`,
+    );
+
     // 汇总
     const failed = checks.filter((item) => !item.passed);
     console.log(`\n设置窗口冒烟：${checks.length - failed.length}/${checks.length} 通过`);

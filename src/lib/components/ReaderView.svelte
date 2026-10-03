@@ -217,21 +217,24 @@
         changed = true;
       }
     }
-    if (!changed) return;
-    const corrected = heights.offsetOf(anchorRow, tab.rowsTotal) + anchorDelta;
-    if (Math.abs(corrected - beforeScroll) > 1) {
-      programmatic = true;
-      el.scrollTop = corrected + pagePadTop;
-      requestAnimationFrame(() => {
-        programmatic = false;
-      });
+    if (changed) {
+      const corrected = heights.offsetOf(anchorRow, tab.rowsTotal) + anchorDelta;
+      if (Math.abs(corrected - beforeScroll) > 1) {
+        programmatic = true;
+        el.scrollTop = corrected + pagePadTop;
+        requestAnimationFrame(() => {
+          programmatic = false;
+        });
+      }
     }
+    // 无论是否有新测量都重算占位：排版变更（clear 后）新旧行高差异可能小于测量阈值（0.5px），
+    // 若此时提前返回，占位会停留在旧值——表现为「改完不立刻生效、滚动一次才落定」。
     spacerTop = heights.offsetOf(startRow, tab.rowsTotal);
     spacerBottom = Math.max(
       0,
       heights.totalHeight(tab.rowsTotal) - heights.offsetOf(endRow, tab.rowsTotal),
     );
-    version += 1;
+    if (changed) version += 1;
   }
 
   /** 按行号实时查询已渲染的行元素。
@@ -290,14 +293,29 @@
 
   // 排版变更（字体/字号/行高/限宽/边距）：行高模型失效并重排；
   // 滚动位置由 measureRendered 的锚定机制保持（不会跳回顶部）。
-  // 关键：version 的自增必须在 untrack 内——`version += 1` 同时读取并写入该 $state，
-  // 若参与依赖收集会让本 effect 自触发形成死循环（实测每帧数千次，渲染管线被持续冲刷）。
+  // 关键 1：version 的自增必须在 untrack 内——`version += 1` 同时读取并写入该 $state，
+  //   若参与依赖收集会让本 effect 自触发形成死循环（实测每帧数千次，渲染管线被持续冲刷）。
+  // 关键 2：CSS 变量应用与 DOM 重排存在先后——首轮测量可能拿到旧字号度量，
+  //   导致下调字号后滚动高度偏大、需滚动一次才修正；因此两帧后再失效重测一次兜底。
   $effect(() => {
     void layoutKey;
     untrack(() => {
       heights.clear();
       version += 1;
     });
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        untrack(() => {
+          heights.clear();
+          version += 1;
+        });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
   });
 
   /** 应用初始滚动位置（会话恢复/切回长文档）。

@@ -177,7 +177,7 @@ function main() {
       lines.push(`### ${item.name}`, '', '```', item.output, '```', '');
     }
   }
-  writeFileSync(join(reportDir, 'latest.md'), `${lines.join('\n')}\n`, 'utf8');
+    writeFileSync(join(reportDir, 'latest.md'), `${lines.join('\n').replace(/\r\n?/g, '\n')}\n`, 'utf8');
 
   console.log(`\n全量自检：${results.length - failed.length}/${results.length} 通过，总耗时 ${totalSec}s`);
   console.log(`报告：docs/verify/latest.md`);
