@@ -77,7 +77,7 @@ function seedV1Files() {
 }
 seedV1Files();
 
-const child = spawn(exe, [], {
+let child = spawn(exe, [], {
   env: {
     ...process.env,
     SRT_DATA_DIR: dataDir,
@@ -291,6 +291,51 @@ try {
     'E10 未知设置项拒绝',
     !badReset.ok && codeOf(badReset) === 'SETTINGS_RESET' && msgOf(badReset).includes('未知'),
     msgOf(badReset).slice(0, 80),
+  );
+
+  // ---- L1–L4：语言切换（持久化 locale=en → 重启后英文 UI） ----
+  const savedEn = await evalMain(
+    `(async () => { const s = await window.__TAURI_INTERNALS__.invoke('get_settings');
+        s.app.locale = 'en';
+        await window.__TAURI_INTERNALS__.invoke('save_settings', { request: { app: s.app, reader: s.reader, shortcuts: s.shortcuts.bindings } });
+        return true; })()`,
+  );
+  spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+  await delay(900);
+  const port2 = port + 1;
+  child = spawn(exe, [], {
+    env: {
+      ...process.env,
+      SRT_DATA_DIR: dataDir,
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port2}`,
+    },
+    stdio: 'ignore',
+  });
+  const main2 = await createClient(await findTarget(port2));
+  const evalMain2 = (expression) => evalIn(main2, expression);
+  const langReady = await waitForValue(async () => {
+    const lang = await evalMain2('document.documentElement.lang');
+    return lang === 'en' ? true : null;
+  }, 20000);
+  chk('L1 重启后 <html lang> 随语言设置更新（en）', savedEn === true && langReady === true);
+  const toolbarTitle = await evalMain2(
+    `document.querySelector('.toolbar button[aria-label="Open file"]')?.title ?? null`,
+  );
+  chk(
+    'L2 英文界面（工具栏提示 Open file）',
+    typeof toolbarTitle === 'string' && toolbarTitle.includes('Open file'),
+    String(toolbarTitle),
+  );
+  chk(
+    'L3 英文状态栏（No file open）',
+    String(await evalMain2(`document.querySelector('.status-bar')?.textContent ?? ''`)).includes(
+      'No file open',
+    ),
+  );
+  chk(
+    'L4 英文标题栏（Close）',
+    (await evalMain2(`document.querySelector('.title-bar .ctl.close')?.getAttribute('aria-label')`)) ===
+      'Close',
   );
 
   console.log(`\n设置导入/导出/重置/迁移套件：通过 ${passed}/${passed + failed}`);
