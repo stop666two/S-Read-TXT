@@ -176,6 +176,73 @@ export const zhCN = {
   // ---------- 编码菜单 ----------
   'encoding.switch': '切换编码',
   'encoding.auto': '自动检测',
+
+  // ---------- 应用通用（App） ----------
+  'app.dataDir.pickTitle': '选择可写的数据目录（本次运行有效）',
+  'app.dataDir.switched': '数据目录已切换：{dir}',
+  'app.dataDir.stillUnwritable': '所选目录仍不可写，请重试',
+  'app.dataDir.readOnlyRun': '本次运行不会保存历史、设置与会话数据',
+  'app.session.restoreFailed': '无法恢复「{path}」：{reason}',
+  'app.editReadOnlyHint': '文件超过只读阈值，已以只读模式打开，不可编辑（可在设置中调整）',
+  'app.openReadOnlyHint': '文件超过只读阈值，已以只读模式打开（可在设置中调整）',
+  'app.currentFile': '当前文件',
+  'app.filter.text': '文本文件',
+  'app.filter.all': '所有文件',
+  'app.save.saved': '已保存（{encoding}）',
+  'app.save.savedBackup': '已保存（{encoding}，已生成 .bak 备份）',
+  'app.save.savedAs': '已另存为「{name}」（{encoding}）',
+  'app.save.dialogFailed': '无法打开保存对话框',
+  'app.reload.done': '已重新加载',
+  'app.reload.title': '重新加载',
+  'app.reload.confirmLabel': '重新加载',
+  'app.reload.message': '「{name}」有未保存的修改，重新加载将丢弃这些修改。',
+  'app.close.keptDirty': '已保留 {count} 个有未保存修改的标签',
+  'app.close.quitMessage': '有 {count} 个标签存在未保存的修改，退出将丢失这些修改。',
+  'app.close.tabMessage': '「{name}」有未保存的修改，关闭将丢失这些修改。',
+  'app.close.quitTitle': '退出应用',
+  'app.close.tabTitle': '关闭标签',
+  'app.conflict.title': '文件已在外部被修改',
+  'app.conflict.message': '磁盘上的文件与打开时不一致，可能被其他程序修改过。仍要覆盖保存吗？',
+  'app.conflict.confirmLabel': '覆盖保存',
+
+  // ---------- IPC 固定错误文案 ----------
+  'error.fileTooLarge': '很抱歉，文件过大无法打开，可以在设置里面调整。',
+  'error.maxTabs': '标签数量已达上限，请先关闭部分标签（上限可在设置中调整）。',
+
+  // ---------- 阅读器 / 编辑交互 ----------
+  'reader.emptyFile': '（空文件）',
+  'edit.selectionTooLarge': '选区过大，请分段复制',
+  'edit.copyFailed': '复制失败：无法写入系统剪贴板',
+  'edit.pasteFailed': '无法读取系统剪贴板，请使用 Ctrl+V 粘贴',
+  'edit.replaceDone': '已替换 {count} 处',
+  'edit.ariaInput': '文本编辑输入',
+  'find.notFound': '未找到「{query}」',
+
+  // ---------- Toast ----------
+  'common.closeHint': '关闭提示',
+
+  // ---------- 快捷键动作名（设置界面） ----------
+  'shortcut.openFile': '打开文件',
+  'shortcut.save': '保存',
+  'shortcut.saveAs': '另存为',
+  'shortcut.toggleEdit': '切换编辑模式',
+  'shortcut.closeTab': '关闭当前标签',
+  'shortcut.nextTab': '下一个标签',
+  'shortcut.prevTab': '上一个标签',
+  'shortcut.pageDown': '向下翻页',
+  'shortcut.pageUp': '向上翻页',
+  'shortcut.firstLine': '跳到文件开头',
+  'shortcut.lastLine': '跳到文件结尾',
+  'shortcut.fullscreen': '全屏',
+  'shortcut.find': '查找（编辑态）',
+  'shortcut.replace': '替换（编辑态）',
+  'shortcut.historyPanel': '历史记录面板',
+
+  // ---------- 快捷键录制校验提示 ----------
+  'shortcutRecorder.empty': '未识别到有效按键，请重试',
+  'shortcutRecorder.needsModifier': '该组合会干扰正常输入，请配合 Ctrl / Shift / Alt 或改用功能键',
+  'shortcutRecorder.reserved': 'Ctrl+1~9 是固定的标签跳转键，不可占用',
+  'shortcutRecorder.duplicate': '该组合已被其他动作使用',
 } as const;
 
 /** 消息键（由 zh-CN 推导；所有语言包必须一字不差地覆盖）。 */

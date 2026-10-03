@@ -1,6 +1,7 @@
 <script lang="ts">
   // 通知堆叠区（右下角、状态栏之上；极简：细色条 + 表面底 + 无阴影）。
   import Icon from './Icon.svelte';
+  import { t } from '../i18n/index.svelte';
   import { toasts } from '../state/toasts.svelte';
 </script>
 
@@ -9,7 +10,7 @@
     <div class="toast" class:error={item.kind === 'error'} class:warn={item.kind === 'warn'}>
       <span class="bar" aria-hidden="true"></span>
       <span class="text">{item.message}</span>
-      <button class="close" title="关闭提示" aria-label="关闭提示" onclick={() => toasts.dismiss(item.id)}>
+      <button class="close" title={t('common.closeHint')} aria-label={t('common.closeHint')} onclick={() => toasts.dismiss(item.id)}>
         <Icon name="close" size={11} />
       </button>
     </div>

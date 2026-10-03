@@ -7,8 +7,9 @@
   import { onMount } from 'svelte';
 
   import { describeIpcError, ipc, toIpcError } from '../../lib/ipc';
-  import { comboFromEvent, RECORD_ERROR_MESSAGES, validateRecorded } from '../../lib/shortcuts/keys';
-  import { SHORTCUT_ACTIONS, SHORTCUT_LABELS, type ShortcutAction } from '../../lib/shortcuts/types';
+  import { t } from '../../lib/i18n/index.svelte';
+  import { comboFromEvent, RECORD_ERROR_KEYS, validateRecorded } from '../../lib/shortcuts/keys';
+  import { SHORTCUT_ACTIONS, SHORTCUT_LABEL_KEYS, type ShortcutAction } from '../../lib/shortcuts/types';
   import { toasts } from '../../lib/state/toasts.svelte';
 
   /** 生效绑定（后端快照为唯一真源） */
@@ -73,7 +74,7 @@
     const action = recording;
     const error = validateRecorded(combo, action, effective);
     if (error) {
-      toasts.error(RECORD_ERROR_MESSAGES[error]);
+        toasts.error(t(RECORD_ERROR_KEYS[error]));
       return;
     }
     recording = null;
@@ -110,7 +111,7 @@
   <ul class="rows">
     {#each SHORTCUT_ACTIONS as action (action)}
       <li class="row">
-        <span class="label">{SHORTCUT_LABELS[action]}</span>
+        <span class="label">{t(SHORTCUT_LABEL_KEYS[action])}</span>
         <button
           class="combo"
           class:recording={recording === action}

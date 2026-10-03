@@ -2,6 +2,8 @@
 // 纯函数实现（不接触 DOM/窗口），便于单元测试与在设置窗口中复用。
 // 组合键字符串格式与 Rust 侧默认表一致：修饰键按 Ctrl+Shift+Alt 顺序，主键大写。
 
+import type { MessageKey } from '../i18n/zh-CN';
+
 /** 浏览器 `KeyboardEvent.key` → 规范主键名（与默认表字面量一致）。 */
 const KEY_ALIASES: Record<string, string> = {
   PageDown: 'PgDn',
@@ -83,12 +85,12 @@ export function comboFromEvent(event: KeyboardEvent): string | null {
 /** 录制校验失败原因。 */
 export type RecordError = 'empty' | 'needsModifier' | 'reserved' | 'duplicate';
 
-/** 校验失败原因 → 用户可读提示。 */
-export const RECORD_ERROR_MESSAGES: Record<RecordError, string> = {
-  empty: '未识别到有效按键，请重试',
-  needsModifier: '该组合会干扰正常输入，请配合 Ctrl / Shift / Alt 或改用功能键',
-  reserved: 'Ctrl+1~9 是固定的标签跳转键，不可占用',
-  duplicate: '该组合已被其他动作使用',
+/** 校验失败原因 → 用户提示消息键（界面经 t() 展示，随语言切换）。 */
+export const RECORD_ERROR_KEYS: Record<RecordError, MessageKey> = {
+  empty: 'shortcutRecorder.empty',
+  needsModifier: 'shortcutRecorder.needsModifier',
+  reserved: 'shortcutRecorder.reserved',
+  duplicate: 'shortcutRecorder.duplicate',
 };
 
 /**

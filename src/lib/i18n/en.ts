@@ -184,4 +184,75 @@ export const en: Record<MessageKey, string> = {
   // ---------- Encoding menu ----------
   'encoding.switch': 'Switch encoding',
   'encoding.auto': 'Auto detect',
+
+  // ---------- App ----------
+  'app.dataDir.pickTitle': 'Choose a writable data directory (effective for this run)',
+  'app.dataDir.switched': 'Data directory switched: {dir}',
+  'app.dataDir.stillUnwritable': 'The selected directory is still not writable. Please retry',
+  'app.dataDir.readOnlyRun': 'History, settings and session data will not be saved in this run',
+  'app.session.restoreFailed': 'Could not restore "{path}": {reason}',
+  'app.editReadOnlyHint':
+    'File exceeds the read-only threshold and was opened read-only; editing is unavailable (adjustable in settings)',
+  'app.openReadOnlyHint':
+    'File exceeds the read-only threshold and was opened read-only (adjustable in settings)',
+  'app.currentFile': 'current file',
+  'app.filter.text': 'Text files',
+  'app.filter.all': 'All files',
+  'app.save.saved': 'Saved ({encoding})',
+  'app.save.savedBackup': 'Saved ({encoding}, .bak backup created)',
+  'app.save.savedAs': 'Saved as "{name}" ({encoding})',
+  'app.save.dialogFailed': 'Could not open the save dialog',
+  'app.reload.done': 'Reloaded',
+  'app.reload.title': 'Reload',
+  'app.reload.confirmLabel': 'Reload',
+  'app.reload.message': '"{name}" has unsaved changes. Reloading will discard them.',
+  'app.close.keptDirty': 'Kept {count} tab(s) with unsaved changes',
+  'app.close.quitMessage': '{count} tab(s) have unsaved changes. Quitting will discard them.',
+  'app.close.tabMessage': '"{name}" has unsaved changes. Closing will discard them.',
+  'app.close.quitTitle': 'Quit',
+  'app.close.tabTitle': 'Close tab',
+  'app.conflict.title': 'File modified externally',
+  'app.conflict.message':
+    'The file on disk differs from the opened version and may have been modified by another program. Overwrite it anyway?',
+  'app.conflict.confirmLabel': 'Overwrite',
+
+  // ---------- Fixed IPC error texts ----------
+  'error.fileTooLarge': 'Sorry, the file is too large to open. You can adjust the limit in settings.',
+  'error.maxTabs': 'Tab limit reached. Please close some tabs first (adjustable in settings).',
+
+  // ---------- Reader / editing ----------
+  'reader.emptyFile': '(empty file)',
+  'edit.selectionTooLarge': 'Selection too large; please copy in smaller parts',
+  'edit.copyFailed': 'Copy failed: could not write to the system clipboard',
+  'edit.pasteFailed': 'Could not read the system clipboard; use Ctrl+V instead',
+  'edit.replaceDone': 'Replaced {count} occurrence(s)',
+  'edit.ariaInput': 'Text editing input',
+  'find.notFound': '"{query}" not found',
+
+  // ---------- Toast ----------
+  'common.closeHint': 'Dismiss notification',
+
+  // ---------- Shortcut action names ----------
+  'shortcut.openFile': 'Open file',
+  'shortcut.save': 'Save',
+  'shortcut.saveAs': 'Save as',
+  'shortcut.toggleEdit': 'Toggle edit mode',
+  'shortcut.closeTab': 'Close current tab',
+  'shortcut.nextTab': 'Next tab',
+  'shortcut.prevTab': 'Previous tab',
+  'shortcut.pageDown': 'Page down',
+  'shortcut.pageUp': 'Page up',
+  'shortcut.firstLine': 'Go to start of file',
+  'shortcut.lastLine': 'Go to end of file',
+  'shortcut.fullscreen': 'Fullscreen',
+  'shortcut.find': 'Find (edit mode)',
+  'shortcut.replace': 'Replace (edit mode)',
+  'shortcut.historyPanel': 'History panel',
+
+  // ---------- Shortcut recorder validation ----------
+  'shortcutRecorder.empty': 'No valid key detected; please try again',
+  'shortcutRecorder.needsModifier':
+    'This combination would interfere with typing; combine with Ctrl / Shift / Alt or use a function key',
+  'shortcutRecorder.reserved': 'Ctrl+1~9 are fixed tab-switch keys and cannot be reassigned',
+  'shortcutRecorder.duplicate': 'This combination is already used by another action',
 };

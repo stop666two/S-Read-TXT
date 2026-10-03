@@ -28,6 +28,7 @@
   import { focusEditorProxy } from '../edit/focus';
   import { planBackspace, planDeleteForward, type SegMeta } from '../edit/longline';
   import { deleteOp, deleteRangeOp, insertOp, replaceOp } from '../edit/ops';
+  import { t } from '../i18n/index.svelte';
   import { toasts } from '../state/toasts.svelte';
   import FindBar from './FindBar.svelte';
   import ReplacePreviewDialog from './ReplacePreviewDialog.svelte';
@@ -405,7 +406,7 @@
   async function gatherSelectedText(): Promise<string | null> {
     const { start, end } = orderedSelection(selection);
     if (end.row - start.row + 1 > COPY_MAX_ROWS) {
-      toasts.error('选区过大，请分段复制');
+      toasts.error(t('edit.selectionTooLarge'));
       return null;
     }
     let out = '';
@@ -422,7 +423,7 @@
       out += text.slice(from, to);
       prevLogical = logicalRow;
       if (out.length > COPY_MAX_CHARS) {
-        toasts.error('选区过大，请分段复制');
+        toasts.error(t('edit.selectionTooLarge'));
         return null;
       }
     }
@@ -437,7 +438,7 @@
     try {
       await writeText(text);
     } catch {
-      toasts.error('复制失败：无法写入系统剪贴板');
+      toasts.error(t('edit.copyFailed'));
       return;
     }
     if (cut) {
@@ -575,7 +576,7 @@
       let hit = await ipc.findInEdit(tabId, query, caseSensitive, mode, [head.row, head.utf16]);
       if (!hit) hit = await ipc.findInEdit(tabId, query, caseSensitive, mode, null);
       if (!hit) {
-        toasts.error(`未找到「${query}」`);
+        toasts.error(t('find.notFound', { query }));
         return;
       }
       selectHit(hit);
@@ -607,7 +608,7 @@
         replacement,
       );
       if (!outcome) {
-        toasts.error(`未找到「${query}」`);
+        toasts.error(t('find.notFound', { query }));
         return;
       }
       applyOutcome(outcome.applied);
@@ -635,7 +636,7 @@
     try {
       const preview = await ipc.previewReplaceAll(tabId, query, caseSensitive, mode, replacement);
       if (preview.total === 0) {
-        toasts.error(`未找到「${query}」`);
+        toasts.error(t('find.notFound', { query }));
         return;
       }
       if (preview.total === 1) {
@@ -673,7 +674,7 @@
       );
       if (outcome.applied) applyOutcome(outcome.applied);
       focusEditorProxy();
-      toasts.show(`已替换 ${outcome.replaced} 处`);
+      toasts.show(t('edit.replaceDone', { count: outcome.replaced }));
     } catch (error) {
       const payload = toIpcError(error);
       if (import.meta.env.DEV) console.error('[edit] 全部替换失败', payload);
@@ -725,7 +726,7 @@
       const text = await readText();
       await doInsert(text);
     } catch {
-      toasts.error('无法读取系统剪贴板，请使用 Ctrl+V 粘贴');
+      toasts.error(t('edit.pasteFailed'));
     }
   }
 
@@ -1068,7 +1069,7 @@
   bind:this={textarea}
   class="input-proxy"
   style="left: {caretBox?.left ?? 0}px; top: {caretBox?.top ?? 0}px"
-  aria-label="文本编辑输入"
+            aria-label={t('edit.ariaInput')}
   autocomplete="off"
   autocapitalize="off"
   spellcheck="false"

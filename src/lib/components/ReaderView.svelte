@@ -6,6 +6,7 @@
 
   import EditLayer from './EditLayer.svelte';
   import type { EditorAction } from '../edit/actions';
+  import { t } from '../i18n/index.svelte';
   import { describeIpcError, ipc, toIpcError, type EditApplied, type TabInfo } from '../ipc';
   import { HeightModel } from '../reader/heights';
   import { RowCache } from '../reader/row-cache';
@@ -370,7 +371,7 @@
 <div class="reader" bind:this={container} onscroll={handleScroll}>
   <div class="page">
     {#if tab.rowsTotal === 0}
-      <p class="empty-file">（空文件）</p>
+      <p class="empty-file">{t('reader.emptyFile')}</p>
     {:else}
       <div class="spacer" style="height: {spacerTop}px"></div>
       {#each renderedRows as item (item.row)}

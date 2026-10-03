@@ -3,6 +3,8 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
+import { t } from './i18n/runtime';
+
 /** 应用信息（与 Rust commands.rs 的 AppInfo 对齐）。 */
 export interface AppInfo {
   version: string;
@@ -171,9 +173,9 @@ export function toIpcError(error: unknown): IpcErrorPayload {
 export function describeIpcError(error: IpcErrorPayload): string {
   switch (error.code) {
     case 'FILE_TOO_LARGE':
-      return '很抱歉，文件过大无法打开，可以在设置里面调整。';
+      return t('error.fileTooLarge');
     case 'MAX_TABS':
-      return '标签数量已达上限，请先关闭部分标签（上限可在设置中调整）。';
+      return t('error.maxTabs');
     default:
       return error.message;
   }

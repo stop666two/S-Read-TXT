@@ -4,6 +4,7 @@
 // 语言持久化：`settings.json` 的 `app.locale`（App.reloadSettings 时同步）。
 
 import { en } from './en';
+import { setRuntimeLocale } from './runtime';
 import { formatMessage, pickMessage } from './translate';
 import { zhCN, type MessageKey } from './zh-CN';
 
@@ -22,6 +23,7 @@ export const i18n = $state({ locale: 'zh-CN' as Locale });
 export function setLocale(locale: string): void {
   const next: Locale = locale === 'en' ? 'en' : 'zh-CN';
   i18n.locale = next;
+  setRuntimeLocale(next);
   if (typeof document !== 'undefined') {
     document.documentElement.lang = next;
   }

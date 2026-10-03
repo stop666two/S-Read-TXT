@@ -3,6 +3,8 @@
 
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 
+import { t } from '../i18n/runtime';
+
 import { describeIpcError, ipc, toIpcError, type TabInfo, type TabsView } from '../ipc';
 import { toasts } from './toasts.svelte';
 
@@ -30,8 +32,8 @@ class TabStore {
       selected = await openFileDialog({
         multiple: true,
         filters: [
-          { name: '文本文件', extensions: ['txt', 'log'] },
-          { name: '所有文件', extensions: ['*'] },
+      { name: t('app.filter.text'), extensions: ['txt', 'log'] },
+      { name: t('app.filter.all'), extensions: ['*'] },
         ],
       });
     } catch (error) {
@@ -54,7 +56,7 @@ class TabStore {
       const isNew = !this.tabs.some((tab) => tab.tabId === info.tabId);
       this.applyView(await ipc.listTabs());
       if (isNew && info.readOnly) {
-        toasts.show('文件超过只读阈值，已以只读模式打开（可在设置中调整）', 'warn', 5000);
+        toasts.show(t('app.openReadOnlyHint'), 'warn', 5000);
       }
     } catch (error) {
       const payload = toIpcError(error);

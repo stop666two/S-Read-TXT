@@ -35,7 +35,7 @@
   import { historyStore } from './lib/state/history.svelte';
   import { tabs } from './lib/state/tabs.svelte';
   import { toasts } from './lib/state/toasts.svelte';
-  import { setLocale } from './lib/i18n/index.svelte';
+  import { setLocale, t } from './lib/i18n/index.svelte';
   import { decideShortcut, isEditorContext, modalOpen } from './lib/shortcuts/engine';
   import { comboFromEvent } from './lib/shortcuts/keys';
   import type { ShortcutAction, ShortcutMap } from './lib/shortcuts/types';
@@ -78,14 +78,14 @@
       const picked = await open({
         directory: true,
         multiple: false,
-        title: '选择可写的数据目录（本次运行有效）',
+        title: t('app.dataDir.pickTitle'),
       });
       if (typeof picked !== 'string') return;
       const status = await dataDirStore.apply(picked);
       if (status.writable) {
-        toasts.show(`数据目录已切换：${status.dir}`);
+        toasts.show(t('app.dataDir.switched', { dir: status.dir }));
       } else {
-        toasts.error(status.message ?? '所选目录仍不可写，请重试');
+        toasts.error(status.message ?? t('app.dataDir.stillUnwritable'));
       }
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
@@ -95,7 +95,7 @@
   /** 「数据目录不可写」→ 仅本次只读运行（不保存历史/设置/会话）。 */
   function skipDataDir(): void {
     dataDirStore.skip();
-    toasts.show('本次运行不会保存历史、设置与会话数据', 'warn');
+    toasts.show(t('app.dataDir.readOnlyRun'), 'warn');
   }
 
   /** 当前活动标签 */
@@ -272,7 +272,7 @@
           seeds.push({ tabId: info.tabId, row: item.scrollRow });
         } catch (error) {
           const payload = toIpcError(error);
-          toasts.error(`无法恢复「${item.path}」：${describeIpcError(payload)}`);
+          toasts.error(t('app.session.restoreFailed', { path: item.path, reason: describeIpcError(payload) }));
         }
       }
       // 先预热滚动锚点再应用视图：活动标签首次渲染即可恢复到记录位置
@@ -457,7 +457,7 @@
     const tab = active;
     if (!tab) return;
     if (tab.readOnly) {
-      toasts.show('文件超过只读阈值，已以只读模式打开，不可编辑（可在设置中调整）', 'warn', 5000);
+      toasts.show(t('app.editReadOnlyHint'), 'warn', 5000);
       return;
     }
     try {
@@ -523,7 +523,11 @@
     try {
       const result = await ipc.saveTab(tabId, encoding, backup, force);
       tabs.update(result.tab);
-      toasts.show(`已保存（${result.encoding}${result.backupPath ? '，已生成 .bak 备份' : ''}）`);
+      toasts.show(
+        result.backupPath
+          ? t('app.save.savedBackup', { encoding: result.encoding })
+          : t('app.save.saved', { encoding: result.encoding }),
+      );
       return true;
     } catch (error) {
       const payload = toIpcError(error);
@@ -566,7 +570,7 @@
     try {
       const result = await ipc.saveTabAs(tabId, newPath, encoding, backup);
       tabs.update(result.tab);
-      toasts.show(`已另存为「${result.tab.name}」（${result.encoding}）`);
+      toasts.show(t('app.save.savedAs', { name: result.tab.name, encoding: result.encoding }));
       return true;
     } catch (error) {
       const payload = toIpcError(error);
@@ -585,13 +589,13 @@
       filePath = await save({
         defaultPath: tab.path,
         filters: [
-          { name: '文本文件', extensions: ['txt', 'log', 'md'] },
-          { name: '所有文件', extensions: ['*'] },
+          { name: t('app.filter.text'), extensions: ['txt', 'log', 'md'] },
+          { name: t('app.filter.all'), extensions: ['*'] },
         ],
       });
     } catch (error) {
       if (import.meta.env.DEV) console.error('[app] 另存为对话框失败', error);
-      toasts.error('无法打开保存对话框');
+      toasts.error(t('app.save.dialogFailed'));
       return;
     }
     if (!filePath) return;
@@ -616,7 +620,7 @@
   async function performReload(tabId: number): Promise<void> {
     try {
       tabs.update(await ipc.reloadTab(tabId));
-      toasts.show('已重新加载');
+      toasts.show(t('app.reload.done'));
     } catch (error) {
       const payload = toIpcError(error);
       if (import.meta.env.DEV) console.error('[app] 重新加载失败', payload);
@@ -630,8 +634,8 @@
   const reloadMessage = $derived.by(() => {
     const request = reloadRequest;
     if (!request) return '';
-    const name = tabs.tabs.find((item) => item.tabId === request.tabId)?.name ?? '当前文件';
-    return `「${name}」有未保存的修改，重新加载将丢弃这些修改。`;
+    const name = tabs.tabs.find((item) => item.tabId === request.tabId)?.name ?? t('app.currentFile');
+    return t('app.reload.message', { name });
   });
 
   // ---- 关闭流程 ----
@@ -660,7 +664,7 @@
       historyStore.flushTab(tab);
       await tabs.close(tab.tabId);
     }
-    if (skippedDirty > 0) toasts.show(`已保留 ${skippedDirty} 个有未保存修改的标签`, 'warn');
+    if (skippedDirty > 0) toasts.show(t('app.close.keptDirty', { count: skippedDirty }), 'warn');
   }
 
   /** 右键菜单：关闭全部标签（脏标签保留并计数提示）。 */
@@ -674,7 +678,7 @@
       historyStore.flushTab(tab);
       await tabs.close(tab.tabId);
     }
-    if (skippedDirty > 0) toasts.show(`已保留 ${skippedDirty} 个有未保存修改的标签`, 'warn');
+    if (skippedDirty > 0) toasts.show(t('app.close.keptDirty', { count: skippedDirty }), 'warn');
   }
 
   /** 拖拽排序（前端乐观更新；后端失败时 store 自动回读校准）。 */
@@ -732,10 +736,10 @@
     if (!pending) return '';
     if (pending.kind === 'quit') {
       const count = tabs.tabs.filter((item) => item.dirty).length;
-      return `有 ${count} 个标签存在未保存的修改，退出将丢失这些修改。`;
+      return t('app.close.quitMessage', { count });
     }
-    const name = tabs.tabs.find((item) => item.tabId === pending.tabId)?.name ?? '当前文件';
-    return `「${name}」有未保存的修改，关闭将丢失这些修改。`;
+    const name = tabs.tabs.find((item) => item.tabId === pending.tabId)?.name ?? t('app.currentFile');
+    return t('app.close.tabMessage', { name });
   });
 
   /** 三态弹窗可见性（保存询问/冲突弹窗进行中时让位，避免叠层） */
@@ -1034,17 +1038,17 @@
   />
   <ConfirmDialog
     open={conflictRequest !== null}
-    title="文件已在外部被修改"
-    message="磁盘上的文件与打开时不一致，可能被其他程序修改过。仍要覆盖保存吗？"
-    confirmLabel="覆盖保存"
+    title={t('app.conflict.title')}
+    message={t('app.conflict.message')}
+    confirmLabel={t('app.conflict.confirmLabel')}
     onConfirm={onConflictOverride}
     onCancel={onConflictCancel}
   />
   <ConfirmDialog
     open={reloadRequest !== null}
-    title="重新加载"
+    title={t('app.reload.title')}
     message={reloadMessage}
-    confirmLabel="重新加载"
+    confirmLabel={t('app.reload.confirmLabel')}
     onConfirm={() => {
       const request = reloadRequest;
       reloadRequest = null;
@@ -1057,7 +1061,7 @@
   />
   <UnsavedDialog
     open={unsavedOpen}
-    title={pendingClose?.kind === 'quit' ? '退出应用' : '关闭标签'}
+    title={pendingClose?.kind === 'quit' ? t('app.close.quitTitle') : t('app.close.tabTitle')}
     message={closeMessage}
     onSave={() => void resolvePendingClose('save')}
     onDiscard={() => void resolvePendingClose('discard')}

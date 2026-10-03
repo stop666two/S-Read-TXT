@@ -39,23 +39,25 @@ export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
   'historyPanel',
 ];
 
-/** 动作中文名称（设置界面展示）。 */
-export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
-  openFile: '打开文件',
-  save: '保存',
-  saveAs: '另存为',
-  toggleEdit: '切换编辑模式',
-  closeTab: '关闭当前标签',
-  nextTab: '下一个标签',
-  prevTab: '上一个标签',
-  pageDown: '向下翻页',
-  pageUp: '向上翻页',
-  firstLine: '跳到文件开头',
-  lastLine: '跳到文件结尾',
-  fullscreen: '全屏',
-  find: '查找（编辑态）',
-  replace: '替换（编辑态）',
-  historyPanel: '历史记录面板',
+import type { MessageKey } from '../i18n/zh-CN';
+
+/** 动作名称消息键（设置界面经 t() 展示；语言切换即时生效）。 */
+export const SHORTCUT_LABEL_KEYS: Record<ShortcutAction, MessageKey> = {
+  openFile: 'shortcut.openFile',
+  save: 'shortcut.save',
+  saveAs: 'shortcut.saveAs',
+  toggleEdit: 'shortcut.toggleEdit',
+  closeTab: 'shortcut.closeTab',
+  nextTab: 'shortcut.nextTab',
+  prevTab: 'shortcut.prevTab',
+  pageDown: 'shortcut.pageDown',
+  pageUp: 'shortcut.pageUp',
+  firstLine: 'shortcut.firstLine',
+  lastLine: 'shortcut.lastLine',
+  fullscreen: 'shortcut.fullscreen',
+  find: 'shortcut.find',
+  replace: 'shortcut.replace',
+  historyPanel: 'shortcut.historyPanel',
 };
 
 /** 动作 → 组合键字符串的映射（值形如 `Ctrl+Shift+Tab` / `PgDn` / `F11`）。 */
