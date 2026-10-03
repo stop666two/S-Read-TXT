@@ -20,11 +20,12 @@ use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
     IpcError, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING, CODE_INVALID_POSITION,
-    CODE_IO, CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET,
-    CODE_TAB_NOT_FOUND,
+    CODE_INVALID_SCOPE, CODE_IO, CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT,
+    CODE_SETTINGS_RESET, CODE_TAB_NOT_FOUND,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
+use s_read_txt::resources;
 use s_read_txt::session::model::SessionState;
 use s_read_txt::session::store as session_store;
 use s_read_txt::settings::registry::{self, SettingSpec};
@@ -258,6 +259,33 @@ pub fn reset_settings(
 #[tauri::command]
 pub fn get_settings_registry() -> Vec<SettingSpec> {
     with_context(LogContext::request(), || registry::SPECS.to_vec())
+}
+
+/// 命令：数据目录磁盘占用分项统计（P0-8；目录缺失视为全 0）。
+#[tauri::command]
+pub fn get_disk_usage() -> Result<resources::DiskUsageReport, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        resources::disk_usage_result(&dir)
+            .map_err(|err| IpcError::new(CODE_IO, format!("统计磁盘占用失败：{err}")))
+    })
+}
+
+/// 命令：清理指定范围缓存（logs/webview/backups；逐文件容错，被占用计入 skipped）。
+#[tauri::command]
+pub fn clear_cache(scope: String) -> Result<resources::ClearResult, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let result = resources::clear_scope_by_key(&dir, &scope)
+            .map_err(|err| IpcError::new(CODE_INVALID_SCOPE, err.to_string()))?;
+        log::info!(
+            target: "sread::ipc",
+            "缓存清理：scope={scope} 释放={} 字节 跳过={}",
+            result.cleared_bytes,
+            result.skipped
+        );
+        Ok(result)
+    })
 }
 
 /// 命令：默认快捷键表（动作 id → 组合键；设置界面「恢复默认」的唯一真源）。

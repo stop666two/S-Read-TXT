@@ -22,6 +22,7 @@ pub mod fonts;
 pub mod history;
 pub mod ipc_error;
 pub mod logging;
+pub mod resources;
 pub mod session;
 pub mod settings;
 pub mod storage;

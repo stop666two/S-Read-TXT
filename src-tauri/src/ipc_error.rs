@@ -34,6 +34,9 @@ pub const CODE_SETTINGS_EXPORT: &str = "SETTINGS_EXPORT";
 pub const CODE_SETTINGS_IMPORT: &str = "SETTINGS_IMPORT";
 /// 设置重置失败（未知项 / 未知分组 / 保存失败）
 pub const CODE_SETTINGS_RESET: &str = "SETTINGS_RESET";
+
+/// 缓存清理范围未知（`clear_cache` 的 scope 非法）
+pub const CODE_INVALID_SCOPE: &str = "INVALID_SCOPE";
 /// 历史保存失败
 pub const CODE_HISTORY_SAVE: &str = "HISTORY_SAVE";
 /// 会话保存失败

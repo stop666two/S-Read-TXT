@@ -198,6 +198,8 @@ fn main() {
             commands::import_settings,
             commands::reset_settings,
             commands::get_settings_registry,
+            commands::get_disk_usage,
+            commands::clear_cache,
             commands::get_default_shortcuts,
             commands::get_history,
             commands::remove_history,
