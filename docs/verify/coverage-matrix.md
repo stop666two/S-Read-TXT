@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 283（261 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 82；E2E 18 套 ≈321 项。
+- 计数口径：Rust 283（261 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 88；E2E 19 套 ≈331 项。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -25,6 +25,7 @@
 | smoke-scroll | 4 | 滚动完整性：跳转/滚轮/震荡/滑块联动 |
 | smoke-limits | 6 | 双阈值：只读标记/编辑禁用/硬上限拒绝/设置滑块 |
 | smoke-settings-io | 21 | 设置 I/O：迁移/导出/篡改拒绝/导入/重置/注册表/**语言持久化（重启英文 UI：工具栏/状态栏/标题栏/菜单/空状态）** |
+| smoke-settings-v2 | 10 | 设置 v2（P0-4）：搜索过滤/无匹配/清空恢复/单项重置/分组重置/全部重置/导入导出按钮原生对话框/语言下拉即时切换/分组折叠 |
 | smoke-longline | 9 | 100MB 无换行：分段/滚动/编辑/保存字节级 |
 | offline-check | 4 | 离线核查：依赖树（静态）+ 运行时零外联（动态） |
 
@@ -45,7 +46,7 @@
 | save_tab / save_tab_as / reload_tab | smoke-edit；smoke-find F12/F14；smoke-shortcuts K12 |
 | find_in_edit / replace_in_edit / replace_all_in_edit | smoke-find F1–F14；smoke-i18n I5；Rust search 测试 |
 | preview_replace_all_in_edit / apply_replace_all_in_edit / match_window_in_edit | smoke-find F15–F19；smoke-i18n 高亮 |
-| export_settings / import_settings / reset_settings / get_settings_registry | **smoke-settings-io E1–E10 + L1–L4（语言持久化）**；Rust bundle 11 项 / reset 5 项 / registry 7 项 |
+| export_settings / import_settings / reset_settings / get_settings_registry | **smoke-settings-io E1–E10 + L1–L4（语言持久化）**；**smoke-settings-v2 V1–V10（搜索/单项·分组·全部重置/导入导出按钮/语言下拉/折叠）**；Rust bundle 11 项 / reset 5 项 / registry 7 项 |
 
 ## 3. 错误码 × 证据（24 个）
 
@@ -88,14 +89,15 @@
 
 | 缺口 | 处置 |
 |---|---|
-| P0-4 设置 UI v2（搜索/分组/导入导出界面/重置按钮/语言下拉） | UI 实现后补 E2E（smoke-settings 扩展或新套件），并登记本表 |
-| P0-3 i18n 前端（**批 2c 完成**：运行时纯模块 + 响应式入口；App/编辑层/状态栏/Toast/快捷键动作名与录制提示全量抽取；L5/L6 覆盖菜单与空状态；设置窗口将为 P0-4 重写为 i18n 原生） | 剩余：P0-4 新设置 UI 内建 i18n + 语言下拉，随后矩阵登记 |
+| P0-4 设置 UI v2（**完成**：注册表驱动动态生成、分组卡片+折叠、全局搜索、单项/分组/全部恢复默认、导入/导出界面、语言下拉即时切换；data-setting 契约 = 完整设置项 id） | smoke-settings-v2 V1–V10；smoke-settings 48/48；smoke-limits L6 / smoke-scroll D 选择器迁移后全绿 |
+| P0-3 i18n 前端（**已收口**：设置窗口经 P0-4 重写为 i18n 原生 + 语言下拉） | 见 P0-4 |
 | 性能套件（stress / measure-startup / memory-report） | 手动执行（时长与负载原因不入 verify-all），结论入 docs/test-report.md |
 | 覆盖率度量（llvm-cov / vitest coverage） | 待评估 GNU 工具链可行性；当前以「表面覆盖 + 本矩阵」为准 |
 | 32 位 / ARM64 兼容 | CI `cargo check`（i686 / aarch64）覆盖 |
 
 ## 6. 变更记录
 
+- 2026-10-03 P0-4：设置 UI v2（注册表驱动：分组卡片+折叠/全局搜索/三级恢复默认/导入导出界面/语言下拉；旧 GeneralTab/TypographyTab/ActionRow 删除；`data-setting` 契约迁移为完整 id）；注册表去除自然语言标签（前端按 `setting.<id>` 解析语言包）；新增 smoke-settings-v2（10 项）并纳入 verify-all；Rust 261 lib 全绿。
 - 2026-10-03 P0-3c：文案抽取收口（App.svelte 全部运行时文案、ipc 固定错误、tabs/session 相关、EditLayer、Toast、快捷键动作名与录制提示）；新增 i18n 运行时纯模块（tests 环境可用）；smoke-settings-io 扩至 **21/21**（+L5 菜单、L6 空状态）；回归 edit/find/abuse/buttons 全绿。
 - 2026-10-03 P0-3b：i18n 核心（`zh-CN` 类型源 + `en` 完备性约束 + `t()` 插值 + runes 即时切换）与外壳文案抽取（标题栏/工具栏/状态栏/空状态/拖拽遮罩/首启引导）；`setLocale` 于 `reloadSettings` 接线；vitest 82；smoke-settings-io 扩展 L1–L4（重启后英文 UI）。
 - 2026-10-03 覆盖补测批次：新增 smoke-settings-io（15 项）、smoke-history 长列表（+2）、smoke-tabs 溢出/拖拽取消（+3）、smoke-settings 字体加载断言（+1）、offline-check 并入 verify-all；Rust 新增 7 项（注册表完备性/边界、bundle 边界 4 项、locale 变体）。
