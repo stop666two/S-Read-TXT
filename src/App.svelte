@@ -51,6 +51,9 @@
   let version = $state('');
   /** 阅读百分比（由阅读区回报） */
   let readPercent = $state(0);
+  /** 背景图 data URL 缓存与已加载文件名（避免重复读取与闪烁） */
+  let bgDataUrl = $state<string | null>(null);
+  let bgLoadedFile: string | null = null;
   /** 支持的编码列表（后端提供） */
   let encodings = $state<string[]>([]);
   /** 应用配置（阶段 6：启动加载；设置窗口变更后热刷新） */
@@ -865,6 +868,46 @@
     root.style.setProperty('--reading-align', typo.textAlign === 'justify' ? 'justify' : 'left');
   });
 
+  /** 背景图设置（快照未就绪时为 null） */
+  const background = $derived(readerSettings?.background ?? null);
+  /** 背景层是否启用（启用且有文件） */
+  const bgActive = $derived(Boolean(background?.enabled && background.file));
+  /** 背景图层内联样式（填充/重复/透明度/模糊/亮度） */
+  const bgLayerStyle = $derived.by(() => {
+    if (!background || !bgDataUrl) return '';
+    const size =
+      background.fill === 'stretch'
+        ? '100% 100%'
+        : background.fill === 'tile'
+          ? 'auto'
+          : background.fill;
+    const repeat = background.fill === 'tile' ? 'repeat' : 'no-repeat';
+    const bright = 1 + background.dim / 100;
+    const blur = background.blur > 0 ? ` blur(${background.blur}px)` : '';
+    const inset = background.blur > 0 ? `inset:${-2 * background.blur}px;` : '';
+    return `background-image:url("${bgDataUrl}");background-size:${size};background-repeat:${repeat};opacity:${background.opacity / 100};filter:brightness(${bright})${blur};${inset}`;
+  });
+
+  // 背景图加载：启用且文件变化时读取一次（base64 → data URL）；失败静默降级为无背景
+  $effect(() => {
+    const file = bgActive ? (background?.file ?? null) : null;
+    if (!file) {
+      bgLoadedFile = null;
+      bgDataUrl = null;
+      return;
+    }
+    if (file === bgLoadedFile) return;
+    bgLoadedFile = file;
+    void ipc
+      .readBackgroundImage(file)
+      .then((data) => {
+        if (bgLoadedFile === file) bgDataUrl = `data:${data.mime};base64,${data.dataBase64}`;
+      })
+      .catch(() => {
+        if (bgLoadedFile === file) bgDataUrl = null;
+      });
+  });
+
   // 标签集合/活动标签变化：防抖保存会话 + 刷新历史数据源
   // （「最近打开」子菜单与面板共用；复用打开可只改活动标签，因此监听活动标签而非仅数量）
   $effect(() => {
@@ -1071,17 +1114,22 @@
   onCloseAll={() => void closeAllTabs()}
   onReorder={reorderTab}
 />
-  {#if active}
-    <ReaderView
-      tab={active}
-      onPercent={(percent) => (readPercent = percent)}
-      onEditApplied={handleEditApplied}
-      {editorAction}
-      layoutKey={typographyKey}
-    />
-  {:else}
-    <EmptyState onOpen={openFile} />
-  {/if}
+  <div class="work-area" class:with-bg={bgActive}>
+    {#if bgActive && bgDataUrl}
+      <div class="bg-layer" data-bg-layer style={bgLayerStyle}></div>
+    {/if}
+    {#if active}
+      <ReaderView
+        tab={active}
+        onPercent={(percent) => (readPercent = percent)}
+        onEditApplied={handleEditApplied}
+        {editorAction}
+        layoutKey={typographyKey}
+      />
+    {:else}
+      <EmptyState onOpen={openFile} />
+    {/if}
+  </div>
   <StatusBar
     fileName={active?.name}
     percent={readPercent}
@@ -1153,6 +1201,29 @@
 </div>
 
 <style>
+  /* 工作区（阅读/空状态）+ 背景图层：背景图启用时内容背景透明，图层垫底 */
+  .work-area {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .bg-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-position: center;
+    pointer-events: none;
+  }
+
+  :global(.work-area.with-bg .reader),
+  :global(.work-area.with-bg .empty) {
+    position: relative;
+    z-index: 1;
+    background: transparent;
+  }
+
   .shell {
     position: relative;
     display: flex;

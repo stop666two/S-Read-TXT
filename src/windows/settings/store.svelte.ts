@@ -2,7 +2,7 @@
 // 职责：载入聚合快照；任意页签的修改经「读快照 → 合并补丁 → 保存 → 广播」统一落盘。
 // 广播事件 `srt://settings-changed` 供主窗口热刷新（无需重启）。
 
-import { emitTo } from '@tauri-apps/api/event';
+// 广播事件 `srt://settings-changed` 由后端 `save_settings` 统一发出（无需本层再发）。
 
 import { t } from '../../lib/i18n/index.svelte';
 import { formatBytes } from '../../lib/format';
@@ -86,7 +86,6 @@ class SettingsStore {
       });
       if (seq !== this.saveSeq) return;
       this.snapshot = updated;
-      await emitTo('main', 'srt://settings-changed', { kind: change.kind });
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
     }
@@ -186,6 +185,47 @@ class SettingsStore {
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
     }
+  }
+
+  /** 设置背景图文件并启用（设置窗口选择图片后调用） */
+  async pickBackgroundFile(path: string): Promise<void> {
+    try {
+      const entry = await ipc.setBackgroundFile(path);
+      await this.saveReader({
+        background: { ...this.readerBackground(), file: entry.fileName, enabled: true },
+      });
+      toasts.show(t('background.replaced', { name: entry.label }));
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 移除背景图（尽力删除文件；设置回退为未启用） */
+  async clearBackground(): Promise<void> {
+    const file = this.readerBackground().file ?? null;
+    try {
+      if (file) await ipc.clearBackgroundFile(file);
+    } catch {
+      // 尽力清理：文件缺失/非法名不影响设置回退
+    }
+    await this.saveReader({
+      background: { ...this.readerBackground(), file: null, enabled: false },
+    });
+    toasts.show(t('background.cleared'));
+  }
+
+  /** 当前背景图设置（快照缺失时用默认值） */
+  private readerBackground(): ReaderSettings['background'] {
+    return (
+      this.snapshot?.reader.background ?? {
+        enabled: false,
+        file: null,
+        opacity: 40,
+        fill: 'cover',
+        blur: 0,
+        dim: 0,
+      }
+    );
   }
 
   /** 载入磁盘占用分项 */

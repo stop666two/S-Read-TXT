@@ -231,6 +231,33 @@ export interface StatusBarSettings {
   showEncoding: boolean;
 }
 
+/** 背景图填充模式（与 Rust `BackgroundFill` 对应）。 */
+export type BackgroundFill = 'cover' | 'contain' | 'stretch' | 'tile';
+
+/** 背景图设置（与 Rust `BackgroundSettings` 对应；`file` 为存储文件名）。 */
+export interface BackgroundSettings {
+  enabled: boolean;
+  /** 存储文件名（`data/backgrounds/` 内；未选择时字段缺省） */
+  file?: string | null;
+  opacity: number;
+  fill: BackgroundFill;
+  blur: number;
+  dim: number;
+}
+
+/** 背景图导入结果（与 Rust `BackgroundEntry` 对应）。 */
+export interface BackgroundEntry {
+  fileName: string;
+  label: string;
+  sizeBytes: number;
+}
+
+/** 背景图读取结果（base64 + MIME；前端拼 data URL 渲染）。 */
+export interface BackgroundImageData {
+  dataBase64: string;
+  mime: string;
+}
+
 /** 阅读配置（与 Rust `ReaderSettings` 对应）。 */
 export interface ReaderSettings {
   schemaVersion: number;
@@ -242,6 +269,7 @@ export interface ReaderSettings {
   themeAnimMs: number;
   typography: TypographySettings;
   statusBar: StatusBarSettings;
+  background: BackgroundSettings;
 }
 
 /** 主题清单摘要（与 Rust `ThemeSummary` 对应；名称按当前语言取 `name`/`nameEn`）。 */
@@ -543,6 +571,10 @@ export const ipc = {
   removeTheme: (id: string) => invoke<void>('remove_theme', { id }),
   getDiskUsage: () => invoke<DiskUsageReport>('get_disk_usage'),
   clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
+  setBackgroundFile: (path: string) => invoke<BackgroundEntry>('set_background_file', { path }),
+  clearBackgroundFile: (fileName: string) => invoke<void>('clear_background_file', { fileName }),
+  readBackgroundImage: (fileName: string) =>
+    invoke<BackgroundImageData>('read_background_image', { fileName }),
   /** 迁移数据目录（复制校验后写指针；需重启生效）。 */
   migrateDataDir: (target: string) => invoke<MigrationReport>('migrate_data_dir', { target }),
   /** 重启应用（迁移后立即生效；当前进程退出并由新进程接管）。 */

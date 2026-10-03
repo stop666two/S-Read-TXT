@@ -12,6 +12,7 @@
   import ChoiceRow from './parts/ChoiceRow.svelte';
   import ThemeRow from './parts/ThemeRow.svelte';
   import FontFamilyRow from './parts/FontFamilyRow.svelte';
+  import BackgroundRow from './parts/BackgroundRow.svelte';
   import SliderRow from './parts/SliderRow.svelte';
   import ToggleRow from './parts/ToggleRow.svelte';
   import { buildPatch, getSettingValue } from './registry-util';
@@ -203,6 +204,14 @@
                 value={String(getSettingValue(snapshot, spec.id) ?? '')}
                 setting={spec.id}
                 onCommit={(value) => commit(spec, value)}
+                onReset={() => applyScope({ kind: 'field', id: spec.id })}
+                resetLabel={t('settings.resetField')}
+              />
+            {:else if spec.id === 'reader.background.file'}
+              <BackgroundRow
+                {label}
+                {desc}
+                value={snapshot.reader.background}
                 onReset={() => applyScope({ kind: 'field', id: spec.id })}
                 resetLabel={t('settings.resetField')}
               />
