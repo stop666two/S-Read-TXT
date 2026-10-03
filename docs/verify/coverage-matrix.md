@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 288（266 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 88；E2E 20 套 ≈337 项。
+- 计数口径：Rust 292（270 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 88；E2E 20 套 ≈340 项；verify-all 23 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -24,7 +24,7 @@
 | smoke-abuse | 41 | 对抗：空文件/换行族/BOM/连打/撤销狂按/冲突/长行 |
 | smoke-scroll | 4 | 滚动完整性：跳转/滚轮/震荡/滑块联动 |
 | smoke-limits | 6 | 双阈值：只读标记/编辑禁用/硬上限拒绝/设置滑块 |
-| smoke-settings-io | 21 | 设置 I/O：迁移/导出/篡改拒绝/导入/重置/注册表/**语言持久化（重启英文 UI：工具栏/状态栏/标题栏/菜单/空状态）** |
+| smoke-settings-io | 24 | 设置 I/O：迁移/导出/篡改拒绝/导入/重置/注册表/**语言持久化（重启英文 UI：工具栏/状态栏/标题栏/菜单/空状态）**/**快捷键导出·导入·未知动作拒绝** |
 | smoke-settings-v2 | 10 | 设置 v2（P0-4）：搜索过滤/无匹配/清空恢复/单项重置/分组重置/全部重置/导入导出按钮原生对话框/语言下拉即时切换/分组折叠 |
 | smoke-disk | 6 | 磁盘占用（P0-8）：分项与总量、设置卡片、清理日志/备份/WebView（UI+确认框）、未知范围拒绝 |
 | smoke-longline | 9 | 100MB 无换行：分段/滚动/编辑/保存字节级 |
@@ -98,6 +98,7 @@
 
 ## 6. 变更记录
 
+- 2026-10-03 P0-9：快捷键扩展框架（导出「生效绑定」JSON / 导入强校验（未知动作·空值·超长·超大）·导入前备份回滚·整体替换语义；设置窗快捷键页导入导出入口 + 录制页文案全量 i18n；`check-shortcut-parity.mjs` 双端动作对齐检查并入 verify-all；smoke-settings-io 扩至 24/24）。
 - 2026-10-03 P0-8：磁盘占用与缓存清理（resources 模块：分项统计/范围清理/逐文件容错；`get_disk_usage`/`clear_cache` 命令 + INVALID_SCOPE；设置「常规」页磁盘卡片 + 三清理按钮；smoke-disk 6/6 并入 verify-all）；release 复测：NSIS 1.93MiB、启动可见 max 631ms/就绪 median 763ms PASS。
 - 2026-10-03 P0-4：设置 UI v2（注册表驱动：分组卡片+折叠/全局搜索/三级恢复默认/导入导出界面/语言下拉；旧 GeneralTab/TypographyTab/ActionRow 删除；`data-setting` 契约迁移为完整 id）；注册表去除自然语言标签（前端按 `setting.<id>` 解析语言包）；新增 smoke-settings-v2（10 项）并纳入 verify-all；Rust 261 lib 全绿。
 - 2026-10-03 P0-3c：文案抽取收口（App.svelte 全部运行时文案、ipc 固定错误、tabs/session 相关、EditLayer、Toast、快捷键动作名与录制提示）；新增 i18n 运行时纯模块（tests 环境可用）；smoke-settings-io 扩至 **21/21**（+L5 菜单、L6 空状态）；回归 edit/find/abuse/buttons 全绿。
