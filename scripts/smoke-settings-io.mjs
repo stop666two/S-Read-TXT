@@ -338,6 +338,31 @@ try {
       'Close',
   );
 
+  // L5：菜单文案（点开「文件」菜单 → 条目为英文）
+  await evalMain2(
+    `(() => { document.querySelector('nav.menu-bar > button')?.click(); return true; })()`,
+  );
+  await delay(300);
+  const menuText = String(
+    await evalMain2(`document.querySelector('.menu-bar')?.textContent ?? ''`),
+  );
+  chk(
+    'L5 英文菜单（含 Open，且无「打开」）',
+    menuText.includes('Open') && !menuText.includes('打开'),
+    menuText.replace(/\s+/g, ' ').slice(0, 80),
+  );
+  await evalMain2(
+    `(() => { document.querySelector('nav.menu-bar > button')?.click(); return true; })()`,
+  );
+  await delay(200);
+  // L6：空状态按钮（en）
+  chk(
+    'L6 英文空状态按钮（Open file）',
+    String(await evalMain2(`document.querySelector('.empty .open-btn')?.textContent ?? ''`))
+      .trim()
+      .includes('Open'),
+  );
+
   console.log(`\n设置导入/导出/重置/迁移套件：通过 ${passed}/${passed + failed}`);
   process.exitCode = failed === 0 ? 0 : 1;
 } catch (error) {
