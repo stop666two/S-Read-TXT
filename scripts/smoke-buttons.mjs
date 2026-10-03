@@ -617,6 +617,20 @@ async function main() {
       check('D12c 关于页显示版本 0.0.1-beta', false, '设置窗口未出现');
     }
 
+    // D13：设置入口扩充（B 批次）——工具栏文字标签 + 文件菜单项
+    currentStep = 'D13 工具栏/菜单设置入口';
+    const toolbarText = await evalJs(
+      `(() => { const b = document.querySelector('.toolbar button[title="设置"]'); return b ? (b.textContent ?? '').trim() : ''; })()`,
+    );
+    check('D13a 工具栏设置按钮带文字标签', toolbarText === '设置', `text=${toolbarText}`);
+    await menuClick('文件', '设置…');
+    const fileSetWs = await waitSettingsWs();
+    check('D13b 文件菜单「设置…」→ 设置窗口出现', typeof fileSetWs === 'string' && fileSetWs.length > 0);
+    if (fileSetWs) {
+      const fileSetClient = await createClient(fileSetWs);
+      await closeSettingsWindow(fileSetClient);
+    }
+
     // ---- G. 状态栏 ----
     currentStep = 'G1 状态栏编码菜单';
     await evalJs(

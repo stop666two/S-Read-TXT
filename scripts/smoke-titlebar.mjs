@@ -187,6 +187,45 @@ async function main() {
       hit ?? '',
     );
 
+    // T9：标题栏「打开设置」齿轮 → 设置窗口打开 → 关闭（B 批次新增入口回归）
+    currentStep = 'T9 标题栏设置入口';
+    await evalJs(
+      `(() => { const o = document.querySelector('[role="dialog"][aria-label="使用向导"]');
+         if (!o) return true; const c = o.querySelector('.dont-show input'); if (c && !c.checked) c.click();
+         [...o.querySelectorAll('button')].find((b) => b.textContent.includes('开始使用'))?.click(); return true; })()`,
+    );
+    await delay(300);
+    const gearHit = await evalJs(
+      `(() => { const b = document.querySelector('.title-bar [aria-label="打开设置"]'); if (!b) return false; b.click(); return true; })()`,
+    );
+    const settingsWs = await waitForValue(async () => {
+      const found = await findTarget(port, 'settings.html').catch(() => null);
+      return found ?? null;
+    }, 8000);
+    check('T9 标题栏设置齿轮 → 设置窗口打开', gearHit === true && settingsWs !== null);
+    if (settingsWs) {
+      const setClient = await createClient(settingsWs);
+      await waitForValue(async () => {
+        const probe = await setClient.send('Runtime.evaluate', {
+          expression: `!!document.querySelector('.title-bar button[aria-label="关闭"]')`,
+          returnByValue: true,
+        });
+        return probe.result?.value === true ? true : null;
+      }, 8000);
+      await setClient.send('Runtime.evaluate', {
+        expression: `document.querySelector('.title-bar button[aria-label="关闭"]')?.click() ?? true`,
+        returnByValue: true,
+      });
+      setClient.close();
+      const closed = await waitForValue(async () => {
+        const still = await findTarget(port, 'settings.html').catch(() => null);
+        return still ? null : true;
+      }, 10000);
+      check('T9b 设置窗口已关闭', closed === true);
+    } else {
+      check('T9b 设置窗口已关闭', false, '未打开');
+    }
+
     // T8：真实鼠标点击标题栏「最小化」（坐标级输入验证按钮未被遮挡；JS .click() 会绕过命中测试）
     currentStep = 'T8 最小化（真实点击）';
     const rectJson = await evalJs(
