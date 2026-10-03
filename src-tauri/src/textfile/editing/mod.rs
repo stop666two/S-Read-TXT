@@ -14,6 +14,7 @@
 //! 内存模型（设计 §5.5）：原文片表零复制（mmap 不动）；新增文本只进
 //! 只增缓冲；行数元数据 = 每片段一个 `u64`。
 
+pub mod batch;
 pub mod edit_doc;
 pub mod fenwick;
 pub mod piece;
