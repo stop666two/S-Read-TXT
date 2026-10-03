@@ -1,5 +1,6 @@
 <script lang="ts">
   // 拖拽遮罩：文件拖入窗口时整窗提示（松开即打开）。
+  import { t } from '../i18n/index.svelte';
   import Icon from './Icon.svelte';
 
   interface Props {
@@ -12,7 +13,7 @@
 {#if visible}
   <div class="overlay">
     <Icon name="open" size={36} />
-    <p>松开以打开 TXT 文件</p>
+    <p>{t('drop.release')}</p>
   </div>
 {/if}
 

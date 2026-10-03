@@ -1,5 +1,6 @@
 <script lang="ts">
   // 空状态：未打开任何文件时的占位引导（打开按钮 + 拖拽与快捷键提示）。
+  import { t } from '../i18n/index.svelte';
   import Icon from './Icon.svelte';
 
   interface Props {
@@ -11,10 +12,10 @@
 
 <div class="empty">
   <Icon name="open" size={40} />
-  <h1>未打开任何文件</h1>
-  <p>拖拽 TXT 文件到窗口，或点击下方按钮打开</p>
-  <button class="open-btn" onclick={onOpen}>打开文件</button>
-  <p class="hint">快捷键 Ctrl+O · 支持同时打开多个文件</p>
+  <h1>{t('empty.title')}</h1>
+  <p>{t('empty.hint')}</p>
+  <button class="open-btn" onclick={onOpen}>{t('empty.open')}</button>
+  <p class="hint">{t('empty.shortcutHint')}</p>
 </div>
 
 <style>

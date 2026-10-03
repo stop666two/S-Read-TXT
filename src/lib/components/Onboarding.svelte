@@ -3,6 +3,8 @@
   关闭时可勾选「不再显示」（写入 settings.showOnboarding=false）。
 -->
 <script lang="ts">
+  import { t } from '../i18n/index.svelte';
+
   interface Props {
     /** 关闭回调；参数 = 是否勾选「不再显示」 */
     onClose: (dontShowAgain: boolean) => void;
@@ -13,21 +15,21 @@
   let dontShow = $state(false);
 </script>
 
-<div class="overlay" role="dialog" aria-modal="true" aria-label="使用向导">
+<div class="overlay" role="dialog" aria-modal="true" aria-label={t('onboarding.aria')}>
   <div class="card">
-    <h2>欢迎使用 S-Read-TXT</h2>
+    <h2>{t('onboarding.title')}</h2>
     <ul>
-      <li><strong>打开文件</strong>：工具栏「打开」或直接把 TXT 文件拖进窗口（Ctrl+O）</li>
-      <li><strong>多标签</strong>：Ctrl+W 关闭、Ctrl+Tab 切换、Ctrl+1~9 直达第 N 个标签</li>
-      <li><strong>历史记录</strong>：自动记录打开过的文件，可在设置 → 历史记录中管理</li>
-      <li><strong>快捷键</strong>：设置 → 快捷键，15 个动作全部可自定义</li>
+      <li><strong>{t('onboarding.openFile')}</strong>{t('onboarding.openFileDesc')}</li>
+      <li><strong>{t('onboarding.tabs')}</strong>{t('onboarding.tabsDesc')}</li>
+      <li><strong>{t('onboarding.history')}</strong>{t('onboarding.historyDesc')}</li>
+      <li><strong>{t('onboarding.shortcuts')}</strong>{t('onboarding.shortcutsDesc')}</li>
     </ul>
     <div class="actions">
       <label class="dont-show">
         <input type="checkbox" bind:checked={dontShow} />
-        不再显示
+        {t('onboarding.dontShow')}
       </label>
-      <button type="button" onclick={() => onClose(dontShow)}>开始使用</button>
+      <button type="button" onclick={() => onClose(dontShow)}>{t('onboarding.start')}</button>
     </div>
   </div>
 </div>

@@ -1,5 +1,7 @@
 <script lang="ts">
 // 工具栏：打开 / 历史（阶段 6 起可用）/ 编码（共享下拉）/ 主题（循环）/ 设置。
+  import { t } from '../i18n/index.svelte';
+  import type { MessageKey } from '../i18n/zh-CN';
   import EncodingMenu from './EncodingMenu.svelte';
   import Icon from './Icon.svelte';
   import type { ThemeChoice } from '../types';
@@ -50,12 +52,12 @@
 
   /** 主题循环顺序（含跟随系统） */
   const themeCycle: ThemeChoice[] = ['light', 'dark', 'eye', 'system'];
-  /** 主题按钮提示文案 */
-  const themeNames: Record<ThemeChoice, string> = {
-    light: '浅色',
-    dark: '深色',
-    eye: '护眼',
-    system: '跟随系统',
+  /** 主题名 → 语言包键（提示文案由 t() 渲染） */
+  const themeLabelKeys: Record<ThemeChoice, MessageKey> = {
+    light: 'theme.light',
+    dark: 'theme.dark',
+    eye: 'theme.eye',
+    system: 'theme.system',
   };
 
   /** 循环切换主题 */
@@ -66,10 +68,10 @@
 </script>
 
 <div class="toolbar">
-  <button class="icon-btn" title="打开文件（Ctrl+O）" aria-label="打开文件" onclick={() => onOpenFile?.()}>
+  <button class="icon-btn" title={t('toolbar.openHint')} aria-label={t('toolbar.open')} onclick={() => onOpenFile?.()}>
     <Icon name="open" />
   </button>
-  <button class="icon-btn" title="历史记录（Ctrl+Shift+H）" aria-label="历史记录" onclick={() => onHistory?.()}>
+  <button class="icon-btn" title={t('toolbar.historyHint')} aria-label={t('toolbar.history')} onclick={() => onHistory?.()}>
     <Icon name="history" />
   </button>
   <div class="sep"></div>
@@ -77,11 +79,11 @@
     class="icon-btn"
     class:active={editing}
     title={readOnly
-      ? '文件超过只读阈值，不可编辑（可在设置中调整）'
+      ? t('toolbar.editReadOnlyHint')
       : editing
-        ? '退出编辑模式（Ctrl+E）'
-        : '启用编辑模式（Ctrl+E）'}
-    aria-label="切换编辑模式"
+        ? t('toolbar.editDisableHint')
+        : t('toolbar.editEnableHint')}
+    aria-label={t('toolbar.toggleEdit')}
     aria-pressed={editing}
     disabled={readOnly}
     onclick={() => onToggleEdit?.()}
@@ -90,8 +92,8 @@
   </button>
   <button
     class="icon-btn"
-    title="保存（Ctrl+S）"
-    aria-label="保存"
+    title={t('toolbar.saveHint')}
+    aria-label={t('toolbar.save')}
     disabled={!canSave}
     onclick={() => onSave?.()}
   >
@@ -99,7 +101,7 @@
   </button>
   <div class="sep"></div>
   <EncodingMenu
-    displayLabel={`编码：${encodingOverride ?? '自动'}`}
+    displayLabel={t('toolbar.encoding', { value: encodingOverride ?? t('toolbar.encodingAuto') })}
     {encodings}
     override={encodingOverride}
     onPick={onEncodingChange}
@@ -107,15 +109,15 @@
   <div class="sep"></div>
   <button
     class="icon-btn"
-    title={`主题：${themeNames[themeChoice]}（点击循环切换）`}
-    aria-label="切换主题"
+    title={t('toolbar.theme', { name: t(themeLabelKeys[themeChoice]) })}
+    aria-label={t('toolbar.themeCycle')}
     onclick={cycleTheme}
   >
     <Icon name="palette" />
   </button>
-  <button class="icon-btn with-text" title="设置" aria-label="设置" onclick={() => onSettings?.()}>
+  <button class="icon-btn with-text" title={t('toolbar.settings')} aria-label={t('toolbar.settings')} onclick={() => onSettings?.()}>
     <Icon name="settings" />
-    <span>设置</span>
+    <span>{t('toolbar.settings')}</span>
   </button>
 </div>
 

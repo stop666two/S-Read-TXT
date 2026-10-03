@@ -12,6 +12,7 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
   import appIcon from '../../assets/app-icon.png';
+  import { t } from '../i18n/index.svelte';
   import Icon from './Icon.svelte';
 
   interface Props {
@@ -65,11 +66,11 @@
   ></div>
   <div class="controls">
     {#if showSettings}
-      <button class="ctl" type="button" aria-label="打开设置" title="打开设置" onclick={() => onSettings?.()}>
+      <button class="ctl" type="button" aria-label={t('titlebar.settings')} title={t('titlebar.settings')} onclick={() => onSettings?.()}>
         <Icon name="settings" />
       </button>
     {/if}
-    <button class="ctl" type="button" aria-label="最小化" title="最小化" onclick={minimize}>
+    <button class="ctl" type="button" aria-label={t('titlebar.minimize')} title={t('titlebar.minimize')} onclick={minimize}>
       <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
         <path d="M4 8h8" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
       </svg>
@@ -78,8 +79,8 @@
       <button
         class="ctl"
         type="button"
-        aria-label={maximized ? '还原' : '最大化'}
-        title={maximized ? '还原' : '最大化'}
+        aria-label={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
+        title={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
         onclick={toggleMaximize}
       >
         {#if maximized}
@@ -108,7 +109,7 @@
         {/if}
       </button>
     {/if}
-    <button class="ctl close" type="button" aria-label="关闭" title="关闭" onclick={close}>
+    <button class="ctl close" type="button" aria-label={t('titlebar.close')} title={t('titlebar.close')} onclick={close}>
       <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
         <path
           d="M4.5 4.5l7 7M11.5 4.5l-7 7"

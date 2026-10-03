@@ -35,6 +35,7 @@
   import { historyStore } from './lib/state/history.svelte';
   import { tabs } from './lib/state/tabs.svelte';
   import { toasts } from './lib/state/toasts.svelte';
+  import { setLocale } from './lib/i18n/index.svelte';
   import { decideShortcut, isEditorContext, modalOpen } from './lib/shortcuts/engine';
   import { comboFromEvent } from './lib/shortcuts/keys';
   import type { ShortcutAction, ShortcutMap } from './lib/shortcuts/types';
@@ -109,10 +110,11 @@
       const snapshot = await ipc.getSettings();
       appSettings = snapshot.app;
       readerSettings = snapshot.reader;
-      shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
-      themeChoice = snapshot.reader.theme as ThemeChoice;
-    } catch (error) {
-      if (import.meta.env.DEV) console.error('[app] 载入配置失败', error);
+        shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
+        themeChoice = snapshot.reader.theme as ThemeChoice;
+        setLocale(snapshot.app.locale);
+      } catch (error) {
+        if (import.meta.env.DEV) console.error('[app] 载入配置失败', error);
     }
   }
 
@@ -133,10 +135,11 @@
       if (seq !== readerSaveSeq) return;
       appSettings = snapshot.app;
       readerSettings = snapshot.reader;
-      shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
-      themeChoice = snapshot.reader.theme as ThemeChoice;
-    } catch (error) {
-      toasts.error(describeIpcError(toIpcError(error)));
+        shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
+        themeChoice = snapshot.reader.theme as ThemeChoice;
+        setLocale(snapshot.app.locale);
+      } catch (error) {
+        toasts.error(describeIpcError(toIpcError(error)));
     }
   }
 

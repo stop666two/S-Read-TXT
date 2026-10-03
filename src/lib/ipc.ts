@@ -201,6 +201,7 @@ export interface AppSettings {
   history: HistorySettings;
   saveBackupEnabled: boolean;
   showOnboarding: boolean;
+  locale: 'zh-CN' | 'en';
   startup: StartupSettings;
 }
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   // 状态栏：有文件时「左 文件名+阅读百分比 / 右 大小+编码（点击切换）」；无文件时显示应用名与版本。
   // 元素显隐由设置控制（阅读排版 → 状态栏元素开关；缺省全显示）。
+  import { t } from '../i18n/index.svelte';
   import EncodingMenu from './EncodingMenu.svelte';
 
   interface Props {
@@ -53,9 +54,9 @@
     <span class="left">
       {#if showFileName}{fileName}{/if}
       {#if showFileName && showPercent}<span class="dot"> · </span>{/if}
-      {#if showPercent}阅读 {Math.round(percent ?? 0)}%{/if}
+      {#if showPercent}{t('status.reading', { percent: Math.round(percent ?? 0) })}{/if}
       {#if readOnly}
-        <span class="readonly" title="文件超过只读阈值，不可编辑（可在设置中调整）">只读</span>
+        <span class="readonly" title={t('status.readOnlyHint')}>{t('status.readOnly')}</span>
       {/if}
     </span>
     <span class="right">
@@ -73,13 +74,13 @@
             openUp
           />
         {:else}
-          <span class="encoding" title="切换编码">{encodingLabel ?? '—'}</span>
+          <span class="encoding" title={t('status.encodingHint')}>{encodingLabel ?? '—'}</span>
         {/if}
       {/if}
     </span>
   {:else}
     <span class="left">S-Read-TXT {version}</span>
-    <span class="right">未打开文件</span>
+    <span class="right">{t('status.noFile')}</span>
   {/if}
 </footer>
 
