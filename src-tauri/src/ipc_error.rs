@@ -55,6 +55,8 @@ pub const CODE_NOT_EDITING: &str = "NOT_EDITING";
 pub const CODE_EDIT_DIRTY: &str = "EDIT_DIRTY";
 /// 文件超过只读阈值，不允许进入编辑模式
 pub const CODE_FILE_READ_ONLY: &str = "FILE_READ_ONLY";
+/// 批量插入/序号参数或范围非法（message 为引擎说明）
+pub const CODE_BATCH_INVALID: &str = "BATCH_INVALID";
 /// 查找/替换命中过多（全部替换保护上限）
 pub const CODE_QUERY_TOO_BROAD: &str = "QUERY_TOO_BROAD";
 /// 正则表达式无效（编译失败；message 为引擎说明）
@@ -202,6 +204,7 @@ impl From<AppStateError> for IpcError {
             ),
             AppStateError::TextFile(err) => err.into(),
             AppStateError::Edit(err) => err.into(),
+            AppStateError::Batch(err) => err.into(),
             AppStateError::Save(err) => err.into(),
             AppStateError::Io(err) => Self::new(CODE_IO, format!("文件操作失败：{err}")),
             AppStateError::NotEditing(tab_id) => Self::new(
@@ -223,6 +226,12 @@ impl From<AppStateError> for IpcError {
                 ),
             ),
         }
+    }
+}
+
+impl From<crate::textfile::editing::batch::BatchError> for IpcError {
+    fn from(err: crate::textfile::editing::batch::BatchError) -> Self {
+        Self::new(CODE_BATCH_INVALID, err.to_string())
     }
 }
 

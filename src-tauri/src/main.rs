@@ -235,6 +235,8 @@ fn main() {
             commands::open_file,
             commands::get_rows,
             commands::set_encoding,
+            commands::preview_batch_numbering,
+            commands::apply_batch_numbering,
             commands::list_encodings,
             commands::list_tabs,
             commands::close_tab,

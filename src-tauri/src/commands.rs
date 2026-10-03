@@ -38,6 +38,9 @@ use s_read_txt::settings::{bundle, shortcut_io, SettingsSaveRequest, SettingsSna
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::migrate_dir::{self as migrate_dir, MigrationReport};
 use s_read_txt::storage::paths::{self, DataDirOrigin};
+use s_read_txt::textfile::editing::batch::{
+    BatchNumberingConfig, BatchNumberingOutcome, BatchPreview,
+};
 use s_read_txt::textfile::editing::edit_doc::{EditApplied, EditOp};
 use s_read_txt::textfile::editing::search::{
     FindHit, ReplaceAllOutcome, ReplaceNextOutcome, ReplacePreview, SearchMode, PREVIEW_LIST_CAP,
@@ -240,6 +243,32 @@ pub fn restart_app() -> Result<(), IpcError> {
             .map_err(|err| IpcError::new(CODE_IO, format!("重启失败：{err}")))?;
         log::info!(target: "sread::main", "用户请求重启应用（数据目录迁移生效）");
         std::process::exit(0);
+    })
+}
+
+/// 命令：预览批量序号（仅编辑标签；格式超限/范围非法在预览阶段报错）。
+#[tauri::command]
+pub fn preview_batch_numbering(
+    tab_id: u64,
+    config: BatchNumberingConfig,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<BatchPreview, IpcError> {
+    with_context(LogContext::request(), || {
+        let app_state = lock_state(&state)?;
+        Ok(app_state.preview_batch_numbering(tab_id, &config)?)
+    })
+}
+
+/// 命令：执行批量序号（单次编辑 = 单撤销步；仅编辑标签）。
+#[tauri::command]
+pub fn apply_batch_numbering(
+    tab_id: u64,
+    config: BatchNumberingConfig,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<BatchNumberingOutcome, IpcError> {
+    with_context(LogContext::request(), || {
+        let mut app_state = lock_state(&state)?;
+        Ok(app_state.apply_batch_numbering(tab_id, &config)?)
     })
 }
 

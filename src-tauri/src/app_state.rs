@@ -18,6 +18,9 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::settings::model::AppSettings;
+use crate::textfile::editing::batch::{
+    BatchError, BatchNumberingConfig, BatchNumberingOutcome, BatchPreview,
+};
 use crate::textfile::editing::edit_doc::{EditApplied, EditDoc, EditError, EditOp};
 use crate::textfile::editing::save::{
     save_doc, snapshot_of, DiskSnapshot, SaveError, SaveOptions, SaveOutcome,
@@ -51,6 +54,9 @@ pub enum AppStateError {
     /// 编辑引擎错误（透传）
     #[error(transparent)]
     Edit(#[from] EditError),
+    /// 批量插入/序号错误（透传）
+    #[error(transparent)]
+    Batch(#[from] BatchError),
     /// 保存链错误（透传）
     #[error(transparent)]
     Save(#[from] SaveError),
@@ -511,6 +517,26 @@ impl AppState {
         Ok(tab_info(tab))
     }
 
+    /// 预览批量序号（P1-1；仅编辑标签，格式超限/范围非法在此阶段报错）。
+    pub fn preview_batch_numbering(
+        &self,
+        tab_id: u64,
+        config: &BatchNumberingConfig,
+    ) -> Result<BatchPreview, AppStateError> {
+        let doc = self.edit_doc(tab_id)?;
+        Ok(doc.preview_batch_numbering(config)?)
+    }
+
+    /// 执行批量序号（单次编辑 = 单撤销步；仅编辑标签）。
+    pub fn apply_batch_numbering(
+        &mut self,
+        tab_id: u64,
+        config: &BatchNumberingConfig,
+    ) -> Result<BatchNumberingOutcome, AppStateError> {
+        let doc = self.edit_doc_mut(tab_id)?;
+        Ok(doc.apply_batch_numbering(config)?)
+    }
+
     /// 只读访问标签的编辑文档（未进入编辑时报 `NotEditing`）。
     fn edit_doc(&self, tab_id: u64) -> Result<&EditDoc, AppStateError> {
         self.tab(tab_id)?
@@ -674,6 +700,84 @@ mod tests {
         assert_eq!(info.rows_total, 2);
         assert_eq!(info.encoding, "UTF-8");
         assert_eq!(state.active_tab(), Some(info.tab_id));
+    }
+
+    /// 测试用批量序号配置（阿拉伯数字 / 全文 / 行首）。
+    fn test_batch_config() -> BatchNumberingConfig {
+        use crate::textfile::editing::batch::{BatchScope, InsertPosition, NumberFormat};
+        BatchNumberingConfig {
+            format: NumberFormat::Arabic,
+            start: 1,
+            step: 1,
+            zero_pad_width: 2,
+            separator: ".".to_string(),
+            suffix: String::new(),
+            position: InsertPosition::LineStart,
+            scope: BatchScope::All,
+            skip_empty: true,
+            template: None,
+            preview_lines: 10,
+        }
+    }
+
+    /// 批量序号：未进入编辑 → `NotEditing` 守卫（预览与执行一致）。
+    #[test]
+    fn batch_numbering_requires_editing() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "batch-a.txt", "aa\nbb\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let config = test_batch_config();
+        assert!(matches!(
+            state.preview_batch_numbering(info.tab_id, &config),
+            Err(AppStateError::NotEditing(_))
+        ));
+        assert!(matches!(
+            state.apply_batch_numbering(info.tab_id, &config),
+            Err(AppStateError::NotEditing(_))
+        ));
+    }
+
+    /// 批量序号：进入编辑后预览/执行/单撤销经状态层贯通。
+    #[test]
+    fn batch_numbering_through_state_and_undo() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "batch-b.txt", "aa\nbb\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        state
+            .toggle_edit(info.tab_id, &settings)
+            .expect("进入编辑失败");
+        let config = test_batch_config();
+        let preview = state
+            .preview_batch_numbering(info.tab_id, &config)
+            .expect("预览失败");
+        assert_eq!(preview.total_rows, 2);
+        assert_eq!(preview.items[0].insert_text, "1.");
+        let outcome = state
+            .apply_batch_numbering(info.tab_id, &config)
+            .expect("执行失败");
+        assert_eq!(outcome.affected, 2);
+        assert!(outcome.applied.dirty);
+        assert_eq!(
+            state
+                .edit_doc(info.tab_id)
+                .expect("文档存在")
+                .row_text(0)
+                .as_deref(),
+            Some("1.aa")
+        );
+        state.undo_edit(info.tab_id).expect("撤销失败");
+        assert_eq!(
+            state
+                .edit_doc(info.tab_id)
+                .expect("文档存在")
+                .row_text(0)
+                .as_deref(),
+            Some("aa")
+        );
     }
 
     /// 重复打开同一路径：复用标签、不新增、激活切换。
