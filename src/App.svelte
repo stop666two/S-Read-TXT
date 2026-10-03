@@ -29,7 +29,7 @@
   import { formatBytes } from './lib/format';
   import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
-  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type SessionState, type ThemeSummary, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
+  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type SessionState, type TextStats, type ThemeSummary, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
   import { saveSessionNow } from './lib/session';
   import { dataDirStore } from './lib/state/data-dir.svelte';
@@ -53,6 +53,11 @@
   let version = $state('');
   /** 阅读百分比（由阅读区回报） */
   let readPercent = $state(0);
+  /** 状态栏 v2：文档统计 / 选区统计 / 顶部行 / 光标行列（P2-1） */
+  let docStats = $state<TextStats | null>(null);
+  let selectionStats = $state<TextStats | null>(null);
+  let topRow = $state<number | null>(null);
+  let caretInfo = $state<{ row: number; column: number } | null>(null);
   /** 背景图 data URL 缓存与已加载文件名（避免重复读取与闪烁） */
   let bgDataUrl = $state<string | null>(null);
   let bgLoadedFile: string | null = null;
@@ -124,6 +129,9 @@
 
   /** 当前活动标签 */
   const active = $derived(tabs.active);
+  /** 活动标签的关键原始值（用作 effect 依赖：避免 tabs 刷新重建对象时重复触发）。 */
+  const activeTabId = $derived(active?.tabId);
+  const activeRowsTotal = $derived(active?.rowsTotal);
 
   /** 生效快捷键绑定（后端为唯一真源；启动加载，设置变更后刷新） */
   let shortcuts = $state<ShortcutMap>({});
@@ -165,6 +173,39 @@
         setLocale(snapshot.app.locale);
       } catch (error) {
         toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 拉取文档统计（标签/行数变化或换行转换后调用；过期响应丢弃）。 */
+  function refreshDocStats(tabId: number): void {
+    void ipc
+      .documentStats(tabId)
+      .then((stats) => {
+        if (active?.tabId === tabId) docStats = stats;
+      })
+      .catch(() => {
+        if (active?.tabId === tabId) docStats = null;
+      });
+  }
+
+  /** 状态栏：跳转到行（1 基）→ 借助工作区跳转通道定位当前标签。 */
+  function handleGotoLine(row1: number): void {
+    const current = active;
+    if (!current) return;
+    jumpStore.request(current.tabId, Math.max(0, row1 - 1), 0, 0);
+  }
+
+  /** 状态栏：换行符转换（编辑态；引擎登记为单撤销步，可用 Ctrl+Z 撤销）。 */
+  async function handleConvertEol(target: 'lf' | 'crlf' | 'cr'): Promise<void> {
+    const current = active;
+    if (!current || !current.editing) return;
+    try {
+      await ipc.convertEol(current.tabId, target);
+      tabs.applyView(await ipc.listTabs());
+      toasts.show(t('status.converted', { style: target.toUpperCase() }));
+      refreshDocStats(current.tabId);
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
     }
   }
 
@@ -860,6 +901,24 @@
     return found ? themeDisplayName(found) : themeId;
   });
 
+  /** 文档统计拉取（标签切换 / 行数变化时刷新）。 */
+  $effect(() => {
+    const tabId = activeTabId;
+    void activeRowsTotal;
+    if (tabId === undefined) {
+      docStats = null;
+      return;
+    }
+    refreshDocStats(tabId);
+  });
+
+  /** 切换标签时清空选区/光标残留（仅 tabId 变化触发；顶部行由阅读区首帧上报覆盖，勿清以避免竞态）。 */
+  $effect(() => {
+    void activeTabId;
+    selectionStats = null;
+    caretInfo = null;
+  });
+
   /** 排版变更键（传给 ReaderView 触发行高失效重排；值变化即重排） */
   const typographyKey = $derived(readerSettings ? JSON.stringify(readerSettings.typography) : '');
 
@@ -1151,6 +1210,9 @@
         insertSettings={appSettings?.editor.insert ?? null}
         autoPairs={appSettings?.editor.autoPairs ?? null}
         cleanupSettings={appSettings?.editor.cleanup ?? null}
+        onTopRow={(row) => (topRow = row)}
+        onSelectionStats={(stats) => (selectionStats = stats)}
+        onCaretInfo={(info) => (caretInfo = info)}
         layoutKey={typographyKey}
       />
     {:else}
@@ -1171,10 +1233,16 @@
     encodingOverride={active?.encodingOverride ?? null}
     onEncodingChange={(label) => void changeEncoding(label)}
     {version}
-    showFileName={readerSettings?.statusBar.showFileName ?? true}
-    showPercent={readerSettings?.statusBar.showPercent ?? true}
-    showSize={readerSettings?.statusBar.showSize ?? true}
-    showEncoding={readerSettings?.statusBar.showEncoding ?? true}
+    statusSettings={appSettings?.status ?? null}
+    editing={active?.editing ?? false}
+    eol={active?.eol ?? null}
+    onConvertEol={handleConvertEol}
+    docStats={docStats}
+    selectionStats={selectionStats}
+    lineCol={caretInfo}
+    topRow={topRow}
+    dirty={active?.dirty ?? false}
+    onGotoLine={handleGotoLine}
     readOnly={active?.readOnly ?? false}
   />
   <Toast />

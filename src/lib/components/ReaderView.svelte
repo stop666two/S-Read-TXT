@@ -28,6 +28,7 @@
     FindSettings,
     InsertSettings,
     MultiCursorSettings,
+    TextStats,
   } from '../ipc';
 
   interface Props {
@@ -53,8 +54,14 @@
   autoPairs?: AutoPairsSettings | null;
   /** 清理类操作设置（透传编辑层；未就绪为 null） */
   cleanupSettings?: CleanupSettings | null;
+    /** 状态栏：顶部可视行回报（1 基；P2-1） */
+    onTopRow?: (row: number) => void;
+    /** 状态栏：选区统计透传（编辑层；P2-1） */
+    onSelectionStats?: (stats: TextStats | null) => void;
+    /** 状态栏：光标行列透传（编辑层；P2-1） */
+    onCaretInfo?: (info: { row: number; column: number }) => void;
   }
-  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, insertSettings, autoPairs, cleanupSettings }: Props = $props();
+  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -304,6 +311,34 @@
     }
   }
 
+  /** 上次回报的顶部行（去抖：仅在变化时回调）。 */
+  let lastTopRow = -1;
+
+  /** 计算并回报当前顶部行（过滤态映射回文件行；去抖）。 */
+  function reportTopRow(): void {
+    const topDisplayRow = heights.rowAtOffset(contentScrollTop(), Math.max(1, viewRowsTotal()));
+    if (filterRows === null) {
+      if (topDisplayRow !== lastTopRow) {
+        lastTopRow = topDisplayRow;
+        onTopRow?.(topDisplayRow + 1);
+      }
+    } else {
+      const fileRow = filterRows[Math.min(topDisplayRow, filterRows.length - 1)] ?? 0;
+      if (fileRow !== lastTopRow) {
+        lastTopRow = fileRow;
+        onTopRow?.(fileRow + 1);
+      }
+    }
+  }
+
+  // 初始/切换/过滤变化时上报顶部行（未发生滚动时状态栏也应显示行号）。
+  $effect(() => {
+    void tab.tabId;
+    void tab.rowsTotal;
+    void filterRows;
+    reportTopRow();
+  });
+
   /** 滚动处理（rAF 节流）：刷新窗口 + 实时更新滚动记忆（会话保存直接读取）。 */
   function handleScroll(): void {
     if (programmatic || scrollScheduled) return;
@@ -320,6 +355,7 @@
           heights.rowAtOffset(contentScrollTop(), Math.max(1, viewRowsTotal())),
         );
       }
+      reportTopRow();
     });
   }
 
@@ -631,6 +667,8 @@
         insertSettings={insertSettings ?? null}
         autoPairs={autoPairs ?? null}
         cleanupSettings={cleanupSettings ?? null}
+        onSelectionStats={onSelectionStats ?? undefined}
+        onCaretInfo={onCaretInfo ?? undefined}
       />
     {/if}
   </div>

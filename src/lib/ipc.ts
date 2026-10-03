@@ -51,6 +51,8 @@ export interface TabInfo {
   readOnly: boolean;
   rowsTotal: number;
   byteLen: number;
+  /** 换行符风格（P2-1c1：lf/crlf/cr/mixed/unknown） */
+  eol: string;
 }
 
 /** 取行载荷（与 Rust app_state::RowsPayload 对齐）。 */
@@ -308,6 +310,36 @@ export interface ClipboardSettings {
   persist: boolean;
 }
 
+/** 计数模式（状态栏字数统计口径；与 Rust `CountMode` 对应）。 */
+export type CountMode = 'grapheme' | 'codepoint' | 'byte';
+
+/** 状态栏显示设置（与 Rust `StatusSettings` 对应）。 */
+export interface StatusSettings {
+  /** 显示项顺序（候选 id：lineCol/counts/words/progress/size/encoding/eol/modified） */
+  items: string[];
+  countMode: CountMode;
+  tabWidth: number;
+  clickableGoto: boolean;
+  clickableEncoding: boolean;
+  clickableEol: boolean;
+  emptySelectionText: string;
+}
+
+/** 文本统计（与 Rust `TextStats` 对应；capped = 已达上限未全量统计）。 */
+export interface TextStats {
+  graphemes: number;
+  codepoints: number;
+  bytes: number;
+  words: number;
+  capped: boolean;
+}
+
+/** 换行符转换结果（与 Rust `EolConvertOutcome` 对应）。 */
+export interface EolConvertOutcome {
+  replacements: number;
+  applied: EditApplied | null;
+}
+
 /** 时间戳插入格式（与 Rust `TimestampFormat` 对应）。 */
 export type TimestampFormat = 'localDateTime' | 'dateOnly' | 'timeOnly' | 'iso8601' | 'rfc3339Utc';
 
@@ -458,6 +490,8 @@ export interface AppSettings {
   editor: EditorSettings;
   /** 查找设置（P1-6 起） */
   find: FindSettings;
+  /** 状态栏显示设置（P2-1 起） */
+  status: StatusSettings;
   /** 正则设置（P1-6 起） */
   regex: RegexSettings;
   startup: StartupSettings;
@@ -750,6 +784,19 @@ export const ipc = {
   listTabs: () => invoke<TabsView>('list_tabs'),
   /** 关闭标签（返回剩余视图）。 */
   closeTab: (tabId: number) => invoke<TabsView>('close_tab', { tabId }),
+  /** 文档统计（全文件流式；P2-1）。 */
+  documentStats: (tabId: number) => invoke<TextStats>('document_stats', { tabId }),
+  /** 选区统计（编辑态；半开 UTF-16 区间；P2-1）。 */
+  selectionStats: (
+    tabId: number,
+    fromRow: number,
+    fromUtf16: number,
+    toRow: number,
+    toUtf16: number,
+  ) => invoke<TextStats>('selection_stats', { tabId, fromRow, fromUtf16, toRow, toUtf16 }),
+  /** 全文档换行符转换（编辑态；P2-1d）。 */
+  convertEol: (tabId: number, target: 'lf' | 'crlf' | 'cr') =>
+    invoke<EolConvertOutcome>('convert_eol', { tabId, target }),
   /** 同步活动标签到后端（点击/快捷键选择后调用）。 */
   setActiveTab: (tabId: number) => invoke<void>('set_active_tab', { tabId }),
   /** 调整标签展示顺序（拖拽排序；下标记「移除后再插入」语义）。 */

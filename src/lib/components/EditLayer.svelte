@@ -58,6 +58,7 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
     LineOpPreview,
     MultiCursorSettings,
     TimestampFormat,
+    TextStats,
   } from '../ipc';
   import type { EditActionType, EditorAction } from '../edit/actions';
 
@@ -94,6 +95,10 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
     autoPairs?: AutoPairsSettings | null;
     /** 清理类操作设置（未就绪为 null 时使用兜底常量） */
     cleanupSettings?: CleanupSettings | null;
+    /** 状态栏：选区统计回报（无选区/失败为 null；P2-1） */
+    onSelectionStats?: (stats: TextStats | null) => void;
+    /** 状态栏：光标行列回报（1 基；P2-1） */
+    onCaretInfo?: (info: { row: number; column: number }) => void;
   }
   let {
     tabId,
@@ -112,6 +117,8 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
     insertSettings,
     autoPairs,
     cleanupSettings,
+    onSelectionStats,
+    onCaretInfo,
   }: Props = $props();
 
   /** 叠加层盒子（相对 .page 的像素坐标） */
@@ -135,6 +142,33 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
 
   /** 已处理的工作区跳转序号（普通变量：不参与响应式依赖）。 */
   let handledJumpSeq = 0;
+
+  /** 选区/光标回报（P2-1 状态栏）：光标即时上报；选区 250ms 防抖统计。 */
+  let statsTimer: ReturnType<typeof setTimeout> | null = null;
+  let statsSeq = 0;
+  $effect(() => {
+    const sel = orderedSelection(selection);
+    onCaretInfo?.({ row: selection.head.row + 1, column: selection.head.utf16 + 1 });
+    if (isCollapsed(selection)) {
+      if (statsTimer) clearTimeout(statsTimer);
+      statsTimer = null;
+      onSelectionStats?.(null);
+      return;
+    }
+    const seq = ++statsSeq;
+    if (statsTimer) clearTimeout(statsTimer);
+    statsTimer = setTimeout(() => {
+      statsTimer = null;
+      void ipc
+        .selectionStats(tabId, sel.start.row, sel.start.utf16, sel.end.row, sel.end.utf16)
+        .then((stats) => {
+          if (seq === statsSeq) onSelectionStats?.(stats);
+        })
+        .catch(() => {
+          if (seq === statsSeq) onSelectionStats?.(null);
+        });
+    }, 250);
+  });
 
   // 工作区搜索跳转（P1-8b）：等待目标行加载后设置选区并移交键盘焦点
   // （滚动由 ReaderView 同序号请求统一处理）。

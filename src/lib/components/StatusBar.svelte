@@ -1,12 +1,28 @@
 <script lang="ts">
-  // 状态栏：有文件时「左 文件名+阅读百分比 / 右 大小+编码（点击切换）」；无文件时显示应用名与版本。
-  // 元素显隐由设置控制（阅读排版 → 状态栏元素开关；缺省全显示）。
+  // 状态栏 v2（P2-1）：按设置 `app.status.items` 驱动显示项与顺序。
+  // 显示项候选：lineCol（行:列 / 第 N 行）/ counts（字数）/ words（词数）/
+  //             progress（阅读进度）/ size（大小）/ encoding（编码菜单）/
+  //             eol（换行符 + 编辑态转换菜单）/ modified（修改标记）。
+  // 无打开文件时：左显示应用名与版本，右显示状态文案。
+  import type { MessageKey } from '../i18n/zh-CN';
   import { t } from '../i18n/index.svelte';
+  import type { StatusSettings, TextStats } from '../ipc';
   import EncodingMenu from './EncodingMenu.svelte';
+
+  /** 状态栏显示项（设置缺省时的兜底顺序；与 Rust DEFAULT_STATUS_ITEMS 对齐）。 */
+  const DEFAULT_ITEMS = ['lineCol', 'counts', 'progress', 'size', 'encoding', 'eol', 'modified'];
 
   interface Props {
     /** 文件名（无打开文件时不传） */
     fileName?: string;
+    /** 应用版本（无文件时展示，如 v0.0.1-beta） */
+    version?: string;
+    /** 是否只读（文件超过只读阈值：展示「只读」标记） */
+    readOnly?: boolean;
+    /** 状态栏显示设置（P2-1；未就绪为 null 时用兜底顺序与默认值） */
+    statusSettings?: StatusSettings | null;
+    /** 是否处于编辑模式（决定行列/选区统计/换行转换可用性） */
+    editing?: boolean;
     /** 阅读百分比（0–100） */
     percent?: number;
     /** 文件大小展示文本（已格式化） */
@@ -19,65 +35,228 @@
     encodingOverride?: string | null;
     /** 编码切换回调（null = 自动检测） */
     onEncodingChange?: (label: string | null) => void;
-    /** 应用版本（无文件时右侧展示，如 v0.0.1-beta） */
-    version?: string;
-    /** 显示文件名与进度（设置项） */
-    showFileName?: boolean;
-    /** 显示阅读百分比（设置项） */
-    showPercent?: boolean;
-    /** 显示文件大小（设置项） */
-    showSize?: boolean;
-    /** 显示编码切换（设置项） */
-    showEncoding?: boolean;
-    /** 是否只读（文件超过只读阈值：状态栏展示「只读」标记） */
-    readOnly?: boolean;
+    /** 换行符风格（lf/crlf/cr/mixed/unknown；null = 未知） */
+    eol?: string | null;
+    /** 换行符转换回调（仅编辑态由父组件传入） */
+    onConvertEol?: (target: 'lf' | 'crlf' | 'cr') => void;
+    /** 文档统计（全文件；null = 未就绪） */
+    docStats?: TextStats | null;
+    /** 选区统计（编辑态；null = 无选区） */
+    selectionStats?: TextStats | null;
+    /** 光标行列（编辑态；1 基；null = 未知） */
+    lineCol?: { row: number; column: number } | null;
+    /** 顶部可视行（阅读态；1 基；null = 未知） */
+    topRow?: number | null;
+    /** 是否有未保存修改 */
+    dirty?: boolean;
+    /** 跳转到行回调（点击行列时触发；1 基行号） */
+    onGotoLine?: (row1: number) => void;
   }
   let {
     fileName,
+    version = '',
+    readOnly = false,
+    statusSettings = null,
+    editing = false,
     percent,
     sizeLabel,
     encodingLabel,
     encodings = [],
     encodingOverride = null,
     onEncodingChange,
-    version = '',
-    showFileName = true,
-    showPercent = true,
-    showSize = true,
-    showEncoding = true,
-    readOnly = false,
+    eol = null,
+    onConvertEol,
+    docStats = null,
+    selectionStats = null,
+    lineCol = null,
+    topRow = null,
+    dirty = false,
+    onGotoLine,
   }: Props = $props();
+
+  const items = $derived(statusSettings?.items ?? DEFAULT_ITEMS);
+  const countMode = $derived(statusSettings?.countMode ?? 'grapheme');
+  const emptySelectionText = $derived(statusSettings?.emptySelectionText ?? '');
+  const clickableGoto = $derived(statusSettings?.clickableGoto ?? true);
+  const clickableEol = $derived(statusSettings?.clickableEol ?? true);
+  /** 换行转换菜单可用性（编辑态 + 设置允许 + 回调就绪）。 */
+  const canConvertEol = $derived(editing && clickableEol && !!onConvertEol);
+
+  /** 计数单位文案键（随 countMode 切换）。 */
+  const UNIT_KEYS: Record<string, MessageKey> = {
+    grapheme: 'status.unitGrapheme',
+    codepoint: 'status.unitCodepoint',
+    byte: 'status.unitByte',
+  };
+
+  /** 按计数模式取值（grapheme/codepoint/byte）。 */
+  function modeValue(stats: TextStats): number {
+    if (countMode === 'codepoint') return stats.codepoints;
+    if (countMode === 'byte') return stats.bytes;
+    return stats.graphemes;
+  }
+
+  /** 计数文本（capped 加「≥」前缀；千分位随语言）。 */
+  function countText(stats: TextStats): string {
+    const value = `${stats.capped ? '≥' : ''}${modeValue(stats).toLocaleString()}`;
+    return t('status.counts', {
+      n: value,
+      unit: t(UNIT_KEYS[countMode] ?? 'status.unitGrapheme'),
+    });
+  }
+
+  /** 当前换行符显示文案（未知值兜底为 —）。 */
+  const eolLabel = $derived(
+    eol && ['lf', 'crlf', 'cr', 'mixed', 'unknown'].includes(eol)
+      ? t(`status.eol.${eol}` as MessageKey)
+      : t('status.eol.unknown'),
+  );
+
+  /** 换行符转换目标（实时求值：语言切换立即生效）。 */
+  const eolTargets = $derived([
+    { id: 'lf' as const, label: t('status.eol.lf') },
+    { id: 'crlf' as const, label: t('status.eol.crlf') },
+    { id: 'cr' as const, label: t('status.eol.cr') },
+  ]);
+
+  // —— 行跳转（点击行列 → 内联输入） ——
+  let gotoOpen = $state(false);
+  let gotoValue = $state('');
+
+  function openGoto(): void {
+    if (!clickableGoto || !onGotoLine) return;
+    gotoValue = String(lineCol?.row ?? topRow ?? 1);
+    gotoOpen = true;
+  }
+
+  function submitGoto(): void {
+    const n = Number.parseInt(gotoValue, 10);
+    if (Number.isFinite(n) && n >= 1) onGotoLine?.(n);
+    gotoOpen = false;
+  }
+
+  /** 输入框挂载即聚焦并全选（供行跳转内联输入使用）。 */
+  function focusNow(node: HTMLInputElement): void {
+    node.focus();
+    node.select();
+  }
+
+  // —— 换行符转换菜单 ——
+  let eolOpen = $state(false);
+
+  function pickEol(target: 'lf' | 'crlf' | 'cr'): void {
+    eolOpen = false;
+    onConvertEol?.(target);
+  }
 </script>
 
 <footer class="status-bar">
   {#if fileName !== undefined}
     <span class="left">
-      {#if showFileName}{fileName}{/if}
-      {#if showFileName && showPercent}<span class="dot"> · </span>{/if}
-      {#if showPercent}{t('status.reading', { percent: Math.round(percent ?? 0) })}{/if}
+      <span class="name">{fileName}</span>
       {#if readOnly}
         <span class="readonly" title={t('status.readOnlyHint')}>{t('status.readOnly')}</span>
       {/if}
-    </span>
-    <span class="right">
-      {#if showSize && sizeLabel}
-        <span>{sizeLabel}</span>
-        {#if showEncoding}<span class="dot">·</span>{/if}
-      {/if}
-      {#if showEncoding}
-        {#if onEncodingChange}
-          <EncodingMenu
-            displayLabel={encodingLabel ?? '—'}
-            {encodings}
-            override={encodingOverride}
-            onPick={onEncodingChange}
-            openUp
-          />
-        {:else}
-          <span class="encoding" title={t('status.encodingHint')}>{encodingLabel ?? '—'}</span>
+      {#each items as item, i (item)}
+        {#if i > 0}<span class="dot">·</span>{/if}
+        {#if item === 'lineCol'}
+          {#if gotoOpen}
+            <input
+              class="goto-input"
+              type="text"
+              bind:value={gotoValue}
+              use:focusNow
+              onkeydown={(event) => {
+                if (event.key === 'Enter') submitGoto();
+                if (event.key === 'Escape') gotoOpen = false;
+                event.stopPropagation();
+              }}
+              onblur={() => (gotoOpen = false)}
+            />
+          {:else if editing && lineCol}
+            <button class="item click" title={t('status.goto')} onclick={openGoto}>
+              {t('status.lineCol', { row: lineCol.row, col: lineCol.column })}
+            </button>
+          {:else if topRow}
+            <button class="item click" title={t('status.goto')} onclick={openGoto}>
+              {t('status.line', { row: topRow })}
+            </button>
+          {/if}
+        {:else if item === 'counts'}
+          {#if editing}
+            {#if selectionStats}
+              <span class="item">{t('status.selection', { text: countText(selectionStats) })}</span>
+            {:else}
+              <span class="item empty-selection">{emptySelectionText}</span>
+            {/if}
+          {:else if docStats}
+            <span class="item">{countText(docStats)}</span>
+          {/if}
+        {:else if item === 'words'}
+          {#if editing}
+            {#if selectionStats}
+              <span class="item">{t('status.words', { n: selectionStats.words.toLocaleString() })}</span>
+            {:else}
+              <span class="item empty-selection">{emptySelectionText}</span>
+            {/if}
+          {:else if docStats}
+            <span class="item">{t('status.words', { n: docStats.words.toLocaleString() })}</span>
+          {/if}
+        {:else if item === 'progress'}
+          {#if percent !== undefined}
+            <span class="item">{t('status.reading', { percent: Math.round(percent) })}</span>
+          {/if}
+        {:else if item === 'size'}
+          {#if sizeLabel}<span class="item">{sizeLabel}</span>{/if}
+        {:else if item === 'encoding'}
+          {#if encodingLabel !== undefined}
+            {#if onEncodingChange}
+              <EncodingMenu
+                displayLabel={encodingLabel ?? '—'}
+                {encodings}
+                override={encodingOverride}
+                onPick={onEncodingChange}
+                openUp
+              />
+            {:else}
+              <span class="encoding" title={t('status.encodingHint')}>{encodingLabel ?? '—'}</span>
+            {/if}
+          {/if}
+        {:else if item === 'eol'}
+          {#if eol}
+            {#if canConvertEol}
+              <span class="eol-wrap">
+                <button
+                  class="item click"
+                  title={t('status.eolMenu')}
+                  onclick={() => (eolOpen = !eolOpen)}
+                >
+                  {eolLabel}
+                </button>
+                {#if eolOpen}
+                  <span class="eol-menu" role="menu">
+                    {#each eolTargets as target (target.id)}
+                      <button class="eol-item" role="menuitem" onclick={() => pickEol(target.id)}>
+                        {target.label}
+                      </button>
+                    {/each}
+                  </span>
+                {/if}
+              </span>
+            {:else}
+              <span class="item" title={editing ? undefined : t('status.eolOnlyEdit')}>
+                {eolLabel}
+              </span>
+            {/if}
+          {/if}
+        {:else if item === 'modified'}
+          {#if dirty}
+            <span class="modified" title={t('status.modified')}>●</span>
+          {/if}
         {/if}
-      {/if}
+      {/each}
     </span>
+    <span class="right"></span>
   {:else}
     <span class="left">S-Read-TXT {version}</span>
     <span class="right">{t('status.noFile')}</span>
@@ -98,14 +277,54 @@
     user-select: none;
   }
 
+  .left,
   .right {
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+  }
+
+  .name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 32vw;
   }
 
   .dot {
     color: var(--line);
+  }
+
+  .item {
+    white-space: nowrap;
+  }
+
+  .empty-selection {
+    color: var(--line);
+  }
+
+  .click {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .click:hover {
+    color: var(--ink);
+  }
+
+  .goto-input {
+    width: 64px;
+    padding: 0 4px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
   }
 
   .encoding {
@@ -113,11 +332,49 @@
   }
 
   .readonly {
-    margin-left: 8px;
     padding: 0 5px;
     border: 1px solid var(--line);
     border-radius: 3px;
     font-size: 11px;
     color: var(--warn, #8a5200);
+  }
+
+  .modified {
+    color: var(--accent);
+  }
+
+  .eol-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .eol-menu {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 96px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    z-index: 30;
+  }
+
+  .eol-item {
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .eol-item:hover {
+    background: var(--hover);
   }
 </style>
