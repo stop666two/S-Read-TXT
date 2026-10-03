@@ -26,6 +26,7 @@
   } from '../edit/caret';
   import { caretMemory } from '../edit/caret-memory';
   import { focusEditorProxy } from '../edit/focus';
+  import { jumpStore } from '../state/jump.svelte';
   import { planBackspace, planDeleteForward, type SegMeta } from '../edit/longline';
   import {
     clampRectRows,
@@ -131,6 +132,28 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
   // svelte-ignore state_referenced_locally
   // （仅取初值：挂载时从跨标签记忆恢复一次，之后不再依赖 tabId 初值）
   let selection = $state<Selection>(collapsed(caretMemory.get(tabId) ?? { row: 0, utf16: 0 }));
+
+  /** 已处理的工作区跳转序号（普通变量：不参与响应式依赖）。 */
+  let handledJumpSeq = 0;
+
+  // 工作区搜索跳转（P1-8b）：等待目标行加载后设置选区并移交键盘焦点
+  // （滚动由 ReaderView 同序号请求统一处理）。
+  $effect(() => {
+    const seq = jumpStore.seq;
+    const target = jumpStore.tabId;
+    if (seq === 0 || seq === handledJumpSeq || target !== tabId) return;
+    handledJumpSeq = seq;
+    const row = jumpStore.row;
+    void (async () => {
+      await ensureRow(row);
+      selection = {
+        anchor: { row, utf16: jumpStore.from },
+        head: { row, utf16: jumpStore.to },
+      };
+      focusEditorProxy();
+    })();
+  });
+
   let composing = $state(false);
   let preedit = $state('');
   let caretBox = $state<Box | null>(null);
@@ -163,6 +186,8 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
     highlightAll: true,
     matchCount: true,
     replacePreview: true,
+    multifileEnabled: true,
+    multifileConcurrency: 4,
     defaultScope: 'document',
     historyLimit: 50,
     highlightColor: '',

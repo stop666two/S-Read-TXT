@@ -18,6 +18,7 @@
   import { HeightModel } from '../reader/heights';
   import { RowCache } from '../reader/row-cache';
   import { scrollMemory } from '../reader/scroll-memory';
+  import { jumpStore } from '../state/jump.svelte';
   import { computePercent, computeWindow, planBatches } from '../reader/viewport';
   import { toasts } from '../state/toasts.svelte';
   import type {
@@ -440,6 +441,24 @@
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
+  });
+
+  /** 已处理的工作区跳转序号（普通变量：跨渲染保留且不参与响应式依赖）。 */
+  let handledJumpSeq = 0;
+
+  // 工作区搜索跳转（P1-8b）：定位到目标显示行；与标签恢复共用滚动机制。
+  // 过滤视图下显示行映射不同，跳转前先恢复全量视图。
+  $effect(() => {
+    const seq = jumpStore.seq;
+    const target = jumpStore.tabId;
+    if (seq === 0 || seq === handledJumpSeq || target !== tab.tabId) return;
+    handledJumpSeq = seq;
+    if (filterRows !== null) clearFilter();
+    const rowCount = Math.max(1, tab.rowsTotal);
+    const targetRow = Math.min(jumpStore.row, rowCount - 1);
+    if (container) {
+      applyInitialScroll(targetRow, rowCount);
+    }
   });
 
   /** 应用初始滚动位置（会话恢复/切回长文档）。

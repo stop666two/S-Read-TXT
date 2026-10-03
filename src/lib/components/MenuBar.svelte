@@ -17,6 +17,10 @@
     onOpenFile?: () => void;
     /** 退出回调（阶段 2c 接线） */
     onQuit?: () => void;
+    /** 工作区（多文件）查找与替换回调（P1-8） */
+    onWorkspaceFind?: () => void;
+    /** 多文件搜索是否开启（false 时菜单项禁用） */
+    workspaceFindEnabled?: boolean;
     /** 是否处于编辑模式（编辑菜单文案与可用性） */
     editing: boolean;
     /** 是否只读（文件超过只读阈值：编辑模式项禁用并给出提示） */
@@ -79,6 +83,8 @@
     recent = [],
     onOpenRecent,
     onOpenHistory,
+    onWorkspaceFind,
+    workspaceFindEnabled = true,
     onSettings,
     hasTab,
   }: Props = $props();
@@ -207,6 +213,13 @@
       <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('replace'))}>
         <span>{t('menu.edit.replace')}</span>
         <span class="hint">Ctrl+H</span>
+      </button>
+      <button
+        class="item"
+        disabled={workspaceFindEnabled === false}
+        onclick={() => run(() => onWorkspaceFind?.())}
+      >
+        <span>{t('menu.edit.workspace')}</span>
       </button>
       <button
         class="item"

@@ -420,6 +420,10 @@ export interface FindSettings {
   defaultScope: FindScope;
   /** 查找历史条数上限（0 = 不留历史） */
   historyLimit: number;
+  /** 多文件（工作区）搜索开关（P1-8） */
+  multifileEnabled: boolean;
+  /** 多文件扫描并发数（1–16） */
+  multifileConcurrency: number;
   /** 匹配高亮颜色（空串 = 跟随主题内置色） */
   highlightColor: string;
 }
@@ -680,6 +684,51 @@ export interface ClipboardEntry {
   at: string;
 }
 
+export interface WorkspaceHit {
+  /** 显示行号 */
+  row: number;
+  /** 段内起始 UTF-16 偏移 */
+  startUtf16: number;
+  /** 段内结束 UTF-16 偏移 */
+  endUtf16: number;
+  /** 命中行文本摘要（≤160 字符，列表展示用） */
+  preview: string;
+}
+
+/** 单文件工作区命中结果。 */
+export interface WorkspaceFileResult {
+  tabId: number;
+  name: string;
+  path: string;
+  editing: boolean;
+  matches: WorkspaceHit[];
+  total: number;
+  truncated: boolean;
+  timedOut: boolean;
+  error: string | null;
+}
+
+/** 工作区搜索响应。 */
+export interface WorkspaceSearchResponse {
+  files: WorkspaceFileResult[];
+  totalMatches: number;
+  truncated: boolean;
+}
+
+/** 工作区替换单文件结果。 */
+export interface WorkspaceReplaceFile {
+  tabId: number;
+  replaced: number;
+  error: string | null;
+}
+
+/** 工作区替换响应。 */
+export interface WorkspaceReplaceResponse {
+  files: WorkspaceReplaceFile[];
+  totalReplaced: number;
+  skipped: number;
+}
+
 export const ipc = {
   /** 应用信息（版本 / 数据目录）。 */
   getAppInfo: () => invoke<AppInfo>('get_app_info'),
@@ -744,6 +793,24 @@ export const ipc = {
     from: [number, number] | null,
   ) =>
     invoke<FindHit | null>('find_in_edit', { tabId, query, caseSensitive, mode, wholeWord, from }),
+  /** 工作区（多文件）查找：扫描全部已打开标签（编辑态跨行语义与查找条一致）。 */
+  searchWorkspace: (query: string, caseSensitive: boolean, mode: SearchMode, wholeWord: boolean) =>
+    invoke<WorkspaceSearchResponse>('search_workspace', { query, caseSensitive, mode, wholeWord }),
+  /** 工作区（多文件）替换：仅作用于编辑态标签（逐文件单撤销步）。 */
+  replaceWorkspace: (
+    query: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+    wholeWord: boolean,
+    replacement: string,
+  ) =>
+    invoke<WorkspaceReplaceResponse>('replace_workspace', {
+      query,
+      caseSensitive,
+      mode,
+      wholeWord,
+      replacement,
+    }),
   /** 替换一次（从 from 起）并返回后续命中；正则替换支持 $1 捕获展开。 */
   replaceInEdit: (
     tabId: number,

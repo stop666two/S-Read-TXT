@@ -31,7 +31,7 @@ pub const WORKSPACE_FILE_MATCH_CAP: usize = 200;
 const ROW_BATCH: usize = 512;
 
 /// 一条工作区命中（显示行 + 段内 UTF-16 坐标，与查找条坐标系一致）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceHit {
     /// 显示行号
@@ -40,6 +40,23 @@ pub struct WorkspaceHit {
     pub start_utf16: u64,
     /// 段内结束 UTF-16 偏移
     pub end_utf16: u64,
+    /// 命中行文本摘要（去首尾空白、按字符截断 ≤160，列表展示用）
+    pub preview: String,
+}
+
+/// 命中行文本摘要：去首尾空白 + 超长按字符截断（避免前端为列表再取行）。
+fn preview_of(line: &str) -> String {
+    const PREVIEW_CHARS: usize = 160;
+    let trimmed = line.trim();
+    let mut out = String::with_capacity(trimmed.len().min(PREVIEW_CHARS * 4));
+    for (index, ch) in trimmed.chars().enumerate() {
+        if index >= PREVIEW_CHARS {
+            out.push('…');
+            break;
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// 单文件扫描结果。
@@ -71,10 +88,16 @@ pub fn scan_edit_doc(
             Ok(Some(hit)) => {
                 outcome.total += 1;
                 if outcome.matches.len() < cap {
+                    let preview = doc
+                        .fetch_display_rows(hit.start_row, 1)
+                        .first()
+                        .map(|row| preview_of(&row.text))
+                        .unwrap_or_default();
                     outcome.matches.push(WorkspaceHit {
                         row: hit.start_row,
                         start_utf16: hit.start_utf16,
                         end_utf16: hit.end_utf16,
+                        preview,
                     });
                 }
                 if outcome.total as usize >= MATCH_COUNT_LIMIT {
@@ -127,6 +150,7 @@ pub fn scan_file_session(
                         row: row_text.row,
                         start_utf16,
                         end_utf16,
+                        preview: preview_of(&row_text.text),
                     });
                 }
                 if outcome.total as usize >= MATCH_COUNT_LIMIT {

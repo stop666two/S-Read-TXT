@@ -25,15 +25,17 @@
   import Toast from './lib/components/Toast.svelte';
   import ToolBar from './lib/components/ToolBar.svelte';
   import UnsavedDialog from './lib/components/UnsavedDialog.svelte';
+  import WorkspaceFindDialog from './lib/components/WorkspaceFindDialog.svelte';
   import { formatBytes } from './lib/format';
   import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
-  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type SessionState, type ThemeSummary } from './lib/ipc';
+  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type SessionState, type ThemeSummary, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
   import { saveSessionNow } from './lib/session';
   import { dataDirStore } from './lib/state/data-dir.svelte';
   import { historyStore } from './lib/state/history.svelte';
   import { tabs } from './lib/state/tabs.svelte';
+  import { jumpStore } from './lib/state/jump.svelte';
   import { toasts } from './lib/state/toasts.svelte';
   import { i18n, setLocale, t } from './lib/i18n/index.svelte';
   import { decideShortcut, isEditorContext, modalOpen } from './lib/shortcuts/engine';
@@ -64,6 +66,23 @@
   const dataDirIssue = $derived(dataDirStore.issue);
   /** 历史面板开关（工具栏 / 菜单 / 快捷键共用） */
   let historyOpen = $state(false);
+  /** 工作区查找与替换弹窗开关（编辑菜单入口） */
+  let workspaceOpen = $state(false);
+
+  /** 跳转到工作区命中：必要时切换标签，然后广播定位请求（ReaderView/EditLayer 消费）。 */
+  async function jumpToHit(file: WorkspaceFileResult, hit: WorkspaceHit): Promise<void> {
+    if (tabs.activeId !== file.tabId) {
+      try {
+        await ipc.setActiveTab(file.tabId);
+        tabs.applyView(await ipc.listTabs());
+      } catch (error) {
+        toasts.error(describeIpcError(toIpcError(error)));
+        return;
+      }
+    }
+    jumpStore.request(file.tabId, hit.row, hit.startUtf16, hit.endUtf16);
+  }
+
   /** 最近打开（菜单子项；最多 10 条，来自共享历史 store） */
   const recentEntries = $derived(historyStore.entries.slice(0, 10));
 
@@ -1084,6 +1103,8 @@
     recent={recentEntries}
     onOpenRecent={(entry) => void historyStore.openEntry(entry)}
     onOpenHistory={() => (historyOpen = true)}
+    onWorkspaceFind={() => (workspaceOpen = true)}
+    workspaceFindEnabled={appSettings?.find.multifileEnabled !== false}
     onSettings={() => void ipc.openSettings()}
   />
   <ToolBar
@@ -1169,6 +1190,12 @@
 />
 {/if}
 <HistoryPanel open={historyOpen} onClose={() => (historyOpen = false)} />
+{#if workspaceOpen}
+  <WorkspaceFindDialog
+    onClose={() => (workspaceOpen = false)}
+    onJump={(file, hit) => void jumpToHit(file, hit)}
+  />
+{/if}
   <DropOverlay visible={dragging} />
   <SaveDialog
     open={saveRequest !== null}
