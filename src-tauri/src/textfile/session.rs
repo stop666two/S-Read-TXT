@@ -114,6 +114,32 @@ impl FileSession {
         self.index.byte_len()
     }
 
+    /// 全文件文本统计（P2-1 状态栏 v2）。
+    ///
+    /// 参数：`max_chars` 码点上限（达到即停止计数并标记 `capped`）。
+    /// 字节口径 = 文件原始字节（含 BOM）；字符计数不含 BOM。
+    pub fn document_stats(&self, max_chars: usize) -> crate::stats::TextStats {
+        let bytes = self.mapped.bytes();
+        let bom = crate::stats::bom_len(bytes, self.encoding);
+        let mut acc = crate::stats::StatsAccumulator::new(max_chars);
+        let mut decoder = self.encoding.encoding().new_decoder_without_bom_handling();
+        let mut off = bom as usize;
+        let mut buf = String::new();
+        while off < bytes.len() && !acc.is_capped() {
+            let end = (off + 256 * 1024).min(bytes.len());
+            // 预扩容 + 循环扩容（见 stats::decode_stream）；窗口尾部的
+            // 不完整序列由解码器保留并与下一窗口拼接。
+            buf.reserve((end - off) * 4 + 64);
+            crate::stats::decode_stream(&mut decoder, &bytes[off..end], &mut buf, false);
+            if !buf.is_empty() {
+                acc.push_str(&buf);
+                buf.clear();
+            }
+            off = end;
+        }
+        acc.finish(self.byte_len())
+    }
+
     /// 取 `[start_row, start_row + count)` 的文本窗口。
     pub fn rows(&self, start_row: u64, count: usize) -> Vec<RowText> {
         fetch_rows(self.mapped.bytes(), &self.index, start_row, count)

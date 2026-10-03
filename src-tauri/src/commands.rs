@@ -1280,6 +1280,42 @@ pub fn set_active_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<
     })
 }
 
+/// 命令：文档级文本统计（P2-1 状态栏 v2）。
+#[tauri::command]
+pub fn document_stats(
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<s_read_txt::stats::TextStats, IpcError> {
+    with_context(LogContext::request(), || {
+        lock_state(&state)?
+            .document_stats(tab_id, s_read_txt::stats::STATS_MAX_CHARS)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：选区统计（逻辑行坐标，半开区间，仅编辑态）。
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn selection_stats(
+    tab_id: u64,
+    from_row: u64,
+    from_utf16: u64,
+    to_row: u64,
+    to_utf16: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<s_read_txt::stats::TextStats, IpcError> {
+    with_context(LogContext::request(), || {
+        lock_state(&state)?
+            .selection_stats(
+                tab_id,
+                (from_row, from_utf16),
+                (to_row, to_utf16),
+                s_read_txt::stats::SELECTION_STATS_MAX_CHARS,
+            )
+            .map_err(IpcError::from)
+    })
+}
+
 /// 命令：调整标签展示顺序（拖拽排序；下标记「移除后再插入」语义，越界收敛到末尾）。
 #[tauri::command]
 pub fn reorder_tab(

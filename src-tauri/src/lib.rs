@@ -28,6 +28,7 @@ pub mod logging;
 pub mod resources;
 pub mod session;
 pub mod settings;
+pub mod stats;
 pub mod storage;
 pub mod textfile;
 pub mod time_util;

@@ -927,6 +927,32 @@ impl AppState {
             .collect())
     }
 
+    /// 文档级文本统计（P2-1 状态栏 v2）：编辑文档优先，否则只读会话。
+    pub fn document_stats(
+        &self,
+        tab_id: u64,
+        max_chars: usize,
+    ) -> Result<crate::stats::TextStats, AppStateError> {
+        let tab = self.tab(tab_id)?;
+        Ok(match &tab.edit {
+            Some(doc) => doc.document_stats(max_chars),
+            None => tab.session.document_stats(max_chars),
+        })
+    }
+
+    /// 选区统计（逻辑行坐标，半开区间；仅编辑态）。
+    pub fn selection_stats(
+        &self,
+        tab_id: u64,
+        from: (u64, u64),
+        to: (u64, u64),
+        max_chars: usize,
+    ) -> Result<crate::stats::TextStats, AppStateError> {
+        let doc = self.edit_doc(tab_id)?;
+        doc.range_stats(from, to, max_chars)
+            .map_err(AppStateError::from)
+    }
+
     /// 只读访问标签的编辑文档（未进入编辑时报 `NotEditing`）。
     fn edit_doc(&self, tab_id: u64) -> Result<&EditDoc, AppStateError> {
         self.tab(tab_id)?
