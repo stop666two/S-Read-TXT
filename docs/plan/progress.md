@@ -333,3 +333,11 @@
 - **修复**：设置导航容器 `nav` → `div`（a11y：non-interactive 元素不得承载 tablist 角色，svelte-check 恢复 0/0）。
 - **扩展路径记录**：维护者提示「之后可能扩充语言」——文案集中组件层，届时按「语言包 + 设置项」整体抽取（已记入设计文档 § 功能范围）。
 - **验证**：`smoke-titlebar` **10/10**（新增 T9 齿轮开设置 / T9b 关闭）、`smoke-buttons` **32/32**（新增 D13a 工具栏文字标签 / D13b 文件菜单入口）；`npm run check` 0 错 0 警。
+
+## 自定义字体与排版/界面扩充（C 批次，2026-10-03）
+- **后端**：新模块 `src-tauri/src/fonts.rs`（导入/列表/删除/读取；扩展名白名单 ttf/otf/woff/woff2、单文件 64MB 上限、防目录穿越、重名唯一化、内置 Base64 编码含 RFC 4648 测试向量）；4 个命令 `list_fonts` / `import_font` / `remove_font` / `read_font_data`；新错误码 `FONT_UNSUPPORTED` / `FONT_TOO_LARGE` / `FONT_NOT_FOUND` / `FONT_INVALID_NAME`。
+- **模型扩充（全部 serde default 向后兼容）**：`Typography` +`paragraphSpacing` / `firstLineIndent` / `textAlign`（TextAlign 枚举，未知值归一）/ `smoothScroll`；`ReaderSettings` +`statusBar{showFileName,showPercent,showSize,showEncoding}`；`AppSettings` +`startup{restoreSession,restoreWindow}`；store 归一钳制同步；main.rs 窗口几何按 `restoreWindow` 门控（关闭时用默认几何）。
+- **前端接线**：App 自定义字体 FontFace 动态加载（`custom:<文件>` 约定、加载缓存、失败可重试、加载完成触发排版变量重算）；CSS 变量 +`--reading-para-spacing` / `--reading-indent` / `--reading-align`（ReaderView `.row` 应用）；PgUp/PgDn 按 `smoothScroll` 使用平滑动画（首尾跳转保持瞬时）；会话恢复按 `restoreSession` 门控；StatusBar 四元素显隐 props。
+- **设置 UI**：`TypographyTab` 重写（7 滑块 + 对齐/平滑开关 + 自定义字体导入与删除管理）；`GeneralTab` 新增「界面元素」「启动行为」组。
+- **验证**：cargo **251/251**（229 lib + 15 对抗 + 2 助手 + 5 集成，0 告警）；svelte-check 0/0；`smoke-settings` **47/47**（新增 S14a–e 排版扩充、S15a–i 字体导入链、S16a–e 界面/启动开关）；回归 `smoke-scroll` 4/4、`smoke-titlebar` 10/10、`smoke-buttons` 32/32。
+- **测试口径说明**：字体删除的原生确认框（TaskDialog）无法自动化点「是」——E2E 覆盖「弹框 + 取消保留」，删除链路经直连命令验证（S15h/i）。

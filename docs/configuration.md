@@ -31,6 +31,8 @@
 | `history.retentionDays` | number | 1–36500 整数 | `365` | 历史保留天数（过期裁剪） |
 | `saveBackupEnabled` | boolean | `true`/`false` | `true` | 首次保存前是否生成 `.bak` 备份 |
 | `showOnboarding` | boolean | `true`/`false` | `true` | 是否显示首启引导；用户选择「不再显示」后置 `false` |
+| `startup.restoreSession` | boolean | `true`/`false` | `true` | 启动时恢复上次会话（标签与阅读位置） |
+| `startup.restoreWindow` | boolean | `true`/`false` | `true` | 启动时恢复窗口位置与大小；关闭后使用默认几何（居中 1100×760） |
 
 ### 2.2 `reader.json`（阅读排版子配置）
 
@@ -38,12 +40,22 @@
 |---|---|---|---|---|
 | `schemaVersion` | number | 固定 `1` | `1` | 格式版本 |
 | `theme` | string | `light`/`dark`/`eye`/`system` | `system` | 主题；`system` 跟随系统明暗解析 |
-| `typography.fontFamily` | string | 系统已安装字体名 | `Microsoft YaHei` | 正文西文+中文主字体 |
+| `typography.fontFamily` | string | 系统字体名 或 `custom:<文件名>` | `Microsoft YaHei` | 正文主字体；`custom:` 前缀指向 `data/fonts/` 中导入的自定义字体 |
 | `typography.fontSize` | number | 8–72（px） | `16` | 正文字号 |
 | `typography.lineHeight` | number | 1.0–3.2 | `1.8` | 行高倍数 |
 | `typography.contentWidth` | number | 320–2400（px） | `720` | 正文限宽（约 40 汉字/行） |
 | `typography.pagePadding` | number | 0–240（px） | `48` | 阅读区左右页边距 |
 | `typography.pagePaddingY` | number | 0–240（px） | `48` | 阅读区上下留白（旧版配置缺此字段时取默认，向后兼容） |
+| `typography.paragraphSpacing` | number | 0–64（px） | `0` | 段间距（段落间额外留白） |
+| `typography.firstLineIndent` | number | 0–8（字） | `0` | 首行缩进字符数（按字号换算实际像素） |
+| `typography.textAlign` | string | `left`/`justify` | `left` | 文字对齐；未知值载入时归一为 `left` |
+| `typography.smoothScroll` | boolean | `true`/`false` | `true` | PgUp/PgDn 翻页平滑动画（首尾跳转始终瞬时） |
+| `statusBar.showFileName` | boolean | `true`/`false` | `true` | 状态栏显示文件名与进度 |
+| `statusBar.showPercent` | boolean | `true`/`false` | `true` | 状态栏显示阅读百分比 |
+| `statusBar.showSize` | boolean | `true`/`false` | `true` | 状态栏显示文件大小 |
+| `statusBar.showEncoding` | boolean | `true`/`false` | `true` | 状态栏显示编码切换按钮 |
+
+> 自定义字体文件存放于数据目录 `data/fonts/`（导入时复制，支持 ttf / otf / woff / woff2，单文件 ≤64MB；重名自动加序号；删除前确认）。
 
 ### 2.3 `shortcuts.json`（快捷键绑定子配置）
 
