@@ -34,3 +34,10 @@ export function t(key: MessageKey, params?: Record<string, string | number>): st
   const catalog = catalogs[i18n.locale];
   return formatMessage(pickMessage(catalog, key), params);
 }
+
+/** 可选翻译（响应式）：键不存在时返回空串（用于「可能存在」的描述类文案）。 */
+export function tOptional(key: string, params?: Record<string, string | number>): string {
+  const catalog = catalogs[i18n.locale];
+  if (!(key in catalog)) return '';
+  return formatMessage(pickMessage(catalog, key as MessageKey), params);
+}

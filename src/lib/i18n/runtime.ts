@@ -19,3 +19,10 @@ export function t(key: MessageKey, params?: Record<string, string | number>): st
   const catalog = currentLocale === 'en' ? en : zhCN;
   return formatMessage(pickMessage(catalog, key), params);
 }
+
+/** 可选翻译：键不存在时返回空串（用于「可能存在」的描述类文案，避免回退键名）。 */
+export function tOptional(key: string, params?: Record<string, string | number>): string {
+  const catalog: Record<string, string> = currentLocale === 'en' ? en : zhCN;
+  if (!(key in catalog)) return '';
+  return formatMessage(pickMessage(catalog, key as MessageKey), params);
+}

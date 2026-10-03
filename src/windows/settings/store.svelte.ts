@@ -4,12 +4,15 @@
 
 import { emitTo } from '@tauri-apps/api/event';
 
+import { t } from '../../lib/i18n/index.svelte';
 import {
   describeIpcError,
   ipc,
   toIpcError,
   type AppSettings,
   type ReaderSettings,
+  type ResetScope,
+  type SettingSpec,
   type SettingsSnapshot,
 } from '../../lib/ipc';
 import { toasts } from '../../lib/state/toasts.svelte';
@@ -81,6 +84,47 @@ class SettingsStore {
       if (seq !== this.saveSeq) return;
       this.snapshot = updated;
       await emitTo('main', 'srt://settings-changed', { kind: change.kind });
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 设置项注册表（P0-4；窗口启动时载入一次，界面据此动态生成） */
+  registry = $state<SettingSpec[]>([]);
+
+  /** 载入设置项注册表 */
+  async loadRegistry(): Promise<void> {
+    try {
+      this.registry = await ipc.getSettingsRegistry();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 重置设置（全部 / 分组 / 单项）并采纳返回快照 */
+  async resetScope(scope: ResetScope): Promise<void> {
+    try {
+      this.snapshot = await ipc.resetSettings(scope);
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 导出全部设置到指定路径 */
+  async exportTo(path: string): Promise<void> {
+    try {
+      await ipc.exportSettings(path);
+      toasts.show(t('settings.exportDone'));
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 从导出文件导入设置（强校验失败提示具体原因） */
+  async importFrom(path: string): Promise<void> {
+    try {
+      this.snapshot = await ipc.importSettings(path);
+      toasts.show(t('settings.importDone'));
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
     }

@@ -286,6 +286,27 @@ export interface SessionState {
   tabs: SessionTab[];
 }
 
+/** 设置项类型（与 Rust `SettingKind` 对应；tag = type）。 */
+export type SettingKind =
+  | { type: 'number'; min: number; max: number; integer: boolean }
+  | { type: 'bool' }
+  | { type: 'enum'; values: string[] }
+  | { type: 'text'; maxLen: number }
+  | { type: 'shortcuts' };
+
+/** 设置项元数据（与 Rust `SettingSpec` 对应；标签/描述由前端按 `setting.<id>` 解析语言包）。 */
+export interface SettingSpec {
+  id: string;
+  group: string;
+  kind: SettingKind;
+}
+
+/** 重置作用域（与 Rust `ResetScope` 对应）。 */
+export type ResetScope =
+  | { kind: 'all' }
+  | { kind: 'group'; name: string }
+  | { kind: 'field'; id: string };
+
 /** 配置聚合快照（`get_settings` 返回体）。 */
 export interface SettingsSnapshot {
   app: AppSettings;
@@ -451,6 +472,14 @@ export const ipc = {
   /** 保存配置（返回保存后的快照）。 */
   saveSettings: (request: SettingsSaveRequest) =>
     invoke<SettingsSnapshot>('save_settings', { request }),
+  /** 设置项注册表（设置界面动态生成 / 导入校验 / 重置作用域的唯一元数据源）。 */
+  getSettingsRegistry: () => invoke<SettingSpec[]>('get_settings_registry'),
+  /** 导出全部设置到指定路径（返回写入字节数）。 */
+  exportSettings: (path: string) => invoke<number>('export_settings', { path }),
+  /** 从导出文件导入设置（强校验；返回导入后的快照）。 */
+  importSettings: (path: string) => invoke<SettingsSnapshot>('import_settings', { path }),
+  /** 重置设置（全部 / 分组 / 单项；返回重置后的快照）。 */
+  resetSettings: (scope: ResetScope) => invoke<SettingsSnapshot>('reset_settings', { scope }),
   /** 默认快捷键表（设置界面「恢复默认」用）。 */
   getDefaultShortcuts: () => invoke<Record<string, string>>('get_default_shortcuts'),
   /** 历史记录（去重剪枝后、时间倒序）。 */

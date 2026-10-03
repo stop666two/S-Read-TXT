@@ -6,6 +6,7 @@
   import { onMount } from 'svelte';
 
   import appIcon from '../../assets/app-icon.png';
+  import { t } from '../../lib/i18n/index.svelte';
   import { ipc } from '../../lib/ipc';
 
   /** 版本号（`get_app_info` 返回；载入失败保持空） */
@@ -26,8 +27,8 @@
 <div class="about">
   <img class="icon" src={appIcon} alt="" draggable="false" />
   <h1>S-Read-TXT</h1>
-  <p class="version">版本 {version || '—'}</p>
-  <p class="repo">仓库地址：待补充（占位）</p>
+  <p class="version">{t('about.version')} {version || '—'}</p>
+  <p class="repo">{t('about.repo')}: {t('about.repoPlaceholder')}</p>
 </div>
 
 <style>

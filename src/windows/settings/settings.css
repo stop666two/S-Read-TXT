@@ -173,3 +173,178 @@
   color: var(--muted);
   font-size: 13px;
 }
+
+/* ---------- P0-4：注册表驱动页 ---------- */
+
+.searchbar {
+  margin-bottom: 16px;
+}
+
+.searchbar input[type='search'] {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.searchbar input[type='search']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.group {
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--line);
+}
+
+.group-head h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.group .rows {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 12px;
+}
+
+.collapse {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.collapse:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.collapse svg {
+  transition: transform 120ms ease;
+}
+
+.collapse[aria-expanded='false'] svg {
+  transform: rotate(-90deg);
+}
+
+.ghost {
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ghost:hover {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.ghost:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.btn {
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 90ms ease,
+    color 90ms ease;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.btn.danger {
+  color: #b0413e;
+}
+
+.btn.danger:hover {
+  border-color: #b0413e;
+  color: #b0413e;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reset-mini {
+  margin-left: 8px;
+  padding: 1px 4px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.55;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.reset-mini:hover {
+  opacity: 1;
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.reset-mini:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  opacity: 1;
+}
+
+.search-hint {
+  margin: 0 0 12px 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.empty {
+  margin-top: 40px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}

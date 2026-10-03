@@ -1,37 +1,47 @@
 <!--
-  SettingsApp — 设置窗口外壳（左导航 + 右内容，视觉方向一）。
+  SettingsApp — 设置窗口外壳（P0-4：注册表驱动 + 全局搜索 + 左导航）。
   契约（自动化与外部依赖）：导航容器保留 .tabs、项为 .tab[role="tab"]；
-  内容分组沿用 settings.css 的 .rows / .row / .label / .control / .unit。
+  内容沿用 settings.css 的 .rows / .row / .label / .control 类；
+  控件 data-setting = 设置项完整 id（如 reader.typography.fontSize）。
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
 
   import Toast from '../../lib/components/Toast.svelte';
   import TitleBar from '../../lib/components/TitleBar.svelte';
+  import { setLocale, t } from '../../lib/i18n/index.svelte';
   import { ipc } from '../../lib/ipc';
   import AboutTab from './AboutTab.svelte';
-  import GeneralTab from './GeneralTab.svelte';
+  import BackupSection from './BackupSection.svelte';
   import HistoryTab from './HistoryTab.svelte';
+  import RegistryPage from './RegistryPage.svelte';
   import ShortcutsTab from './ShortcutsTab.svelte';
-  import TypographyTab from './TypographyTab.svelte';
   import { settings } from './store.svelte';
 
-  // 设置页共享样式（类名 .rows/.row/.label/.control/.unit 与冒烟脚本约定一致）
+  // 设置页共享样式（类名 .rows/.row/.label/.control 与冒烟脚本约定一致）
   import './settings.css';
 
   /** 页签定义（顺序即导航顺序；图标为 16 分辨率线性 SVG path） */
   const TABS = [
-    { id: 'general', label: '常规', icon: 'M3 5h10M3 11h10M6 3.4v3.2M11 9.4v3.2' },
-    { id: 'typography', label: '阅读排版', icon: 'M4 4h8M8 4v8M6.2 12h3.6' },
+    {
+      id: 'general',
+      labelKey: 'settings.category.general',
+      icon: 'M3 5h10M3 11h10M6 3.4v3.2M11 9.4v3.2',
+    },
+    { id: 'typography', labelKey: 'settings.category.reader', icon: 'M4 4h8M8 4v8M6.2 12h3.6' },
     {
       id: 'shortcuts',
-      label: '快捷键',
+      labelKey: 'settings.category.shortcuts',
       icon: 'M2.8 5.2h10.4v5.6H2.8zM5 7.4h.01M7.2 7.4h.01M9.4 7.4h.01M5 9.4h6',
     },
-    { id: 'history', label: '历史记录', icon: 'M8 2.8a5.2 5.2 0 1 0 5.2 5.2M8 5.4V8l2 1.4' },
+    {
+      id: 'history',
+      labelKey: 'settings.category.history',
+      icon: 'M8 2.8a5.2 5.2 0 1 0 5.2 5.2M8 5.4V8l2 1.4',
+    },
     {
       id: 'about',
-      label: '关于',
+      labelKey: 'settings.category.about',
       icon: 'M8 2.8a5.2 5.2 0 1 0 0 10.4A5.2 5.2 0 0 0 8 2.8zM8 7.4v4M8 5.2h.01',
     },
   ] as const;
@@ -40,6 +50,17 @@
 
   /** 当前页签（默认「常规」；菜单打开时经 take_settings_tab 定位） */
   let tab = $state<TabId>('general');
+
+  /** 搜索关键词（非空时注册表页切换为全局搜索视图） */
+  let query = $state('');
+
+  /** 是否处于搜索态（搜索态隐藏常规页的独立区块） */
+  const searchActive = $derived(query.trim().length > 0);
+
+  // 界面语言跟随配置：载入与修改时同步本窗口语言包（即时切换）
+  $effect(() => {
+    setLocale(settings.snapshot?.app.locale ?? 'zh-CN');
+  });
 
   onMount(() => {
     // 菜单请求的初始页签（如 帮助→快捷键/关于；读取即清空）
@@ -60,15 +81,16 @@
       apply();
       media.addEventListener('change', apply);
     });
+    void settings.loadRegistry();
     return () => media.removeEventListener('change', apply);
   });
 </script>
 
 <div class="shell">
-  <TitleBar title="设置" showMaximize={false} />
+  <TitleBar title={t('settings.title')} showMaximize={false} />
   <div class="body">
     <!-- 使用 div 而非 nav：nav 不允许承载 tablist 交互角色（a11y）；类名与角色契约保持不变 -->
-    <div class="tabs" role="tablist" aria-label="设置页签">
+    <div class="tabs" role="tablist" aria-label={t('settings.title')}>
       {#each TABS as item (item.id)}
         <button
           class="tab"
@@ -88,19 +110,31 @@
               stroke-linejoin="round"
             />
           </svg>
-          <span>{item.label}</span>
+          <span>{t(item.labelKey)}</span>
         </button>
       {/each}
     </div>
     <main class="content">
+      <div class="searchbar">
+        <input
+          class="search"
+          type="search"
+          placeholder={t('settings.search.placeholder')}
+          aria-label={t('settings.search.placeholder')}
+          bind:value={query}
+        />
+      </div>
       {#if tab === 'general'}
-        <GeneralTab />
+        <RegistryPage groups={['app.basic', 'app.startup']} {query} />
+        {#if !searchActive}
+          <BackupSection />
+        {/if}
       {:else if tab === 'typography'}
-        <TypographyTab />
+        <RegistryPage groups={['reader.basic', 'reader.typography', 'reader.statusBar']} {query} />
       {:else if tab === 'shortcuts'}
         <ShortcutsTab />
       {:else if tab === 'history'}
-        <HistoryTab />
+        <HistoryTab {query} />
       {:else}
         <AboutTab />
       {/if}

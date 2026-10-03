@@ -27,9 +27,14 @@
     onLive?: (value: number) => void;
     /** 确认落盘回调（松开滑块 / 数字框 change） */
     onCommit: (value: number) => void;
+    /** 行级「恢复默认」回调（提供时显示按钮） */
+    onReset?: () => void;
+    /** 恢复按钮的无障碍标签 */
+    resetLabel?: string;
   }
 
-  let { label, desc, value, min, max, step, unit, setting, onLive, onCommit }: Props = $props();
+  let { label, desc, value, min, max, step, unit, setting, onLive, onCommit, onReset, resetLabel }: Props =
+    $props();
 
   /** 拖动态/输入态当前值（以外部值为源同步；初始值经 untrack 捕获，后续由 $effect 同步） */
   let current = $state(untrack(() => value));
@@ -46,6 +51,27 @@
 <div class="row">
   <span class="label" id={`lbl-${setting}`}>{label}<small>{desc}</small></span>
   <span class="control">
+    {#if onReset}
+      <button
+        class="reset-mini"
+        type="button"
+        data-setting-reset={setting}
+        title={resetLabel}
+        aria-label={resetLabel}
+        onclick={onReset}
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+          <path
+            d="M3.5 6.5a5 5 0 1 1 .6 4.4M3.5 3v3.5H7"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+    {/if}
     <input
       type="range"
       data-setting={setting}
