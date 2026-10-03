@@ -17,6 +17,7 @@
 pub mod batch;
 pub mod edit_doc;
 pub mod fenwick;
+pub mod line_ops;
 pub mod piece;
 pub mod save;
 pub mod search;

@@ -30,6 +30,7 @@ memchr = "=2.8.3"
 encoding_rs = "=0.8.42"
 # 编码自动检测：BOM 缺失时的启发式检测（GB18030 友好）
 chardetng = "=1.0.0"
+unicode-normalization = "=0.1.25"
 # 错误类型派生：统一错误模型
 thiserror = "=2.0.21"
 # UTC 时间与 RFC3339：历史时间戳、日志时间戳

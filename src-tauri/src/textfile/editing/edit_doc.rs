@@ -334,6 +334,74 @@ impl EditDoc {
         self.encoding
     }
 
+    /// 文档是否以换行结尾（行操作「确保换行结尾」依据）。
+    pub(crate) fn has_trailing_newline(&self) -> bool {
+        self.trailing_newline
+    }
+
+    /// 首选换行串（探测原文首个换行；UTF-16 按双字节单元识别）。
+    ///
+    /// 说明：编辑操作生成的新文本统一使用该换行，避免把 CRLF 文件改写成 LF；
+    /// 无法探测时回退 `"\n"`。
+    pub(crate) fn preferred_newline(&self) -> &'static str {
+        const PROBE: usize = 4096;
+        let Some(piece) = self.pieces().iter().find(|piece| !piece.is_empty()) else {
+            return "\n";
+        };
+        let bytes = self.piece_bytes(piece);
+        match self.encoding() {
+            FileEncoding::Utf16Le | FileEncoding::Utf16Be => {
+                let little = matches!(self.encoding(), FileEncoding::Utf16Le);
+                let limit = bytes.len().min(PROBE) & !1;
+                let mut index = 0usize;
+                while index + 1 < limit {
+                    let unit = if little {
+                        u16::from_le_bytes([bytes[index], bytes[index + 1]])
+                    } else {
+                        u16::from_be_bytes([bytes[index], bytes[index + 1]])
+                    };
+                    match unit {
+                        0x000A => return "\n",
+                        0x000D => {
+                            let next = if index + 3 < bytes.len() {
+                                Some(if little {
+                                    u16::from_le_bytes([bytes[index + 2], bytes[index + 3]])
+                                } else {
+                                    u16::from_be_bytes([bytes[index + 2], bytes[index + 3]])
+                                })
+                            } else {
+                                None
+                            };
+                            return if next == Some(0x000A) { "\r\n" } else { "\r" };
+                        }
+                        _ => {}
+                    }
+                    index += 2;
+                }
+                "\n"
+            }
+            _ => {
+                let limit = bytes.len().min(PROBE);
+                let mut index = 0usize;
+                while index < limit {
+                    match bytes[index] {
+                        b'\n' => return "\n",
+                        b'\r' => {
+                            return if bytes.get(index + 1) == Some(&b'\n') {
+                                "\r\n"
+                            } else {
+                                "\r"
+                            };
+                        }
+                        _ => {}
+                    }
+                    index += 1;
+                }
+                "\n"
+            }
+        }
+    }
+
     /// 保留的 BOM 长度（0/2/3；保存时原样写回）。
     pub fn bom_len(&self) -> u64 {
         self.bom_len

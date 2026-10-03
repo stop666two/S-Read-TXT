@@ -80,6 +80,13 @@ pub enum BatchScope {
     },
 }
 
+impl Default for BatchScope {
+    /// 默认全文（用于配置反序列化缺省）。
+    fn default() -> Self {
+        Self::All
+    }
+}
+
 /// 批量序号配置（IPC 入参；camelCase）
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -344,52 +351,70 @@ impl EditDoc {
                 width: config.zero_pad_width,
             });
         }
-        let total = self.rows_total();
-        let (from, to) = match config.scope {
-            BatchScope::All | BatchScope::NonEmpty => (0, total.saturating_sub(1)),
-            BatchScope::CurrentLine { row } => {
-                if row >= total {
-                    return Err(BatchError::RowRangeInvalid {
-                        message: format!("当前行 {row} 超出文档行数 {total}"),
-                    });
-                }
-                (row, row)
-            }
-            BatchScope::RowRange { from, to } | BatchScope::Selection { from, to } => {
-                if from > to {
-                    return Err(BatchError::RowRangeInvalid {
-                        message: format!("起始行 {from} 大于结束行 {to}"),
-                    });
-                }
-                if from >= total {
-                    return Err(BatchError::RowRangeInvalid {
-                        message: format!("起始行 {from} 超出文档行数 {total}"),
-                    });
-                }
-                (from, to.min(total - 1))
-            }
-        };
-        let mut rows = Vec::new();
-        for row in from..=to {
-            if config.skip_empty {
-                let text = self.row_text(row).unwrap_or_default();
-                if text.trim().is_empty() {
-                    continue;
-                }
-            }
-            rows.push(row);
-            if rows.len() as u64 > BATCH_MAX_ROWS {
-                return Err(BatchError::TooManyRows {
-                    count: rows.len() as u64,
-                    limit: BATCH_MAX_ROWS,
+        resolve_scope_rows(self, &config.scope, config.skip_empty, BATCH_MAX_ROWS)
+    }
+}
+
+/// 解析作用范围为具体行集合（批量序号与行操作共用）。
+///
+/// 语义：
+/// - `All` / `NonEmpty`：全文件（后者仅由调用方按需过滤空行）；
+/// - `CurrentLine`：单行；
+/// - `RowRange` / `Selection`：闭区间（`to` 超出文档时收敛到末行）；
+/// - `skip_empty`：过滤 trim 后为空的行；
+/// - `max_rows`：行数上限保护（超出报 [`BatchError::TooManyRows`]）；
+/// - 结果为空报 [`BatchError::EmptyScope`]。
+pub(crate) fn resolve_scope_rows(
+    doc: &EditDoc,
+    scope: &BatchScope,
+    skip_empty: bool,
+    max_rows: u64,
+) -> Result<Vec<u64>, BatchError> {
+    let total = doc.rows_total();
+    let (from, to) = match *scope {
+        BatchScope::All | BatchScope::NonEmpty => (0, total.saturating_sub(1)),
+        BatchScope::CurrentLine { row } => {
+            if row >= total {
+                return Err(BatchError::RowRangeInvalid {
+                    message: format!("当前行 {row} 超出文档行数 {total}"),
                 });
             }
+            (row, row)
         }
-        if rows.is_empty() {
-            return Err(BatchError::EmptyScope);
+        BatchScope::RowRange { from, to } | BatchScope::Selection { from, to } => {
+            if from > to {
+                return Err(BatchError::RowRangeInvalid {
+                    message: format!("起始行 {from} 大于结束行 {to}"),
+                });
+            }
+            if from >= total {
+                return Err(BatchError::RowRangeInvalid {
+                    message: format!("起始行 {from} 超出文档行数 {total}"),
+                });
+            }
+            (from, to.min(total - 1))
         }
-        Ok(rows)
+    };
+    let mut rows = Vec::new();
+    for row in from..=to {
+        if skip_empty {
+            let text = doc.row_text(row).unwrap_or_default();
+            if text.trim().is_empty() {
+                continue;
+            }
+        }
+        rows.push(row);
+        if rows.len() as u64 > max_rows {
+            return Err(BatchError::TooManyRows {
+                count: rows.len() as u64,
+                limit: max_rows,
+            });
+        }
     }
+    if rows.is_empty() {
+        return Err(BatchError::EmptyScope);
+    }
+    Ok(rows)
 }
 
 /// 容量预检：带圈/罗马/中文格式按「首个超限序号」提前报错（预览与执行共用）。
