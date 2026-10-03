@@ -69,6 +69,9 @@ pub const CODE_FONT_TOO_LARGE: &str = "FONT_TOO_LARGE";
 pub const CODE_FONT_NOT_FOUND: &str = "FONT_NOT_FOUND";
 /// 字体文件名为非法值
 pub const CODE_FONT_INVALID_NAME: &str = "FONT_INVALID_NAME";
+
+/// 主题不存在 / 文件无效 / 内置主题删除被拒（消息含具体原因）
+pub const CODE_THEME_INVALID: &str = "THEME_INVALID";
 /// 内部错误（锁中毒等）
 pub const CODE_INTERNAL: &str = "INTERNAL";
 

@@ -156,7 +156,12 @@ fn normalize_app(settings: &mut AppSettings) {
 /// 阅读排版归一：主题回退、字体去空白、数值裁剪。
 fn normalize_reader(settings: &mut ReaderSettings) {
     settings.schema_version = defaults::SCHEMA_VERSION;
-    settings.theme = settings.theme.normalized();
+    settings.theme_id = settings.theme_id.trim().to_string();
+    if settings.theme_id.is_empty() {
+        settings.theme_id = defaults::DEFAULT_THEME_ID.to_string();
+    }
+    let (min_anim, max_anim) = defaults::THEME_ANIM_MS_RANGE;
+    settings.theme_anim_ms = settings.theme_anim_ms.clamp(min_anim, max_anim);
     let font = settings.typography.font_family.trim();
     settings.typography.font_family = if font.is_empty() {
         defaults::DEFAULT_FONT_FAMILY.to_string()
@@ -348,17 +353,18 @@ mod tests {
         assert_eq!(loaded.hard_limit_mb, 16384, "硬上限应钳制到范围上限");
     }
 
-    /// 阅读配置：未知主题归一、空字体回退、数值裁剪。
+    /// 阅读配置：未知主题 id 保留（可能为用户主题）、空值回退默认、空字体回退、数值裁剪。
     #[test]
     fn reader_settings_clamps_and_falls_back() {
         let dir = data_dir();
         std::fs::write(
             reader_settings_path(dir.path()),
-            br#"{"theme":"neon","typography":{"fontFamily":"   ","fontSize":100,"lineHeight":0.5,"contentWidth":10,"pagePadding":1000,"pagePaddingY":999,"paragraphSpacing":999,"firstLineIndent":99,"textAlign":"diagonal"},"statusBar":{"showSize":true,"showEncoding":false}}"#,
+            br#"{"theme":"neon","themeAnimMs":9999,"typography":{"fontFamily":"   ","fontSize":100,"lineHeight":0.5,"contentWidth":10,"pagePadding":1000,"pagePaddingY":999,"paragraphSpacing":999,"firstLineIndent":99,"textAlign":"diagonal"},"statusBar":{"showSize":true,"showEncoding":false}}"#,
         )
         .expect("写配置失败");
         let loaded = load_reader_settings(dir.path());
-        assert_eq!(loaded.theme, crate::settings::reader::Theme::System);
+        assert_eq!(loaded.theme_id, "neon", "未知主题 id 保留");
+        assert_eq!(loaded.theme_anim_ms, 1000);
         assert_eq!(loaded.typography.font_family, defaults::DEFAULT_FONT_FAMILY);
         assert_eq!(loaded.typography.font_size, 72);
         assert!((loaded.typography.line_height - 1.0).abs() < f32::EPSILON);
@@ -407,12 +413,24 @@ mod tests {
         );
     }
 
+    /// 空主题 id 回退默认（system）。
+    #[test]
+    fn reader_settings_empty_theme_falls_back() {
+        let dir = data_dir();
+        std::fs::write(reader_settings_path(dir.path()), br#"{"theme":"   "}"#)
+            .expect("写配置失败");
+        assert_eq!(
+            load_reader_settings(dir.path()).theme_id,
+            defaults::DEFAULT_THEME_ID
+        );
+    }
+
     /// 阅读配置往返一致。
     #[test]
     fn reader_settings_roundtrip() {
         let dir = data_dir();
         let mut settings = ReaderSettings::default();
-        settings.theme = crate::settings::reader::Theme::Eye;
+        settings.theme_id = "paper-cream".to_string();
         settings.typography.font_size = 20;
         settings.typography.line_height = 2.0;
         save_reader_settings(dir.path(), &settings).expect("保存失败");
@@ -492,7 +510,7 @@ mod tests {
         let mut app = AppSettings::default();
         app.max_tabs = 25;
         let mut reader = ReaderSettings::default();
-        reader.theme = crate::settings::reader::Theme::Dark;
+        reader.theme_id = "dark".to_string();
         let request = crate::settings::SettingsSaveRequest {
             app: app.clone(),
             reader: reader.clone(),
@@ -504,7 +522,7 @@ mod tests {
         assert!(!raw.contains("Ctrl+W"), "默认项不应落盘：{raw}");
         let snapshot = load_snapshot(dir.path());
         assert_eq!(snapshot.app.max_tabs, 25);
-        assert_eq!(snapshot.reader.theme, crate::settings::reader::Theme::Dark);
+        assert_eq!(snapshot.reader.theme_id, "dark");
         assert_eq!(snapshot.shortcuts.bindings, effective);
     }
 }

@@ -14,8 +14,8 @@ use std::sync::Mutex;
 use s_read_txt::app_state::AppState;
 use s_read_txt::logging;
 use s_read_txt::session::store as session_store;
-use s_read_txt::settings::reader::Theme;
 use s_read_txt::settings::store as settings_store;
+use s_read_txt::settings::theme;
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::paths;
 
@@ -50,25 +50,25 @@ fn configure_webview2_extra_args() {
     std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", merged);
 }
 
-/// 主题 → 窗口背景色（窗口显示瞬间的底色，避免白色/黑色闪烁）。
+/// 主题令牌 → 窗口背景色（窗口显示瞬间的底色，避免明暗闪烁）。
 ///
-/// - `system`：读取系统明暗（窗口查询失败回退浅色）；
-/// - 护眼：米黄底。
-/// 与 `src/styles/base.css` 的主题令牌保持一致（浅 `#FAF9F7` / 深 `#1E1E1E` / 护眼 `#F5EFE0`）。
-fn theme_background_color(theme: Theme, window: &tauri::WebviewWindow) -> tauri::window::Color {
-    let dark = match theme {
-        Theme::Dark => true,
-        Theme::Eye => return tauri::window::Color(0xF5, 0xEF, 0xE0, 0xFF),
-        Theme::Light => false,
-        Theme::System | Theme::Unknown => window
-            .theme()
-            .map(|value| value == tauri::Theme::Dark)
-            .unwrap_or(false),
+/// 取解析后主题的 `base` 令牌（`#RRGGBB`）；解析失败回退浅色 `#FAF9F7`。
+fn theme_background_color(theme: &theme::ResolvedTheme) -> tauri::window::Color {
+    let fallback = tauri::window::Color(0xFA, 0xF9, 0xF7, 0xFF);
+    let Some(hex) = theme
+        .tokens
+        .get("base")
+        .and_then(|value| value.strip_prefix('#'))
+    else {
+        return fallback;
     };
-    if dark {
-        tauri::window::Color(0x1E, 0x1E, 0x1E, 0xFF)
-    } else {
-        tauri::window::Color(0xFA, 0xF9, 0xF7, 0xFF)
+    if hex.len() < 6 {
+        return fallback;
+    }
+    let channel = |start: usize| u8::from_str_radix(&hex[start..start + 2], 16).ok();
+    match (channel(0), channel(2), channel(4)) {
+        (Some(r), Some(g), Some(b)) => tauri::window::Color(r, g, b, 0xFF),
+        _ => fallback,
     }
 }
 
@@ -103,7 +103,12 @@ fn main() {
     }
     let startup_settings = settings_store::load_app_settings(&startup_dir);
     // 主题属于阅读排版配置（reader.json）；窗口显示前需要它来决定背景色。
-    let startup_theme = settings_store::load_reader_settings(&startup_dir).theme;
+    // 解析失败（含用户主题缺失）回退跟随系统，保证启动不受阻。
+    let startup_theme = theme::resolve_theme(
+        &startup_dir,
+        &settings_store::load_reader_settings(&startup_dir).theme_id,
+    )
+    .ok();
     if let Err(err) = logging::init(&startup_dir, startup_settings.log_level) {
         eprintln!("[s-read-txt] 日志初始化失败（应用继续运行）：{err}");
     }
@@ -180,7 +185,10 @@ fn main() {
                 // 启动显示策略（维护者确认「立即显示 + 内置占位」）：
                 // 先设主题背景色并立即显示窗口（HTML 内置占位随后接替），
                 // 避免弱磁盘/冷缓存下长时间空白等待；前端首帧就绪后会归还键盘焦点。
-                let color = theme_background_color(startup_theme, &window);
+                let color = startup_theme
+                    .as_ref()
+                    .map(theme_background_color)
+                    .unwrap_or(tauri::window::Color(0xFA, 0xF9, 0xF7, 0xFF));
                 if let Err(err) = window.set_background_color(Some(color)) {
                     log::warn!(target: "sread::main", "设置主题背景色失败：{err}");
                 }
@@ -209,6 +217,11 @@ fn main() {
             commands::clear_cache,
             commands::migrate_data_dir,
             commands::restart_app,
+            commands::list_themes,
+            commands::get_theme,
+            commands::import_theme,
+            commands::export_theme,
+            commands::remove_theme,
             commands::get_default_shortcuts,
             commands::get_history,
             commands::remove_history,

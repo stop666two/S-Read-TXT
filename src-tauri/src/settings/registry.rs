@@ -148,8 +148,22 @@ pub const SPECS: &[SettingSpec] = &[
     SettingSpec {
         id: "reader.theme",
         group: "reader.basic",
-        kind: SettingKind::Enum {
-            values: &["light", "dark", "eye", "system"],
+        // 主题 id 为开放集合（内置 6 套 + 用户主题 data/themes/<id>.json），
+        // 仅做长度约束；有效性由 theme 模块在解析/导入时强校验。
+        kind: SettingKind::Text { max_len: 64 },
+    },
+    SettingSpec {
+        id: "reader.themeAnimEnabled",
+        group: "reader.basic",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "reader.themeAnimMs",
+        group: "reader.basic",
+        kind: SettingKind::Number {
+            min: defaults::THEME_ANIM_MS_RANGE.0 as f64,
+            max: defaults::THEME_ANIM_MS_RANGE.1 as f64,
+            integer: true,
         },
     },
     // ---------- reader.json / 排版 ----------
@@ -388,7 +402,7 @@ pub fn validate_value(spec: &SettingSpec, value: &Value) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::settings::model::{Language, LogLevel};
-    use crate::settings::reader::{TextAlign, Theme};
+    use crate::settings::reader::TextAlign;
 
     /// id 唯一、前缀合法、分组/标签非空、数值范围不倒挂。
     #[test]
@@ -444,12 +458,10 @@ mod tests {
             LogLevel::Debug,
         ]);
         let language = names(&[Language::ZhCn, Language::En]);
-        let theme = names(&[Theme::Light, Theme::Dark, Theme::Eye, Theme::System]);
         let align = names(&[TextAlign::Left, TextAlign::Justify]);
         for (id, expected) in [
             ("app.logLevel", log),
             ("app.locale", language),
-            ("reader.theme", theme),
             ("reader.typography.textAlign", align),
         ] {
             let SettingKind::Enum { values } = spec_by_id(id).expect("存在").kind else {
@@ -470,7 +482,7 @@ mod tests {
         assert!(validate_value(max_tabs, &serde_json::json!("30")).is_err());
         let theme = spec_by_id("reader.theme").expect("存在");
         assert!(validate_value(theme, &serde_json::json!("dark")).is_ok());
-        assert!(validate_value(theme, &serde_json::json!("rainbow")).is_err());
+        assert!(validate_value(theme, &serde_json::json!(42)).is_err());
         let shortcuts = spec_by_id("shortcuts.bindings").expect("存在");
         assert!(validate_value(shortcuts, &serde_json::json!({})).is_ok());
         assert!(validate_value(shortcuts, &serde_json::json!({"unknown": "Ctrl+A"})).is_err());

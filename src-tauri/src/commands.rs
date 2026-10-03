@@ -21,7 +21,7 @@ use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
     IpcError, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING, CODE_INVALID_POSITION,
     CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT,
-    CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET, CODE_TAB_NOT_FOUND,
+    CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -31,6 +31,7 @@ use s_read_txt::session::store as session_store;
 use s_read_txt::settings::registry::{self, SettingSpec};
 use s_read_txt::settings::reset::{self as settings_reset, ResetScope};
 use s_read_txt::settings::store as settings_store;
+use s_read_txt::settings::theme::{self, ResolvedTheme, ThemeSummary};
 use s_read_txt::settings::{bundle, shortcut_io, SettingsSaveRequest, SettingsSnapshot};
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::migrate_dir::{self as migrate_dir, MigrationReport};
@@ -1034,4 +1035,65 @@ pub fn read_font_data(file_name: String) -> Result<String, IpcError> {
     let (dir, _origin) = paths::resolve_data_dir();
     let bytes = fonts::read_font_bytes(&dir, &file_name)?;
     Ok(fonts::base64_encode(&bytes))
+}
+
+/// 命令：主题清单（内置 + 用户主题；不含令牌，体积小）。
+#[tauri::command]
+pub fn list_themes() -> Vec<ThemeSummary> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        theme::list_themes(&dir)
+    })
+}
+
+/// 命令：解析主题（`id` 为空/缺省 = 当前设置；`system` 解析为 light/dark。
+/// 结果写入单主题驻留缓存，供 `get_theme` 的前端契约直读）。
+#[tauri::command]
+pub fn get_theme(id: Option<String>) -> Result<ResolvedTheme, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let requested = match id {
+            Some(value) if !value.trim().is_empty() => value,
+            _ => settings_store::load_reader_settings(&dir).theme_id,
+        };
+        theme::resolve_theme(&dir, &requested).map_err(theme_ipc_error)
+    })
+}
+
+/// 命令：导入用户主题（强校验；内置 id 拒绝覆盖）。
+#[tauri::command]
+pub fn import_theme(path: String) -> Result<ThemeSummary, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let summary = theme::import_theme(&dir, Path::new(&path)).map_err(theme_ipc_error)?;
+        log::info!(target: "sread::ipc", "主题已导入：{}", summary.id);
+        Ok(summary)
+    })
+}
+
+/// 命令：导出主题到指定路径（内置与用户主题均可）。
+#[tauri::command]
+pub fn export_theme(id: String, path: String) -> Result<(), IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        theme::export_theme(&dir, &id, Path::new(&path)).map_err(theme_ipc_error)?;
+        log::info!(target: "sread::ipc", "主题已导出：{id}");
+        Ok(())
+    })
+}
+
+/// 命令：删除用户主题（内置主题拒绝删除）。
+#[tauri::command]
+pub fn remove_theme(id: String) -> Result<(), IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        theme::remove_theme(&dir, &id).map_err(theme_ipc_error)?;
+        log::info!(target: "sread::ipc", "主题已删除：{id}");
+        Ok(())
+    })
+}
+
+/// 主题错误 → IPC 错误（统一 `THEME_INVALID` 码；消息含具体原因）。
+fn theme_ipc_error(err: theme::ThemeError) -> IpcError {
+    IpcError::new(CODE_THEME_INVALID, err.to_string())
 }

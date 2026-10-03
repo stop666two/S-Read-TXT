@@ -3,11 +3,12 @@
 use std::collections::BTreeMap;
 
 use crate::settings::model::{Language, LogLevel};
-use crate::settings::reader::{TextAlign, Theme};
+use crate::settings::reader::TextAlign;
 
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
 /// v2：新增 `hardLimitMB` / `startup` / `statusBar` / 排版扩展等字段（字段补齐式迁移，见 `settings::migrate`）。
-pub const SCHEMA_VERSION: u32 = 2;
+/// v3：主题升级为 id 体系（旧值 `eye` 迁移为 `paper-cream`；新增主题动画字段）。
+pub const SCHEMA_VERSION: u32 = 3;
 
 // ---------- settings.json ----------
 
@@ -46,8 +47,14 @@ pub const DEFAULT_SHOW_ONBOARDING: bool = true;
 
 // ---------- reader.json ----------
 
-/// 默认主题（跟随系统）
-pub const DEFAULT_THEME: Theme = Theme::System;
+/// 默认主题 id（跟随系统）
+pub const DEFAULT_THEME_ID: &str = "system";
+/// 默认启用主题切换过渡动画
+pub const DEFAULT_THEME_ANIM_ENABLED: bool = true;
+/// 默认主题过渡时长（ms）
+pub const DEFAULT_THEME_ANIM_MS: u32 = 200;
+/// 主题过渡时长允许范围（ms，闭区间）
+pub const THEME_ANIM_MS_RANGE: (u32, u32) = (0, 1000);
 /// 默认正文字体
 pub const DEFAULT_FONT_FAMILY: &str = "Microsoft YaHei";
 /// 默认正文字号（px）

@@ -58,11 +58,22 @@ type MigrationStep = fn(&mut Value);
 ///
 /// v1 → v2：仅新增字段（`hardLimitMB` / `startup` / `statusBar` / 排版扩展等），
 /// 由模型的 serde 默认值在反序列化时补齐，本步骤只做版本号提升；
-/// 保留函数作为后续「字段改名 / 结构变更」的挂点。
-const STEPS: &[(u32, MigrationStep)] = &[(1, v1_to_v2)];
+/// v2 → v3：主题升级为 id 体系（`eye` → `paper-cream`）。
+const STEPS: &[(u32, MigrationStep)] = &[(1, v1_to_v2), (2, v2_to_v3)];
 
 /// v1 → v2：字段补齐式迁移（无结构变换）。
 fn v1_to_v2(_value: &mut Value) {}
+
+/// v2 → v3：主题 id 体系升级——旧内置「护眼（米黄）」`eye` 迁移为 `paper-cream`。
+/// 对不含 `theme` 字段的配置（settings.json / shortcuts.json）为空操作。
+fn v2_to_v3(value: &mut Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    if object.get("theme").and_then(Value::as_str) == Some("eye") {
+        object.insert("theme".to_string(), Value::from("paper-cream"));
+    }
+}
 
 /// 把 JSON 值从 `from` 版本沿迁移链推进到当前版本，并把 `schemaVersion` 字段改为当前值。
 ///
@@ -239,6 +250,30 @@ mod tests {
     }
 
     /// migrate_all：三类文件各自独立返回结果。
+    /// v2 → v3：旧主题 id `eye` 迁移为 `paper-cream`（其他字段不动）。
+    #[test]
+    fn v2_theme_id_migration_maps_eye_to_paper_cream() {
+        let mut value: Value =
+            serde_json::json!({"schemaVersion": 2, "theme": "eye", "typography": {"fontSize": 20}});
+        apply_chain(&mut value, 2).expect("迁移");
+        assert_eq!(
+            value.get("theme").and_then(Value::as_str),
+            Some("paper-cream")
+        );
+        assert_eq!(value.get("schemaVersion").and_then(Value::as_u64), Some(3));
+        assert_eq!(
+            value
+                .pointer("/typography/fontSize")
+                .and_then(Value::as_u64),
+            Some(20)
+        );
+
+        // 非 reader 配置（无 theme 字段）不受影响
+        let mut app: Value = serde_json::json!({"schemaVersion": 2, "maxTabs": 18});
+        apply_chain(&mut app, 2).expect("迁移");
+        assert_eq!(app.get("maxTabs").and_then(Value::as_u64), Some(18));
+    }
+
     #[test]
     fn migrate_all_covers_three_files() {
         let dir = tempfile::tempdir().expect("临时目录");

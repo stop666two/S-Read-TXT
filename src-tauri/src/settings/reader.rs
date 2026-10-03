@@ -5,62 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::settings::defaults;
 
-/// 主题（`system` 由前端监听系统明暗解析为浅色/深色）。
-///
-/// 语义：加载时未知/大小写异常取值归入 `Unknown`，再经 [`Theme::normalized`]
-/// 归一为默认（跟随系统）；保存前必先归一，故 `Unknown` 不会落盘。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Theme {
-    /// 浅色
-    Light,
-    /// 深色
-    Dark,
-    /// 护眼（米黄）
-    Eye,
-    /// 跟随系统（默认）
-    System,
-    /// 未知取值（向前兼容；载入时归一为默认）
-    Unknown,
-}
-
-/// 手写反序列化：未知字符串宽容归入 `Unknown`（与 `LogLevel` 同理，避免整份配置回退）。
-impl<'de> Deserialize<'de> for Theme {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let raw = String::deserialize(deserializer)?;
-        Ok(match raw.trim().to_ascii_lowercase().as_str() {
-            "light" => Self::Light,
-            "dark" => Self::Dark,
-            "eye" => Self::Eye,
-            "system" => Self::System,
-            _ => Self::Unknown,
-        })
-    }
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        defaults::DEFAULT_THEME
-    }
-}
-
-impl Theme {
-    /// 归一：`Unknown` 回退默认主题，其余原样。
-    pub fn normalized(self) -> Self {
-        if self == Self::Unknown {
-            defaults::DEFAULT_THEME
-        } else {
-            self
-        }
-    }
-}
-
 /// 正文水平对齐（`left` 左对齐 / `justify` 两端对齐）。
 ///
-/// 语义与 [`Theme`] 相同：未知取值归入 `Unknown`，经 [`TextAlign::normalized`] 归一为默认。
+/// 语义：加载时未知取值归入 `Unknown`，经 [`TextAlign::normalized`] 归一为默认。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TextAlign {
@@ -178,8 +125,15 @@ impl Default for StatusBarSettings {
 pub struct ReaderSettings {
     /// 配置格式版本（保存时写入当前 [`defaults::SCHEMA_VERSION`]）
     pub schema_version: u32,
-    /// 主题
-    pub theme: Theme,
+    /// 主题 id（内置：light/dark/eye-green/paper-cream/high-contrast/minimal-gray；
+    /// `system` = 跟随系统明暗；用户主题为 `data/themes/<id>.json`）。
+    /// JSON 名沿用 `theme`（字段名变更由迁移负责，见 settings::migrate）。
+    #[serde(rename = "theme")]
+    pub theme_id: String,
+    /// 主题切换过渡动画
+    pub theme_anim_enabled: bool,
+    /// 主题切换过渡时长（ms；0 = 无过渡）
+    pub theme_anim_ms: u32,
     /// 排版参数
     pub typography: Typography,
     /// 状态栏元素显隐
@@ -190,7 +144,9 @@ impl Default for ReaderSettings {
     fn default() -> Self {
         Self {
             schema_version: defaults::SCHEMA_VERSION,
-            theme: defaults::DEFAULT_THEME,
+            theme_id: defaults::DEFAULT_THEME_ID.to_string(),
+            theme_anim_enabled: defaults::DEFAULT_THEME_ANIM_ENABLED,
+            theme_anim_ms: defaults::DEFAULT_THEME_ANIM_MS,
             typography: Typography::default(),
             status_bar: StatusBarSettings::default(),
         }

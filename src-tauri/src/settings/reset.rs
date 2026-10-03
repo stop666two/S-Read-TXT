@@ -171,7 +171,7 @@ mod tests {
         app.max_tabs = 30;
         store::save_app_settings(dir.path(), &app).expect("保存 app");
         let mut reader = ReaderSettings::default();
-        reader.theme = crate::settings::reader::Theme::Dark;
+        reader.theme_id = "dark".to_string();
         store::save_reader_settings(dir.path(), &reader).expect("保存 reader");
         let mut shortcuts = ShortcutSettings {
             schema_version: defaults::SCHEMA_VERSION,
@@ -184,7 +184,7 @@ mod tests {
         reset_scope(dir.path(), &ResetScope::All).expect("重置");
         let snapshot = store::load_snapshot(dir.path());
         assert_eq!(snapshot.app.max_tabs, defaults::DEFAULT_MAX_TABS);
-        assert_eq!(snapshot.reader.theme, defaults::DEFAULT_THEME);
+        assert_eq!(snapshot.reader.theme_id, defaults::DEFAULT_THEME_ID);
         assert_eq!(
             snapshot
                 .shortcuts

@@ -10,6 +10,7 @@
 //! - `migrate`：schema 版本迁移框架（迁移前备份、失败保留原文件）
 //! - `bundle`：配置导出/导入（严格校验 + 备份 + 失败回滚）
 //! - `reset`：设置重置（全部 / 分组 / 单项）
+//! - `theme`：主题清单校验/解析/导入导出与单驻留缓存（P0-5）
 //!
 //! IPC 载荷见 [`SettingsSnapshot`]（返回）与 [`SettingsSaveRequest`]（保存入参）。
 
@@ -23,6 +24,7 @@ pub mod reset;
 pub mod shortcut_io;
 pub mod shortcuts;
 pub mod store;
+pub mod theme;
 
 use std::collections::BTreeMap;
 
