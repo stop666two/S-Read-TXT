@@ -369,3 +369,4 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - **验收修复（P0-11 续）**：①迁移校验竞态修复（改为「以复制记录为准」，migrate 13/13 两连跑稳定）；②smoke-settings S11c 偶发失败加固（重开设置窗后等待行渲染再点击），48/48。
 - **P0-11 验收收官**：修复后最终全量自检 **31/31 通过（678.3s）**；红线：NSIS 1.97MiB、启动可见 max 666ms/就绪 median 792ms、内存打开后 82.8MiB/压力峰 106.9MiB（<120）；stress 11/11；**P0 全部完成，待维护者验收演示与推送授权**。
 - **清理与文档（维护者要求）**：临时清理（temp\\opencode 本项目 srt-* 全清、5 个一次性探针删除、测试残留目录清理；`cargo clean --profile dev` 释放 6.1GiB；保留 release 与 portable-dist）；新增 `docs/plan/remaining-work.md`（未完成清单唯一入口：P1–P4/发布验收/技术债/不做清单）；README 补便携版打包命令与 scripts 说明。
+- **P1-1 批量插入/序号（完成）**：编辑引擎 batch.rs（10 种格式/行首行尾/5 种范围/跳空行/模板变量/容量预检 20 万行/单撤销步；18 单测）+ IPC（preview/apply，BATCH_INVALID；状态层 2 测试）；前端编辑菜单「批量插入/序号…」+ 弹窗（预览 10 条、错误就地展示）；smoke-batch **16/16** 并入 verify-all（现 **27 步**）；回归 edit 12/12、find 19/19；cargo **334**（312 lib+15+2+5）、vitest 88、svelte-check 0/0。
