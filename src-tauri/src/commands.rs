@@ -265,7 +265,10 @@ pub fn save_settings(
         settings_store::save_snapshot(&dir, &request)
             .map_err(|err| IpcError::new(CODE_CONFIG_SAVE, format!("保存配置失败：{err}")))?;
         log::info!(target: "sread::ipc", "配置已保存");
-        let _ = app.emit(EVENT_SETTINGS_CHANGED, serde_json::json!({ "kind": "save" }));
+        let _ = app.emit(
+            EVENT_SETTINGS_CHANGED,
+            serde_json::json!({ "kind": "save" }),
+        );
         Ok(settings_store::load_snapshot(&dir))
     })
 }
