@@ -416,6 +416,193 @@ async function main() {
       `h30=${tallHeight} h16=${await evalMain(`document.querySelector('.reader')?.scrollHeight ?? -1`)}`,
     );
 
+    // S14 新增排版项：段间距 / 首行缩进 / 文字对齐 / 平滑滚动（实时应用到主窗口变量）
+    currentStep = 'S14 新增排版项';
+    await evalSet(
+      `(() => { const tab = [...document.querySelectorAll('.tabs [role="tab"]')].find((b) => b.textContent.trim() === '阅读排版'); tab?.click(); return true; })()`,
+    );
+    await delay(250);
+    const setRangeValue = async (setting, value, expectVar, expectValue) => {
+      await evalSet(
+        `(() => {
+          const range = document.querySelector('input[data-setting="${setting}"]');
+          if (!range) return false;
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          setter.call(range, '${value}');
+          range.dispatchEvent(new Event('input', { bubbles: true }));
+          range.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()`,
+      );
+      return waitForValue(async () => {
+        const got = await evalMain(
+          `getComputedStyle(document.documentElement).getPropertyValue('${expectVar}').trim()`,
+        );
+        return got === expectValue ? true : null;
+      }, 6000);
+    };
+    check(
+      'S14a 段间距实时生效',
+      (await setRangeValue('paragraphSpacing', 12, '--reading-para-spacing', '12px')) === true,
+    );
+    check(
+      'S14b 首行缩进实时生效（2 字 ×16px=32px）',
+      (await setRangeValue('firstLineIndent', 2, '--reading-indent', '32px')) === true,
+    );
+    await setRangeValue('paragraphSpacing', 0, '--reading-para-spacing', '0px');
+    await setRangeValue('firstLineIndent', 0, '--reading-indent', '0px');
+    const applyAlign = async (value, expect) => {
+      await evalSet(
+        `(() => {
+          const sel = document.querySelector('select[data-setting="textAlign"]');
+          if (!sel) return false;
+          const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+          setter.call(sel, '${value}');
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()`,
+      );
+      return waitForValue(async () => {
+        const got = await evalMain(
+          `getComputedStyle(document.documentElement).getPropertyValue('--reading-align').trim()`,
+        );
+        return got === expect ? true : null;
+      }, 6000);
+    };
+    check('S14c 文字对齐切换生效', (await applyAlign('justify', 'justify')) === true);
+    await applyAlign('left', 'left');
+    const toggleRow = async (setting, checked) => {
+      await evalSet(
+        `(() => {
+          const box = document.querySelector('input[data-setting="${setting}"]');
+          if (!box) return false;
+          if (box.checked !== ${checked}) box.click();
+          return true;
+        })()`,
+      );
+      return waitForValue(async () => {
+        const now = await evalSet(
+          `document.querySelector('input[data-setting="${setting}"]')?.checked`,
+        );
+        return now === checked ? true : null;
+      }, 6000);
+    };
+    check('S14d 平滑滚动开关可切换', (await toggleRow('smoothScroll', false)) === true);
+    check('S14e 平滑滚动恢复默认', (await toggleRow('smoothScroll', true)) === true);
+
+    // S15 自定义字体：按钮 → 原生对话框（取消）；直接链路导入 / 应用 / 删除（确认框取消）
+    currentStep = 'S15 字体导入';
+    await evalSet(
+      `(() => { const btn = document.querySelector('button[data-setting="importFont"]'); btn?.click(); return true; })()`,
+    );
+    const importDialogOpened = await waitDialog(true);
+    if (importDialogOpened) dialogOp('close');
+    check('S15a 导入字体按钮打开原生对话框', importDialogOpened === true);
+    check('S15b 取消对话框后关闭', (await waitDialog(false, 5000)) === true);
+    await delay(300);
+    const fontCandidates = [
+      'C:\\Windows\\Fonts\\consola.ttf',
+      'C:\\Windows\\Fonts\\arial.ttf',
+      'C:\\Windows\\Fonts\\segoeui.ttf',
+    ];
+    let imported = null;
+    for (const candidate of fontCandidates) {
+      const result = await evalMain(
+        `window.__TAURI_INTERNALS__.invoke('import_font', { path: ${JSON.stringify(candidate)} })
+          .then((entry) => entry.fileName)
+          .catch((error) => 'ERR:' + JSON.stringify(error))`,
+      );
+      if (typeof result === 'string' && !result.startsWith('ERR:')) {
+        imported = result;
+        break;
+      }
+    }
+    check('S15c 导入字体链路成功', typeof imported === 'string', String(imported));
+    if (typeof imported === 'string') {
+      await closeSettings();
+      await reopenSettings();
+      await evalSet(
+        `(() => { const tab = [...document.querySelectorAll('.tabs [role="tab"]')].find((b) => b.textContent.trim() === '阅读排版'); tab?.click(); return true; })()`,
+      );
+      await delay(400);
+    }
+    const listed = await waitForValue(async () => {
+      const values = await evalSet(
+        `(() => [...document.querySelectorAll('select[data-setting="fontFamily"] option')].map((o) => o.value))()`,
+      );
+      return Array.isArray(values) && values.some((value) => value.startsWith('custom:')) ? true : null;
+    }, 8000);
+    check('S15d 自定义字体出现在字体列表', listed === true);
+    const customValue = await evalSet(
+      `(() => [...document.querySelectorAll('select[data-setting="fontFamily"] option')].map((o) => o.value).find((value) => value.startsWith('custom:')) ?? null)()`,
+    );
+    if (customValue) {
+      await evalSet(
+        `(() => {
+          const sel = document.querySelector('select[data-setting="fontFamily"]');
+          const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+          setter.call(sel, ${JSON.stringify(customValue)});
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()`,
+      );
+    }
+    const fontApplied = await waitForValue(async () => {
+      const stack = await evalMain(
+        `getComputedStyle(document.documentElement).getPropertyValue('--font-reading').trim()`,
+      );
+      return stack.includes('SRT Custom') ? true : null;
+    }, 15000);
+    check('S15e 自定义字体加载并应用', fontApplied === true);
+    await evalSet(
+      `(() => { const btn = document.querySelector('button.btn.danger'); btn?.click(); return true; })()`,
+    );
+    const deleteDialogOpened = await waitDialog(true);
+    if (deleteDialogOpened) dialogOp('close');
+    check('S15f 删除字体弹出原生确认框', deleteDialogOpened === true);
+    await waitForValue(async () => ((await waitDialog(false, 4000)) ? true : null), 6000);
+    await delay(300);
+    const stillThere = await evalSet(
+      `(() => [...document.querySelectorAll('select[data-setting="fontFamily"] option')].some((o) => o.value.startsWith('custom:')))()`,
+    );
+    check('S15g 取消删除后字体保留', stillThere === true);
+    // 恢复默认字体，再走删除链路（确认框无法自动点「是」，此处直连命令验证）
+    await evalSet(
+      `(() => {
+        const sel = document.querySelector('select[data-setting="fontFamily"]');
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+        setter.call(sel, 'Microsoft YaHei');
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      })()`,
+    );
+    await delay(400);
+    const removed = await evalMain(
+      `window.__TAURI_INTERNALS__.invoke('remove_font', { fileName: ${JSON.stringify(imported)} })
+        .then(() => true)
+        .catch(() => false)`,
+    );
+    check('S15h 删除字体链路成功', removed === true);
+    const fontsLeft = await evalMain(
+      `window.__TAURI_INTERNALS__.invoke('list_fonts').then((list) => list.length).catch(() => -1)`,
+    );
+    check('S15i 删除后自定义字体列表为空', fontsLeft === 0, `count=${fontsLeft}`);
+
+    // S16 状态栏元素开关 + 启动行为开关（写盘、可还原）
+    currentStep = 'S16 界面与启动开关';
+    await evalSet(
+      `(() => { const tab = [...document.querySelectorAll('.tabs [role="tab"]')].find((b) => b.textContent.trim() === '常规'); tab?.click(); return true; })()`,
+    );
+    await delay(250);
+    check('S16a 状态栏开关切换', (await toggleRow('statusBar.showSize', false)) === true);
+    check('S16b 状态栏开关还原', (await toggleRow('statusBar.showSize', true)) === true);
+    check('S16c 启动恢复会话开关切换', (await toggleRow('startup.restoreSession', false)) === true);
+    check('S16d 启动恢复会话开关还原', (await toggleRow('startup.restoreSession', true)) === true);
+    check(
+      'S16e 启动恢复窗口开关存在',
+      (await evalSet(`!!document.querySelector('input[data-setting="startup.restoreWindow"]')`)) === true,
+    );
+
     // 汇总
     const failed = checks.filter((item) => !item.passed);
     console.log(`\n设置窗口冒烟：${checks.length - failed.length}/${checks.length} 通过`);
