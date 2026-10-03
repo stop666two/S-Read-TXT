@@ -161,8 +161,8 @@ async function main() {
     currentStep = 'T6 主题截图';
     const shots = [];
     for (const theme of ['light', 'dark']) {
-      await evalJs(`(document.documentElement.dataset.theme = '${theme}', true)`);
-      await delay(400);
+      await evalJs(`(window.__srt.setTheme('${theme}'), true)`);
+      await delay(450);
       const shot = await client.send('Page.captureScreenshot', { format: 'png' });
       const path = join(root, 'docs', 'screenshots', `phase5-titlebar-${theme}.png`);
       mkdirSync(dirname(path), { recursive: true });

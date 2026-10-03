@@ -286,28 +286,32 @@ async function main() {
     check('C6 工具栏编码下拉（覆盖/恢复自动）', encOverride !== null && encAuto !== null);
     await ensureEditing(); // 编码切换会丢弃编辑文档（set_encoding 语义）：后续编辑项需重新进入
 
-    currentStep = 'C7 工具栏主题循环';
-    const themeSeq = [];
-    // 初始为「跟随系统」（解析浅色）：点击循环 light→dark→eye→system
-    // 每次点击后按期望值轮询（链式运行较慢时固定延时读取会抖动）
-    const expectedSeq = ['light', 'dark', 'eye'];
-    for (const expected of expectedSeq) {
-      await click('[aria-label="切换主题"]');
-      const got = await waitForValue(async () => {
-        const theme = await evalJs(`document.documentElement.dataset.theme`);
-        return theme === expected ? theme : null;
-      }, 4000);
-      themeSeq.push(got ?? (await evalJs(`document.documentElement.dataset.theme`)));
-    }
-    await click('[aria-label="切换主题"]');
-    const systemTheme = await waitForValue(async () => {
-      const theme = await evalJs(`document.documentElement.dataset.theme`);
-      return theme === 'light' || theme === 'dark' ? theme : null;
+    currentStep = 'C7 工具栏主题菜单';
+    await click('[aria-label="主题"]');
+    await delay(250);
+    await clickByText('.theme-wrap .dropdown .item', '深色');
+    const c7dark = await waitForValue(async () => {
+      const id = await evalJs(`document.documentElement.dataset.themeId`);
+      return id === 'dark' ? id : null;
+    }, 4000);
+    await click('[aria-label="主题"]');
+    await delay(250);
+    await clickByText('.theme-wrap .dropdown .item', '浅色');
+    const c7light = await waitForValue(async () => {
+      const id = await evalJs(`document.documentElement.dataset.themeId`);
+      return id === 'light' ? id : null;
+    }, 4000);
+    await click('[aria-label="主题"]');
+    await delay(250);
+    await clickByText('.theme-wrap .dropdown .item', '跟随系统');
+    const c7system = await waitForValue(async () => {
+      const id = await evalJs(`document.documentElement.dataset.themeId`);
+      return id === 'light' || id === 'dark' ? id : null;
     }, 4000);
     check(
-      'C7 工具栏「切换主题」循环（light→dark→eye→system）',
-      themeSeq[0] === 'light' && themeSeq[1] === 'dark' && themeSeq[2] === 'eye' && systemTheme !== null,
-      `seq=${themeSeq.join(',')} system=${systemTheme}`,
+      'C7 工具栏主题菜单（深色→浅色→跟随系统，真实应用路径）',
+      c7dark === 'dark' && c7light === 'light' && c7system !== null,
+      `dark=${c7dark} light=${c7light} system=${c7system}`,
     );
 
     currentStep = 'C8 工具栏设置按钮（打开设置窗口）';
@@ -531,20 +535,24 @@ async function main() {
     }, 5000);
     check('D9 查看→「字号增大/减小」生效（+1/还原）', fontUp === true && fontDown === true, `before=${fontBefore}`);
 
-    currentStep = 'D10 查看→主题四项';
+    currentStep = 'D10 查看→主题（7 项）';
     let d10 = true;
     for (const [label, expected] of [
       ['深色', 'dark'],
-      ['护眼', 'eye'],
+      ['纸张米黄', 'paper-cream'],
+      ['高对比', 'high-contrast'],
       ['浅色', 'light'],
       ['跟随系统', null],
     ]) {
       await menuClick('查看', label);
-      await delay(300);
-      const theme = await evalJs(`document.documentElement.dataset.theme`);
-      if (expected === null ? !(theme === 'light' || theme === 'dark') : theme !== expected) d10 = false;
+      const id = await waitForValue(async () => {
+        const current = await evalJs(`document.documentElement.dataset.themeId`);
+        const ok = expected === null ? current === 'light' || current === 'dark' : current === expected;
+        return ok ? current : null;
+      }, 4000);
+      if (id === null) d10 = false;
     }
-    check('D10 查看→主题四项切换生效', d10);
+    check('D10 查看→主题切换生效（含新增主题）', d10);
 
     currentStep = 'D11 查看→全屏';
     const fsInvoke = `window.__TAURI_INTERNALS__.invoke('plugin:window|is_fullscreen', { label: 'main' })`;
