@@ -1,44 +1,44 @@
 {
-  "generatedAt": "2026-10-02T12:27:07.385Z",
-  "exe": "src-tauri/target/release/s-read-txt.exe",
+  "generatedAt": "2026-10-03T05:40:31.264Z",
+  "exe": "src-tauri\\target\\release\\s-read-txt.exe",
   "files": 10,
   "sizeMb": 100,
   "openTimesMs": [
-    112,
-    91,
-    85,
-    89,
-    86,
-    84,
-    84,
-    86,
-    85,
-    86
+    567,
+    97,
+    97,
+    122,
+    102,
+    98,
+    99,
+    101,
+    95,
+    92
   ],
   "memoryAfterOpen": [
-    81,
-    79.3,
-    79.1
+    82.5,
+    83.1,
+    82.8
   ],
   "memoryAfterStress": [
-    105.8,
-    103.6,
-    103.7
+    106.9,
+    106.9,
+    96.9
   ],
-  "memoryPeak": 105.8,
+  "memoryPeak": 106.9,
   "memoryPass": true,
   "memoryIdeal": false,
   "encodingTimesMs": [
-    51,
-    32,
+    57,
+    35,
+    31,
     30,
-    32,
-    32,
+    33,
     32
   ],
-  "scrollMs": 128,
-  "switchMs": 146,
-  "churnMs": 1281,
+  "scrollMs": 1311,
+  "switchMs": 104,
+  "churnMs": 5197,
   "checks": [
     {
       "name": "S3 十个 100MB 标签全部打开",
@@ -48,27 +48,27 @@
     {
       "name": "S3b 单标签打开耗时（含索引）",
       "passed": true,
-      "detail": "max=112ms avg=89ms"
+      "detail": "max=567ms avg=147ms"
     },
     {
       "name": "S5 反复滚动 15 次（位置保持）",
       "passed": true,
-      "detail": "ok=15/15 用时=128ms 最大漂移=0px 逐轮漂移=0/0/0/0/0/0/0/0/0/0/0/0/0/0/0"
+      "detail": "ok=15/15 用时=1311ms 最大漂移=14527px 逐轮漂移=0/0/0/0/0/0/0/0/0/0/14527/0/0/0/0"
     },
     {
       "name": "S6 频繁切换标签 20 轮",
       "passed": true,
-      "detail": "ok=20/20 用时=146ms"
+      "detail": "ok=20/20 用时=104ms"
     },
     {
       "name": "S7 开关标签 25 轮",
       "passed": true,
-      "detail": "ok=25/25 用时=1281ms"
+      "detail": "ok=25/25 用时=5197ms"
     },
     {
       "name": "S8 切换编码 6 次（含重建索引）",
       "passed": true,
-      "detail": "max=51ms avg=35ms"
+      "detail": "max=57ms avg=36ms"
     },
     {
       "name": "S8b 切换后取行正常",
@@ -83,17 +83,17 @@
     {
       "name": "S10 状态栏仍正常（活动标签信息）",
       "passed": true,
-      "detail": "big-10.txt · 阅读 37% 100.0 MB · UTF-8"
+      "detail": "big-10.txt · 阅读 37%  100.0 MB · UTF-8"
     },
     {
       "name": "S10b 压力截图已保存",
       "passed": true,
-      "detail": "docs/screenshots/phase9-stress.png"
+      "detail": "docs\\screenshots\\phase9-stress.png"
     },
     {
       "name": "S11 内存红线（10 标签 + 压力后；专用工作集口径）",
       "passed": true,
-      "detail": "peak=105.8MiB（理想线 >100MiB；红线 <120MiB；工作集参考峰值 1439.6MiB——含可回收的 mmap 文件缓存页）"
+      "detail": "peak=106.9MiB（理想线 >100MiB；红线 <120MiB；工作集参考峰值 1444.6MiB——含可回收的 mmap 文件缓存页）"
     }
   ]
 }

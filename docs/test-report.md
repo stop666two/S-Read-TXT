@@ -158,3 +158,10 @@
 - 本轮新增：smoke-settings-io **15/15**（v1 启动迁移端到端、导出结构校验、三类篡改拒绝、合法导入 + import-bak、重置单项/分组/全部、注册表断言）；smoke-history 长列表虚拟滚动 **13/13**；smoke-tabs 溢出滚轮/拖拽取消 **10/10**；smoke-settings **48/48**（含 FontFace 实际加载）；offline-check 并入 verify-all。
 - Rust 单测补强 **+7**（注册表完备性双向断言、边界校验、bundle 边界 4 项、locale 变体）→ 合计 **283**。
 - 全量自检（verify-all）**24/24 通过**，总耗时 687.6s（对应提交 33fa3e6）。
+
+## P0 编辑器化扩展验收（P0-11，2026-10-03）
+
+- **全量自检**：`node scripts/verify-all.mjs`（26 步）首跑 29/31（总耗时 1001.5s）；两处失败均为验收当场修复的测试侧问题：`cargo fmt` 未格式化（已 fmt 修复，`cargo fmt --check` exit 0 复验）；`smoke-tabs T5` 空状态断言仍指向旧欢迎页文案（改为按 `.empty .open-btn` 断言，复跑 10/10）。修复后已重新发起全量自检。
+- **指标红线**（release 全新构建）：安装包 NSIS x64 = 2,062,377 B ≈ **1.97 MiB**（<10MB PASS）；冷启动 5 次 可见 max **666ms** / 就绪 median **792ms**（<1s PASS）；内存 10×100MiB 标签 打开后 **82.5–83.1 MiB**、压力后峰值 **106.9 MiB**（红线 <120 PASS；理想线 100 在压力后略越，口径说明见 known-issues）。
+- **压力套件**：stress **11/11**（S3b max 567ms；S6 104ms；S7 25 轮 5197ms；S8 max 57ms；S5 15/15，其中 1 轮含 14,527px 瞬态漂移后正确落位）。
+- **E2E 总量**：23 套 ≈374 项；Rust 315（293 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 88。
