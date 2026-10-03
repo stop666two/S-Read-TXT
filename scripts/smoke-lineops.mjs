@@ -1,0 +1,334 @@
+#!/usr/bin/env node
+// P1-2 行操作 E2E（常驻套件）。
+// 场景（L1–L11）：菜单入口 / 默认操作预览 / 排序预览与应用 / 单撤销 /
+//   去重（保留末次）/ 缩进参数 / 末尾换行文件级操作 / 参数错误就地展示 /
+//   LINE_OP_INVALID 错误码 / Esc 关闭 / 截图。
+// 前置：已构建 debug 可执行文件（`npm run tauri build -- --debug --no-bundle`）。
+// 用法：node scripts/smoke-lineops.mjs [--exe <路径>] [--screenshot <路径>]
+
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { argValue, createClient, delay, dismissOnboarding, findTarget } from './lib/smoke-cdp.mjs';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const exePath = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe')));
+const screenshotPath = argValue(
+  '--screenshot',
+  join(root, 'docs', 'screenshots', 'phase-p1-lineops.png'),
+);
+const watchdogMs = Number(process.env.SRT_SMOKE_WATCHDOG_MS ?? '300000');
+
+const workDir = join(tmpdir(), `srt-lineops-${Date.now()}`);
+const dataDir = join(workDir, 'data');
+const testFile = join(workDir, 'lineops-sample.txt');
+const port = 9400 + Math.floor(Math.random() * 250);
+
+const checks = [];
+let currentStep = 'L0 启动';
+function check(name, passed, detail = '') {
+  checks.push({ name, passed, detail });
+  console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? `  ← ${detail}` : ''}`);
+}
+
+/** 带重试的删除（进程句柄释放/杀软扫描可能短暂锁定）。 */
+async function removeWithRetry(path, attempts = 12) {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      rmSync(path, { recursive: true, force: true });
+    } catch {
+      // 忽略并重试
+    }
+    if (!existsSync(path)) return;
+    await delay(250);
+  }
+}
+
+const watchdog = setTimeout(() => {
+  console.error(`看门狗超时（${watchdogMs}ms），最后步骤：${currentStep}`);
+  process.exit(4);
+}, watchdogMs);
+
+async function main() {
+  if (!existsSync(exePath)) {
+    console.error(`可执行文件不存在：${exePath}（先运行 npm run tauri build -- --debug --no-bundle）`);
+    process.exit(2);
+  }
+  mkdirSync(workDir, { recursive: true });
+  mkdirSync(dataDir, { recursive: true });
+  // 4 行：两个 apple（去重用）；无末尾换行（末尾换行操作可预览/执行）。
+  writeFileSync(testFile, 'banana\napple\ncherry\napple', 'utf8');
+
+  const child = spawn(exePath, [], {
+    env: {
+      ...process.env,
+      SRT_DATA_DIR: dataDir,
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+    },
+    stdio: 'ignore',
+  });
+
+  let client;
+  try {
+    currentStep = 'L0 等待 CDP';
+    const wsUrl = await (async () => {
+      const started = Date.now();
+      for (;;) {
+        try {
+          return await findTarget(port);
+        } catch {
+          if (Date.now() - started > 20_000) throw new Error('CDP 目标未出现');
+          await delay(250);
+        }
+      }
+    })();
+    client = await createClient(wsUrl);
+    const evalJs = async (expression) => {
+      const result = await client.send('Runtime.evaluate', {
+        expression,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      if (result.exceptionDetails) {
+        throw new Error(`页面执行异常：${result.exceptionDetails.text}`);
+      }
+      return result.result?.value;
+    };
+
+    /** 轮询直到 fn 返回真值或超时。 */
+    const waitFor = async (fn, timeoutMs, label) => {
+      const started = Date.now();
+      for (;;) {
+        const value = await fn();
+        if (value) return value;
+        if (Date.now() - started > timeoutMs) throw new Error(`等待超时：${label}`);
+        await delay(120);
+      }
+    };
+
+    /** 按可见文本点击按钮（菜单/工具栏通用）。 */
+    const clickByText = (text) =>
+      evalJs(
+        `(() => {
+          const el = [...document.querySelectorAll('button')].find((b) => b.textContent.trim().includes(${JSON.stringify(text)}));
+          if (!el) return false;
+          el.click();
+          return true;
+        })()`,
+      );
+
+    /** 设置控件值（select/text/number 通用；同时派发 input/change 触发绑定）。 */
+    const setControl = (selector, value) =>
+      evalJs(
+        `(() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return false;
+          el.value = ${JSON.stringify(value)};
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()`,
+      );
+
+    const activeTab = async () =>
+      evalJs(
+        `(async () => { const v = await window.__TAURI_INTERNALS__.invoke('list_tabs'); return v.tabs.find((t) => t.tabId === v.activeTabId); })()`,
+      );
+
+    const previewTexts = () =>
+      evalJs(`[...document.querySelectorAll('[data-lineops-item] .text')].map((el) => el.textContent)`);
+
+    currentStep = 'L0 就绪等待';
+    await waitFor(() => evalJs(`!!(window.__srt && window.__TAURI_INTERNALS__)`), 20_000, '前端桥接');
+    await dismissOnboarding(evalJs);
+    await waitFor(() => evalJs(`!!document.querySelector('.empty .open-btn')`), 8_000, '欢迎页');
+
+    currentStep = 'L1 打开文件';
+    await evalJs(
+      `(async () => { await window.__srt.openPath(${JSON.stringify(testFile)}); return true; })()`,
+    );
+    const tab1 = await waitFor(activeTab, 10_000, '标签出现');
+    check('L1 打开示样文件', tab1 && tab1.name === 'lineops-sample.txt', JSON.stringify(tab1?.name));
+    const tabId = tab1.tabId;
+
+    currentStep = 'L2 进入编辑';
+    await evalJs(`(document.querySelector('[aria-label="切换编辑模式"]')?.click(), true)`);
+    await waitFor(async () => ((await activeTab())?.editing ? true : null), 8_000, '编辑态');
+    await waitFor(() => evalJs(`!!document.querySelector('textarea.input-proxy')`), 8_000, '编辑层');
+    check('L2 编辑层挂载', (await activeTab())?.editing === true);
+
+    currentStep = 'L3 菜单入口';
+    await clickByText('编辑');
+    await delay(200);
+    const menuClicked = await clickByText('行操作');
+    await waitFor(() => evalJs(`!!document.querySelector('[data-lineops-dialog]')`), 5_000, '行操作弹窗');
+    check('L3 菜单打开行操作弹窗', menuClicked === true);
+
+    currentStep = 'L4 默认预览（去首尾空白）';
+    const defaultOp = await evalJs(`document.querySelector('[data-setting="lines.op"]')?.value`);
+    await evalJs(`document.querySelector('[data-setting="lines.preview"]').click()`);
+    await waitFor(() => evalJs(`!!document.querySelector('[data-lineops-preview]')`), 5_000, '预览区块');
+    let texts = await previewTexts();
+    check('L4a 默认操作为去除首尾空白', defaultOp === 'trimLines', String(defaultOp));
+    check('L4b 预览覆盖 4 行', texts?.length === 4, JSON.stringify(texts));
+
+    currentStep = 'L5 排序预览';
+    await setControl('[data-setting="lines.op"]', 'sort');
+    await delay(150);
+    await evalJs(`document.querySelector('[data-setting="lines.preview"]').click()`);
+    await delay(400);
+    texts = await previewTexts();
+    check(
+      'L5 字典序排序预览',
+      JSON.stringify(texts) === JSON.stringify(['apple', 'apple', 'banana', 'cherry']),
+      JSON.stringify(texts),
+    );
+
+    currentStep = 'L6 应用（单撤销步）';
+    await evalJs(`document.querySelector('[data-setting="lines.apply"]').click()`);
+    await waitFor(() => evalJs(`!document.querySelector('[data-lineops-dialog]')`), 5_000, '弹窗关闭');
+    const rowsAfter = await evalJs(
+      `window.__TAURI_INTERNALS__.invoke('get_rows', { tabId: ${tabId}, startRow: 0, count: 4 })`,
+    );
+    const firstText = rowsAfter?.rows?.[0]?.text ?? '';
+    check('L6a 首行已排序', firstText === 'apple', JSON.stringify(firstText));
+    check('L6b 出现脏标记', (await activeTab())?.dirty === true);
+
+    currentStep = 'L7 单步撤销';
+    await evalJs(`window.__TAURI_INTERNALS__.invoke('undo_edit', { tabId: ${tabId} })`);
+    await delay(500);
+    const rowsUndo = await evalJs(
+      `window.__TAURI_INTERNALS__.invoke('get_rows', { tabId: ${tabId}, startRow: 0, count: 4 })`,
+    );
+    check(
+      'L7 撤销完全还原',
+      (rowsUndo?.rows?.[0]?.text ?? '') === 'banana' && (await activeTab())?.dirty === false,
+    );
+
+    currentStep = 'L8 去重（保留末次）';
+    await clickByText('编辑');
+    await delay(200);
+    await clickByText('行操作');
+    await waitFor(() => evalJs(`!!document.querySelector('[data-lineops-dialog]')`), 5_000, '行操作弹窗');
+    await setControl('[data-setting="lines.op"]', 'dedupe');
+    await delay(150);
+    await setControl('[data-setting="lines.dedupeMode"]', 'keepLast');
+    await delay(150);
+    await evalJs(`document.querySelector('[data-setting="lines.preview"]').click()`);
+    await delay(400);
+    texts = await previewTexts();
+    check(
+      'L8 去重保留末次预览',
+      JSON.stringify(texts) === JSON.stringify(['banana', 'cherry', 'apple']),
+      JSON.stringify(texts),
+    );
+
+    currentStep = 'L9 缩进参数';
+    await setControl('[data-setting="lines.op"]', 'indent');
+    await delay(150);
+    await setControl('[data-setting="lines.indentWidth"]', '2');
+    await delay(150);
+    await evalJs(`document.querySelector('[data-setting="lines.preview"]').click()`);
+    await delay(400);
+    texts = await previewTexts();
+    check('L9 缩进 2 空格预览', texts?.[0] === '  banana', JSON.stringify(texts?.[0]));
+
+    currentStep = 'L10 末尾换行（文件级）';
+    await setControl('[data-setting="lines.op"]', 'ensureTrailingNewline');
+    await delay(150);
+    await evalJs(`document.querySelector('[data-setting="lines.preview"]').click()`);
+    await delay(400);
+    const hasPreview = await evalJs(`!!document.querySelector('[data-lineops-preview]')`);
+    check('L10 末尾换行预览无错误', hasPreview === true);
+
+    currentStep = 'L11 参数错误就地展示';
+    await setControl('[data-setting="lines.op"]', 'extractColumn');
+    await delay(150);
+    await setControl('[data-setting="lines.count"]', '0');
+    await delay(150);
+    await evalJs(`document.querySelector('[data-setting="lines.preview"]').click()`);
+    const errText = await waitFor(
+      () => evalJs(`document.querySelector('[data-lineops-error]')?.textContent ?? ''`),
+      5_000,
+      '错误提示',
+    );
+    check('L11 列号非法就地提示', typeof errText === 'string' && errText.length > 0, errText.slice(0, 60));
+
+    currentStep = 'L11b Esc 关闭';
+    await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' });
+    await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape' });
+    await waitFor(() => evalJs(`!document.querySelector('[data-lineops-dialog]')`), 5_000, 'Esc 关闭');
+    check('L11b Esc 关闭弹窗', true);
+
+    currentStep = 'L12 错误码 LINE_OP_INVALID';
+    const invalid = await evalJs(
+      `(async () => {
+        try {
+          const v = await window.__TAURI_INTERNALS__.invoke('list_tabs');
+          await window.__TAURI_INTERNALS__.invoke('apply_line_op', {
+            tabId: v.activeTabId,
+            config: {
+              op: 'extractColumn',
+              scope: { kind: 'all' },
+              sortOrder: 'lex',
+              sortSeed: 1,
+              dedupeMode: 'keepFirst',
+              dedupeIgnoreCase: false,
+              dedupeFuzzy: false,
+              indentWidth: 4,
+              indentStyle: 'spaces',
+              caseMode: 'lower',
+              widthDirection: 'toHalf',
+              text: '',
+              count: 0,
+              delimiter: ',',
+              delimiterTo: '\\t',
+              skipEmpty: false,
+              previewLines: 10,
+            },
+          });
+          return 'OK';
+        } catch (error) {
+          return JSON.stringify(error);
+        }
+      })()`,
+    );
+    check(
+      'L12 IPC 错误码',
+      typeof invalid === 'string' && invalid.includes('LINE_OP_INVALID'),
+      invalid.slice(0, 80),
+    );
+
+    currentStep = 'L13 截图';
+    const shot = await client.send('Page.captureScreenshot', { format: 'png' });
+    mkdirSync(dirname(screenshotPath), { recursive: true });
+    writeFileSync(screenshotPath, Buffer.from(shot.data, 'base64'));
+    check('L13 截图保存', existsSync(screenshotPath), screenshotPath);
+  } finally {
+    clearTimeout(watchdog);
+    try {
+      if (child.pid) {
+        spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+      }
+    } catch {
+      // 忽略清理失败
+    }
+    await removeWithRetry(workDir);
+  }
+
+  const failed = checks.filter((item) => !item.passed);
+  console.log(`\n结果：${checks.length - failed.length}/${checks.length} 通过`);
+  if (failed.length > 0) {
+    for (const item of failed) console.log(`FAILED: ${item.name} ${item.detail}`);
+    process.exitCode = 1;
+  }
+}
+
+main().catch((error) => {
+  clearTimeout(watchdog);
+  console.error(`未捕获错误（${currentStep}）：${error.message}`);
+  process.exitCode = 1;
+});
