@@ -58,7 +58,9 @@
         current = Number((event.currentTarget as HTMLInputElement).value);
         onLive?.(current);
       }}
-      onchange={() => onCommit(clamp(current))}
+      onchange={(event) =>
+        // 读事件值而非内部状态：change 可能独立于 input 到达（程序化事件/极端时序）
+        onCommit(clamp(Number((event.currentTarget as HTMLInputElement).value)))}
     />
     <input
       class="num"
