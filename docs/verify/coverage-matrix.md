@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 283（261 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 77；E2E 18 套 ≈315 项。
+- 计数口径：Rust 283（261 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 82；E2E 18 套 ≈319 项。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -24,7 +24,7 @@
 | smoke-abuse | 41 | 对抗：空文件/换行族/BOM/连打/撤销狂按/冲突/长行 |
 | smoke-scroll | 4 | 滚动完整性：跳转/滚轮/震荡/滑块联动 |
 | smoke-limits | 6 | 双阈值：只读标记/编辑禁用/硬上限拒绝/设置滑块 |
-| smoke-settings-io | 15 | 设置 I/O：迁移/导出/篡改拒绝/导入/重置/注册表 |
+| smoke-settings-io | 19 | 设置 I/O：迁移/导出/篡改拒绝/导入/重置/注册表/**语言持久化（重启英文 UI）** |
 | smoke-longline | 9 | 100MB 无换行：分段/滚动/编辑/保存字节级 |
 | offline-check | 4 | 离线核查：依赖树（静态）+ 运行时零外联（动态） |
 
@@ -45,7 +45,7 @@
 | save_tab / save_tab_as / reload_tab | smoke-edit；smoke-find F12/F14；smoke-shortcuts K12 |
 | find_in_edit / replace_in_edit / replace_all_in_edit | smoke-find F1–F14；smoke-i18n I5；Rust search 测试 |
 | preview_replace_all_in_edit / apply_replace_all_in_edit / match_window_in_edit | smoke-find F15–F19；smoke-i18n 高亮 |
-| export_settings / import_settings / reset_settings / get_settings_registry | **smoke-settings-io E1–E10**；Rust bundle 11 项 / reset 5 项 / registry 7 项 |
+| export_settings / import_settings / reset_settings / get_settings_registry | **smoke-settings-io E1–E10 + L1–L4（语言持久化）**；Rust bundle 11 项 / reset 5 项 / registry 7 项 |
 
 ## 3. 错误码 × 证据（24 个）
 
@@ -89,12 +89,13 @@
 | 缺口 | 处置 |
 |---|---|
 | P0-4 设置 UI v2（搜索/分组/导入导出界面/重置按钮/语言下拉） | UI 实现后补 E2E（smoke-settings 扩展或新套件），并登记本表 |
-| P0-3 i18n 前端（核心已建：语言设置 + Rust 侧） | 语言包抽取完成后补 zh/en 键完备性单测 + 语言切换 E2E |
+| P0-3 i18n 前端（核心+外壳已完成：zh-CN 类型源 / en 完备性约束 / t() 插值 / 即时切换；6 组件已抽取；vitest 5 项 + L1–L4 重启英文 UI） | 剩余：菜单/标签/对话框/设置窗口/App 文案抽取，语言下拉（P0-4）落地后补全量 E2E |
 | 性能套件（stress / measure-startup / memory-report） | 手动执行（时长与负载原因不入 verify-all），结论入 docs/test-report.md |
 | 覆盖率度量（llvm-cov / vitest coverage） | 待评估 GNU 工具链可行性；当前以「表面覆盖 + 本矩阵」为准 |
 | 32 位 / ARM64 兼容 | CI `cargo check`（i686 / aarch64）覆盖 |
 
 ## 6. 变更记录
 
+- 2026-10-03 P0-3b：i18n 核心（`zh-CN` 类型源 + `en` 完备性约束 + `t()` 插值 + runes 即时切换）与外壳文案抽取（标题栏/工具栏/状态栏/空状态/拖拽遮罩/首启引导）；`setLocale` 于 `reloadSettings` 接线；vitest 82；smoke-settings-io 扩展 L1–L4（重启后英文 UI）。
 - 2026-10-03 覆盖补测批次：新增 smoke-settings-io（15 项）、smoke-history 长列表（+2）、smoke-tabs 溢出/拖拽取消（+3）、smoke-settings 字体加载断言（+1）、offline-check 并入 verify-all；Rust 新增 7 项（注册表完备性/边界、bundle 边界 4 项、locale 变体）。
 - 修复随本轮：S13a 过期断言（标签改名）、H8 种子数据 `encoding` 字段类型。
