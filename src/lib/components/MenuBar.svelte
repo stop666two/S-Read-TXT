@@ -2,6 +2,8 @@
   // 菜单栏（应用内自绘）：文件 / 编辑 / 查看 / 帮助。
   // 阶段 2b：完成结构、下拉交互与主题动作；其余动作在后续切片接线（回调缺省即无操作）。
   // 交互约定：点击标题开合；已有菜单打开时悬停切换；点击菜单项执行；Esc / 点击外部关闭。
+  import { t } from '../i18n/index.svelte';
+  import type { MessageKey } from '../i18n/zh-CN';
   import type { ThemeChoice } from '../types';
   import type { EditActionType } from '../edit/actions';
   import type { HistoryEntry } from '../ipc';
@@ -87,12 +89,12 @@
   /** 「最近打开」子菜单展开（悬停/点击切换） */
   let recentOpen = $state(false);
 
-  /** 主题菜单项（查看菜单内） */
-  const themeItems: { value: ThemeChoice; label: string }[] = [
-    { value: 'light', label: '浅色' },
-    { value: 'dark', label: '深色' },
-    { value: 'eye', label: '护眼' },
-    { value: 'system', label: '跟随系统' },
+  /** 主题菜单项（查看菜单内；labelKey 经 i18n 解析） */
+  const themeItems: { value: ThemeChoice; labelKey: MessageKey }[] = [
+    { value: 'light', labelKey: 'theme.light' },
+    { value: 'dark', labelKey: 'theme.dark' },
+    { value: 'eye', labelKey: 'theme.eye' },
+    { value: 'system', labelKey: 'theme.system' },
   ];
 
   /** 切换菜单开合 */
@@ -128,16 +130,16 @@
   }}
 />
 
-<nav class="menu-bar" aria-label="主菜单">
-  <button class="title" class:open={openMenu === 'file'} onclick={(e) => { e.stopPropagation(); toggle('file'); }} onmouseenter={() => hoverSwitch('file')}>文件</button>
-  <button class="title" class:open={openMenu === 'edit'} onclick={(e) => { e.stopPropagation(); toggle('edit'); }} onmouseenter={() => hoverSwitch('edit')}>编辑</button>
-  <button class="title" class:open={openMenu === 'view'} onclick={(e) => { e.stopPropagation(); toggle('view'); }} onmouseenter={() => hoverSwitch('view')}>查看</button>
-  <button class="title" class:open={openMenu === 'help'} onclick={(e) => { e.stopPropagation(); toggle('help'); }} onmouseenter={() => hoverSwitch('help')}>帮助</button>
+<nav class="menu-bar" aria-label={t('menu.aria')}>
+  <button class="title" class:open={openMenu === 'file'} onclick={(e) => { e.stopPropagation(); toggle('file'); }} onmouseenter={() => hoverSwitch('file')}>{t('menu.file')}</button>
+  <button class="title" class:open={openMenu === 'edit'} onclick={(e) => { e.stopPropagation(); toggle('edit'); }} onmouseenter={() => hoverSwitch('edit')}>{t('menu.edit')}</button>
+  <button class="title" class:open={openMenu === 'view'} onclick={(e) => { e.stopPropagation(); toggle('view'); }} onmouseenter={() => hoverSwitch('view')}>{t('menu.view')}</button>
+  <button class="title" class:open={openMenu === 'help'} onclick={(e) => { e.stopPropagation(); toggle('help'); }} onmouseenter={() => hoverSwitch('help')}>{t('menu.help')}</button>
 
   {#if openMenu === 'file'}
     <div class="dropdown" role="menu" style="left: 4px">
-      <button class="item" onclick={() => run(onOpenFile)}><span>打开文件…</span><span class="hint">Ctrl+O</span></button>
-      <button class="item" disabled={!hasTab} onclick={() => run(onReload)}><span>重新加载</span></button>
+      <button class="item" onclick={() => run(onOpenFile)}><span>{t('menu.file.open')}</span><span class="hint">Ctrl+O</span></button>
+      <button class="item" disabled={!hasTab} onclick={() => run(onReload)}><span>{t('menu.file.reload')}</span></button>
       <div class="separator"></div>
       <div
         class="submenu-wrap"
@@ -152,11 +154,11 @@
           aria-expanded={recentOpen}
           onclick={() => (recentOpen = !recentOpen)}
         >
-          <span>最近打开</span>
+          <span>{t('menu.file.recent')}</span>
           <span class="arrow">▸</span>
         </button>
         {#if recentOpen && recent.length > 0}
-          <div class="flyout" role="menu" aria-label="最近打开">
+          <div class="flyout" role="menu" aria-label={t('menu.file.recentAria')}>
             {#each recent as entry (entry.path)}
               <button class="item" title={entry.path} onclick={() => run(() => onOpenRecent?.(entry))}>
                 <span class="recent-name">{entry.name}</span>
@@ -166,65 +168,65 @@
         {/if}
       </div>
       <button class="item" onclick={() => run(() => onOpenHistory?.())}>
-        <span>历史记录</span>
+        <span>{t('menu.file.history')}</span>
         <span class="hint">Ctrl+Shift+H</span>
       </button>
-      <button class="item" onclick={() => run(onSettings)}><span>设置…</span></button>
+      <button class="item" onclick={() => run(onSettings)}><span>{t('menu.file.settings')}</span></button>
       <div class="separator"></div>
-      <button class="item" onclick={() => run(onQuit)}><span>退出</span></button>
+      <button class="item" onclick={() => run(onQuit)}><span>{t('menu.file.quit')}</span></button>
     </div>
   {:else if openMenu === 'edit'}
     <div class="dropdown" role="menu" style="left: 46px">
       <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('undo'))}>
-        <span>撤销</span>
+        <span>{t('menu.edit.undo')}</span>
         <span class="hint">Ctrl+Z</span>
       </button>
       <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('redo'))}>
-        <span>重做</span>
+        <span>{t('menu.edit.redo')}</span>
         <span class="hint">Ctrl+Y</span>
       </button>
       <div class="separator"></div>
       <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('cut'))}>
-        <span>剪切</span>
+        <span>{t('menu.edit.cut')}</span>
         <span class="hint">Ctrl+X</span>
       </button>
       <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('copy'))}>
-        <span>复制</span>
+        <span>{t('menu.edit.copy')}</span>
         <span class="hint">Ctrl+C</span>
       </button>
       <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('paste'))}>
-        <span>粘贴</span>
+        <span>{t('menu.edit.paste')}</span>
         <span class="hint">Ctrl+V</span>
       </button>
       <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('selectAll'))}>
-        <span>全选</span>
+        <span>{t('menu.edit.selectAll')}</span>
         <span class="hint">Ctrl+A</span>
       </button>
       <div class="separator"></div>
       <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('find'))}>
-        <span>查找…</span>
+        <span>{t('menu.edit.find')}</span>
         <span class="hint">Ctrl+F</span>
       </button>
       <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('replace'))}>
-        <span>替换…</span>
+        <span>{t('menu.edit.replace')}</span>
         <span class="hint">Ctrl+H</span>
       </button>
       <div class="separator"></div>
       <button
         class="item"
         disabled={!hasTab || readOnly}
-        title={readOnly ? '文件超过只读阈值，不可编辑（可在设置中调整）' : ''}
+        title={readOnly ? t('toolbar.editReadOnlyHint') : ''}
         onclick={() => run(onToggleEdit)}
       >
-        <span>{editing ? '退出编辑模式' : '启用编辑模式'}</span>
+        <span>{editing ? t('menu.edit.disableEdit') : t('menu.edit.enableEdit')}</span>
         <span class="hint">Ctrl+E</span>
       </button>
       <button class="item" disabled={!editing || !dirty} onclick={() => run(onSave)}>
-        <span>保存</span>
+        <span>{t('menu.edit.save')}</span>
         <span class="hint">Ctrl+S</span>
       </button>
       <button class="item" disabled={!editing} onclick={() => run(onSaveAs)}>
-        <span>另存为…</span>
+        <span>{t('menu.edit.saveAs')}</span>
         <span class="hint">Ctrl+Shift+S</span>
       </button>
     </div>
@@ -233,20 +235,20 @@
       {#each themeItems as item (item.value)}
         <button class="item" onclick={() => run(() => onThemeChange(item.value))}>
           <span class="radio" class:on={themeChoice === item.value}></span>
-          <span>{item.label}</span>
+          <span>{t(item.labelKey)}</span>
         </button>
       {/each}
       <div class="separator"></div>
-      <button class="item" onclick={() => run(() => onFontIncrease?.())}><span>字号增大</span></button>
-      <button class="item" onclick={() => run(() => onFontDecrease?.())}><span>字号减小</span></button>
-      <button class="item" onclick={() => run(() => onFontReset?.())}><span>重置字号</span></button>
+      <button class="item" onclick={() => run(() => onFontIncrease?.())}><span>{t('menu.view.fontIncrease')}</span></button>
+      <button class="item" onclick={() => run(() => onFontDecrease?.())}><span>{t('menu.view.fontDecrease')}</span></button>
+      <button class="item" onclick={() => run(() => onFontReset?.())}><span>{t('menu.view.fontReset')}</span></button>
       <div class="separator"></div>
-      <button class="item" onclick={() => run(onToggleFullscreen)}><span>全屏</span><span class="hint">F11</span></button>
+      <button class="item" onclick={() => run(onToggleFullscreen)}><span>{t('menu.view.fullscreen')}</span><span class="hint">F11</span></button>
     </div>
   {:else if openMenu === 'help'}
     <div class="dropdown" role="menu" style="left: 130px">
-      <button class="item" onclick={() => run(() => onOpenShortcuts?.())}><span>快捷键…</span></button>
-      <button class="item" onclick={() => run(() => onOpenAbout?.())}><span>关于 S-Read-TXT</span></button>
+      <button class="item" onclick={() => run(() => onOpenShortcuts?.())}><span>{t('menu.help.shortcuts')}</span></button>
+      <button class="item" onclick={() => run(() => onOpenAbout?.())}><span>{t('menu.help.about')}</span></button>
     </div>
   {/if}
 </nav>

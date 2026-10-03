@@ -4,6 +4,8 @@
   可访问性：role=menu + menuitem；打开时聚焦第一项，支持方向键/Enter/Esc。
 -->
 <script lang="ts">
+  import { t } from '../i18n/index.svelte';
+
   interface Props {
     /** 光标位置（视口坐标） */
     x: number;
@@ -75,16 +77,16 @@
 <div
   class="tab-menu"
   role="menu"
-  aria-label="标签操作"
+  aria-label={t('tabMenu.aria')}
   tabindex="-1"
   bind:this={root}
   style="left: {x}px; top: {y}px;"
   onkeydown={onKeydown}
   use:focusFirst
 >
-  <button class="item" role="menuitem" onclick={() => run(onClose)}>关闭</button>
-  <button class="item" role="menuitem" onclick={() => run(onCloseOthers)}>关闭其他</button>
-  <button class="item" role="menuitem" onclick={() => run(onCloseAll)}>关闭全部</button>
+  <button class="item" role="menuitem" onclick={() => run(onClose)}>{t('tabMenu.close')}</button>
+  <button class="item" role="menuitem" onclick={() => run(onCloseOthers)}>{t('tabMenu.closeOthers')}</button>
+  <button class="item" role="menuitem" onclick={() => run(onCloseAll)}>{t('tabMenu.closeAll')}</button>
 </div>
 
 <style>

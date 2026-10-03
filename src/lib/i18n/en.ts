@@ -67,4 +67,51 @@ export const en: Record<MessageKey, string> = {
     ': Settings → Shortcuts; all 15 actions are customizable',
   'onboarding.dontShow': "Don't show again",
   'onboarding.start': 'Get started',
+
+  // ---------- Menu bar ----------
+  'menu.aria': 'Main menu',
+  'menu.file': 'File',
+  'menu.edit': 'Edit',
+  'menu.view': 'View',
+  'menu.help': 'Help',
+  'menu.file.open': 'Open file…',
+  'menu.file.reload': 'Reload',
+  'menu.file.recent': 'Open recent',
+  'menu.file.recentAria': 'Open recent',
+  'menu.file.history': 'History',
+  'menu.file.settings': 'Settings…',
+  'menu.file.quit': 'Exit',
+  'menu.edit.undo': 'Undo',
+  'menu.edit.redo': 'Redo',
+  'menu.edit.cut': 'Cut',
+  'menu.edit.copy': 'Copy',
+  'menu.edit.paste': 'Paste',
+  'menu.edit.selectAll': 'Select all',
+  'menu.edit.find': 'Find…',
+  'menu.edit.replace': 'Replace…',
+  'menu.edit.enableEdit': 'Enable edit mode',
+  'menu.edit.disableEdit': 'Exit edit mode',
+  'menu.edit.save': 'Save',
+  'menu.edit.saveAs': 'Save as…',
+  'menu.view.fontIncrease': 'Increase font size',
+  'menu.view.fontDecrease': 'Decrease font size',
+  'menu.view.fontReset': 'Reset font size',
+  'menu.view.fullscreen': 'Full screen',
+  'menu.help.shortcuts': 'Shortcuts…',
+  'menu.help.about': 'About S-Read-TXT',
+
+  // ---------- Tab bar ----------
+  'tabBar.aria': 'Open files',
+  'tabBar.closeHint': 'Close tab (Ctrl+W)',
+  'tabBar.closeAria': 'Close {name}',
+
+  // ---------- Tab context menu ----------
+  'tabMenu.aria': 'Tab actions',
+  'tabMenu.close': 'Close',
+  'tabMenu.closeOthers': 'Close others',
+  'tabMenu.closeAll': 'Close all',
+
+  // ---------- Encoding menu ----------
+  'encoding.switch': 'Switch encoding',
+  'encoding.auto': 'Auto detect',
 };

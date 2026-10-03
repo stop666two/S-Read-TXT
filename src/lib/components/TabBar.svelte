@@ -3,6 +3,7 @@
   // 视觉规格（设计 D28）：高 34px；活动标签顶部 2px 强调条 + 阅读区底色；
   // 宽度 90–180px、文本省略；关闭按钮悬停/活动时显现。
   // 拖拽采用指针事件自实现（非 HTML5 DnD）：跨平台一致且可被 CDP 自动化驱动。
+  import { t } from '../i18n/index.svelte';
   import Icon from './Icon.svelte';
   import TabContextMenu from './TabContextMenu.svelte';
   import type { TabInfo } from '../ipc';
@@ -116,7 +117,7 @@
 
 <svelte:window onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={onPointerUp} />
 
-<div class="tab-bar" role="tablist" aria-label="打开的文件" bind:this={bar}>
+<div class="tab-bar" role="tablist" aria-label={t('tabBar.aria')} bind:this={bar}>
   {#each tabs as tab (tab.tabId)}
     <div
       class="tab"
@@ -153,8 +154,8 @@
       <span class="name">{tab.name}</span>
       <button
         class="close"
-        title="关闭标签（Ctrl+W）"
-        aria-label={`关闭 ${tab.name}`}
+        title={t('tabBar.closeHint')}
+        aria-label={t('tabBar.closeAria', { name: tab.name })}
         onclick={(event) => {
           event.stopPropagation();
           onClose(tab.tabId);

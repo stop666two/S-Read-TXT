@@ -5,6 +5,8 @@
   openUp：下拉向上展开（状态栏位于窗口底部时使用）。
 -->
 <script lang="ts">
+  import { t } from '../i18n/index.svelte';
+
   interface Props {
     /** 触发按钮显示文案（工具栏：「编码：自动」；状态栏：当前编码） */
     displayLabel: string;
@@ -40,7 +42,7 @@
 <div class="encoding-wrap">
   <button
     class="enc-btn"
-    title="切换编码"
+    title={t('encoding.switch')}
     aria-haspopup="menu"
     aria-expanded={open}
     onclick={() => (open = !open)}
@@ -51,7 +53,7 @@
     <div class="dropdown" class:up={openUp} role="menu">
       <button class="item" onclick={() => pick(null)}>
         <span class="radio" class:on={override === null}></span>
-        <span>自动检测</span>
+        <span>{t('encoding.auto')}</span>
       </button>
       {#each encodings as label (label)}
         <button class="item" onclick={() => pick(label)}>

@@ -62,6 +62,53 @@ export const zhCN = {
   'onboarding.shortcutsDesc': '：设置 → 快捷键，15 个动作全部可自定义',
   'onboarding.dontShow': '不再显示',
   'onboarding.start': '开始使用',
+
+  // ---------- 菜单栏 ----------
+  'menu.aria': '主菜单',
+  'menu.file': '文件',
+  'menu.edit': '编辑',
+  'menu.view': '查看',
+  'menu.help': '帮助',
+  'menu.file.open': '打开文件…',
+  'menu.file.reload': '重新加载',
+  'menu.file.recent': '最近打开',
+  'menu.file.recentAria': '最近打开',
+  'menu.file.history': '历史记录',
+  'menu.file.settings': '设置…',
+  'menu.file.quit': '退出',
+  'menu.edit.undo': '撤销',
+  'menu.edit.redo': '重做',
+  'menu.edit.cut': '剪切',
+  'menu.edit.copy': '复制',
+  'menu.edit.paste': '粘贴',
+  'menu.edit.selectAll': '全选',
+  'menu.edit.find': '查找…',
+  'menu.edit.replace': '替换…',
+  'menu.edit.enableEdit': '启用编辑模式',
+  'menu.edit.disableEdit': '退出编辑模式',
+  'menu.edit.save': '保存',
+  'menu.edit.saveAs': '另存为…',
+  'menu.view.fontIncrease': '字号增大',
+  'menu.view.fontDecrease': '字号减小',
+  'menu.view.fontReset': '重置字号',
+  'menu.view.fullscreen': '全屏',
+  'menu.help.shortcuts': '快捷键…',
+  'menu.help.about': '关于 S-Read-TXT',
+
+  // ---------- 标签栏 ----------
+  'tabBar.aria': '打开的文件',
+  'tabBar.closeHint': '关闭标签（Ctrl+W）',
+  'tabBar.closeAria': '关闭 {name}',
+
+  // ---------- 标签右键菜单 ----------
+  'tabMenu.aria': '标签操作',
+  'tabMenu.close': '关闭',
+  'tabMenu.closeOthers': '关闭其他',
+  'tabMenu.closeAll': '关闭全部',
+
+  // ---------- 编码菜单 ----------
+  'encoding.switch': '切换编码',
+  'encoding.auto': '自动检测',
 } as const;
 
 /** 消息键（由 zh-CN 推导；所有语言包必须一字不差地覆盖）。 */
