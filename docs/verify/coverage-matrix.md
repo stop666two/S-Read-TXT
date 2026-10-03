@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 351（329 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 96；E2E 26 套 ≈424 项；verify-all 29 步。
+- 计数口径：Rust 359（337 lib + 15 对抗 + 2 助手 + 5 集成）；vitest 96；E2E 27 套 ≈437 项；verify-all 30 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -13,6 +13,7 @@
 | smoke-batch | 16 | 批量序号（P1-1）：菜单入口/默认预览（跳空行）/零填充与前后缀/行范围/模板/应用+单撤销/超限错误就地展示/BATCH_INVALID |
 | smoke-lineops | 16 | 行操作（P1-2）：菜单入口/默认操作预览/排序预览与应用/单撤销/去重保留末次/缩进参数/末尾换行（文件级）/参数错误就地展示/LINE_OP_INVALID/Esc/截图 |
 | smoke-multi | 18 | 多光标（P1-3）：修饰键单击加/移除光标、多光标连续键入（单撤销步）、单步撤销还原、矩形拖选替换与列键入、Esc 收起、多光标退格（单撤销步）、设置开关门控（禁用/恢复）、截图 |
+| smoke-filter | 13 | 过滤视图（P1-4）：入口可见/字面量过滤与计数/隐藏空行/大小写开关与无匹配/非法正则就地报错/清除恢复/切标签清空/编辑态隐藏入口/截图 |
 | smoke-ime | 7 | 输入法组合：preedit/候选/提交/取消/保存 |
 | smoke-i18n | 27 | 8 语言渲染/查找/替换/编码往返/切换 |
 | smoke-titlebar | 10 | 标题栏：拖拽/三键/双击/最小化/主题/齿轮入口 |
@@ -54,6 +55,7 @@
 | find_in_edit / replace_in_edit / replace_all_in_edit | smoke-find F1–F14；smoke-i18n I5；Rust search
 | preview_batch_numbering / apply_batch_numbering | smoke-batch B1–B12；Rust batch 18 项 + app_state 2 项 | 测试 |
 | preview_line_op / apply_line_op | smoke-lineops L1–L13；Rust line_ops 15 项 + app_state 1 项 | 测试 |
+| filter_rows / fetch_rows_at | smoke-filter F1–F10；Rust filter 8 项 | 测试 |
 | preview_replace_all_in_edit / apply_replace_all_in_edit / match_window_in_edit | smoke-find F15–F19；smoke-i18n 高亮 |
 | export_settings / import_settings / reset_settings / get_settings_registry | **smoke-settings-io E1–E10 + L1–L4（语言持久化）**；**smoke-settings-v2 V1–V10（搜索/单项·分组·全部重置/导入导出按钮/语言下拉/折叠）**；Rust bundle 11 项 / reset 5 项 / registry 7 项 |
 
@@ -123,3 +125,4 @@
 - 2026-10-03 P1-1：批量插入/序号（编辑引擎 10 格式/5 范围/模板/容量预检；IPC 两命令 + BATCH_INVALID；编辑菜单入口与弹窗；smoke-batch 16/16 并入 verify-all）。
 - 2026-10-03 P1-2：行操作套件（引擎 26 种 + 编辑器设置节 v4 + IPC 两命令 + 编辑菜单入口与按族参数弹窗；smoke-lineops 16/16 并入 verify-all）。
 - 2026-10-03 P1-3：多光标与矩形选择（设置节 v5 + 纯逻辑 multi.ts 8 项 + EditLayer 集成 + 修复阶段 4b 遗留的鼠标定位缺陷；smoke-multi 18/18 并入 verify-all）。
+- 2026-10-03 P1-4：过滤视图（只读扫描 filter.rs 8 项 + 稀疏取行 fetch_rows_at + 阅读区筛选条（字面量/正则/大小写/隐藏空行/截断标注）；smoke-filter 13/13 并入 verify-all）。
