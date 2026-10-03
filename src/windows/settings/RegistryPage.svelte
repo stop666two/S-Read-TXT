@@ -57,6 +57,31 @@
       debug: 'setting.enum.logLevel.debug',
     },
     'app.locale': { 'zh-CN': 'setting.enum.locale.zh-CN', en: 'setting.enum.locale.en' },
+  'app.editor.lines.defaultScope': {
+    all: 'setting.enum.lineScope.all',
+    currentLine: 'setting.enum.lineScope.currentLine',
+    rowRange: 'setting.enum.lineScope.rowRange',
+    nonEmpty: 'setting.enum.lineScope.nonEmpty',
+    selection: 'setting.enum.lineScope.selection',
+  },
+  'app.editor.lines.sortMode': {
+    lex: 'setting.enum.sortMode.lex',
+    natural: 'setting.enum.sortMode.natural',
+    length: 'setting.enum.sortMode.length',
+  },
+  'app.editor.lines.dedupeMode': {
+    keepFirst: 'setting.enum.dedupeMode.keepFirst',
+    keepLast: 'setting.enum.dedupeMode.keepLast',
+  },
+  'app.editor.lines.indentStyle': {
+    spaces: 'setting.enum.indentStyle.spaces',
+    tab: 'setting.enum.indentStyle.tab',
+  },
+  'app.editor.lines.caseDefault': {
+    upper: 'setting.enum.caseMode.upper',
+    lower: 'setting.enum.caseMode.lower',
+    title: 'setting.enum.caseMode.title',
+  },
     'reader.typography.textAlign': {
       left: 'setting.enum.align.left',
       justify: 'setting.enum.align.justify',

@@ -12,6 +12,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::settings::defaults;
+use crate::settings::editor::EditorSettings;
 use crate::settings::model::AppSettings;
 use crate::settings::reader::ReaderSettings;
 use crate::settings::shortcuts::ShortcutSettings;
@@ -137,6 +138,7 @@ fn normalize_app(settings: &mut AppSettings) {
     settings.schema_version = defaults::SCHEMA_VERSION;
     settings.log_level = settings.log_level.normalized();
     settings.locale = settings.locale.normalized();
+    normalize_editor(&mut settings.editor);
     let (min_size, max_size) = defaults::MAX_FILE_SIZE_MB_RANGE;
     settings.max_file_size_mb = settings.max_file_size_mb.clamp(min_size, max_size);
     let (min_hard, max_hard) = defaults::HARD_LIMIT_MB_RANGE;
@@ -151,6 +153,23 @@ fn normalize_app(settings: &mut AppSettings) {
     settings.history.max_entries = settings.history.max_entries.clamp(min_entries, max_entries);
     let (min_days, max_days) = defaults::HISTORY_RETENTION_DAYS_RANGE;
     settings.history.retention_days = settings.history.retention_days.clamp(min_days, max_days);
+}
+
+/// 编辑器默认值归一：枚举回退、缩进宽度钳制、分隔符非法回退默认。
+fn normalize_editor(editor: &mut EditorSettings) {
+    let lines = &mut editor.lines;
+    lines.default_scope = lines.default_scope.normalized();
+    lines.sort_mode = lines.sort_mode.normalized();
+    lines.dedupe_mode = lines.dedupe_mode.normalized();
+    lines.indent_style = lines.indent_style.normalized();
+    lines.case_default = lines.case_default.normalized();
+    let (min_width, max_width) = defaults::LINE_INDENT_WIDTH_RANGE;
+    lines.indent_width = lines.indent_width.clamp(min_width, max_width);
+    let delimiter_ok = !lines.column_delimiter.is_empty()
+        && lines.column_delimiter.chars().count() <= defaults::LINE_COLUMN_DELIMITER_MAX_CHARS;
+    if !delimiter_ok {
+        lines.column_delimiter = defaults::DEFAULT_LINE_COLUMN_DELIMITER.to_string();
+    }
 }
 
 /// 阅读排版归一：主题回退、字体去空白、数值裁剪。

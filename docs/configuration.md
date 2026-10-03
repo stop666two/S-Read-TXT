@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `3` | `3` | 配置格式版本（当前 v3；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `4` | `4` | 配置格式版本（当前 v4；启动自动迁移旧版，见 §2.7） |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
 | `maxFileSizeMB` | number | 1–2048 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
 | `hardLimitMB` | number | 100–16384 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
@@ -36,12 +36,23 @@
 | `locale` | string | `zh-CN` / `en` | `zh-CN` | 界面语言（BCP 47 标签；未知值归一为默认；即时切换） |
 | `startup.restoreSession` | boolean | `true`/`false` | `true` | 启动时恢复上次会话（标签与阅读位置） |
 | `startup.restoreWindow` | boolean | `true`/`false` | `true` | 启动时恢复窗口位置与大小；关闭后使用默认几何（居中 1100×760） |
+| `editor.lines.defaultScope` | string | `all`/`currentLine`/`rowRange`/`nonEmpty`/`selection` | `all` | 行操作弹窗的默认作用范围 |
+| `editor.lines.sortMode` | string | `lex`/`natural`/`length` | `lex` | 默认排序方式：字典序 / 自然排序（数字按数值）/ 按长度 |
+| `editor.lines.dedupeMode` | string | `keepFirst`/`keepLast` | `keepFirst` | 去重规则：保留首次 / 保留末次 |
+| `editor.lines.dedupeIgnoreCase` | boolean | `true`/`false` | `false` | 去重比较时忽略大小写 |
+| `editor.lines.dedupeFuzzy` | boolean | `true`/`false` | `false` | 模糊去重：NFKC 规范化 + 忽略空白后比较（提案值，已随「完全开始」生效） |
+| `editor.lines.indentWidth` | number | 1–16 整数 | `4` | 缩进宽度（空格数） |
+| `editor.lines.indentStyle` | string | `spaces`/`tab` | `spaces` | 缩进字符 |
+| `editor.lines.caseDefault` | string | `upper`/`lower`/`title` | `lower` | 大小写转换默认模式（标题式=每词首字母大写） |
+| `editor.lines.columnDelimiter` | string | 1–16 字符 | `\t` | 列编辑/分隔符转换默认分隔符（空或超长回退默认） |
+| `editor.lines.preview` | boolean | `true`/`false` | `true` | 高风险行操作默认先预览再执行 |
+| `editor.lines.skipEmptyLines` | boolean | `true`/`false` | `false` | 行操作是否默认跳过空行 |
 
 ### 2.2 `reader.json`（阅读排版子配置）
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `3` | `3` | 配置格式版本（当前 v3；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `4` | `4` | 配置格式版本（当前 v4；启动自动迁移旧版，见 §2.7） |
 | `theme` | string | `system` / `light` / `dark` / `eye-green` / `paper-cream` / `high-contrast` / `minimal-gray` / 用户主题 id | `system` | 主题 id；`system` 跟随系统明暗解析；用户主题来自 `data/themes/<id>.json`（导入生成） |
 | `themeAnimEnabled` | boolean | `true`/`false` | `true` | 主题切换过渡动画（尊重系统「减少动态效果」） |
 | `themeAnimMs` | number | 0–1000 整数 | `200` | 主题过渡时长（ms；0 = 无过渡） |
@@ -72,7 +83,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `3` | `3` | 配置格式版本（当前 v3；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `4` | `4` | 配置格式版本（当前 v4；启动自动迁移旧版，见 §2.7） |
 | `bindings` | object | 动作 id → 组合键字符串 | 见下表 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
 
 组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`）。
@@ -127,7 +138,7 @@
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v3）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`）：
+**schema 版本（当前 v4）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐）：
 
 | 情况 | 行为 |
 |---|---|
@@ -144,7 +155,7 @@
 | `export_settings(path)` | 导出全部配置为 JSON 包到指定路径（原子写；返回写入字节数） |
 | `import_settings(path)` | 导入 JSON 包：强校验 → 备份现有配置（`*.import-bak`）→ 依次写入；任一步失败自动回滚已写文件 |
 | `reset_settings(scope)` | 重置设置，`scope` 三态：`{"kind":"all"}` / `{"kind":"group","name":"reader.typography"}` / `{"kind":"field","id":"app.maxTabs"}` |
-| `get_settings_registry()` | 设置项注册表（id / group / label / kind），设置界面动态生成与搜索的唯一元数据源 |
+| `get_settings_registry()` | 设置项注册表（id / group / kind；界面文案由前端语言包按 `setting.<id>` 提供），设置界面动态生成与搜索的唯一元数据源 |
 
 导入包结构（`bundleVersion = 1`）：
 

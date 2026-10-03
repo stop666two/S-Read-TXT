@@ -32,6 +32,7 @@ import DiskSection from './DiskSection.svelte';
       icon: 'M3 5h10M3 11h10M6 3.4v3.2M11 9.4v3.2',
     },
     { id: 'typography', labelKey: 'settings.category.reader', icon: 'M4 4h8M8 4v8M6.2 12h3.6' },
+    { id: 'editor', labelKey: 'settings.category.editor', icon: 'M3 4h10M5.5 8h7.5M5.5 12h7.5' },
     {
       id: 'shortcuts',
       labelKey: 'settings.category.shortcuts',
@@ -155,6 +156,8 @@ import DiskSection from './DiskSection.svelte';
         {/if}
       {:else if tab === 'typography'}
         <RegistryPage groups={['reader.basic', 'reader.typography', 'reader.statusBar']} {query} />
+      {:else if tab === 'editor'}
+        <RegistryPage groups={['app.editor.lines']} {query} />
       {:else if tab === 'shortcuts'}
         <ShortcutsTab />
       {:else if tab === 'history'}

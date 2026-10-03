@@ -144,6 +144,78 @@ pub const SPECS: &[SettingSpec] = &[
         group: "app.startup",
         kind: SettingKind::Bool,
     },
+    // ---------- settings.json / 编辑器行操作 ----------
+    SettingSpec {
+        id: "app.editor.lines.defaultScope",
+        group: "app.editor.lines",
+        kind: SettingKind::Enum {
+            values: &["all", "currentLine", "rowRange", "nonEmpty", "selection"],
+        },
+    },
+    SettingSpec {
+        id: "app.editor.lines.sortMode",
+        group: "app.editor.lines",
+        kind: SettingKind::Enum {
+            values: &["lex", "natural", "length"],
+        },
+    },
+    SettingSpec {
+        id: "app.editor.lines.dedupeMode",
+        group: "app.editor.lines",
+        kind: SettingKind::Enum {
+            values: &["keepFirst", "keepLast"],
+        },
+    },
+    SettingSpec {
+        id: "app.editor.lines.dedupeIgnoreCase",
+        group: "app.editor.lines",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.editor.lines.dedupeFuzzy",
+        group: "app.editor.lines",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.editor.lines.indentWidth",
+        group: "app.editor.lines",
+        kind: SettingKind::Number {
+            min: defaults::LINE_INDENT_WIDTH_RANGE.0 as f64,
+            max: defaults::LINE_INDENT_WIDTH_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.editor.lines.indentStyle",
+        group: "app.editor.lines",
+        kind: SettingKind::Enum {
+            values: &["spaces", "tab"],
+        },
+    },
+    SettingSpec {
+        id: "app.editor.lines.caseDefault",
+        group: "app.editor.lines",
+        kind: SettingKind::Enum {
+            values: &["upper", "lower", "title"],
+        },
+    },
+    SettingSpec {
+        id: "app.editor.lines.columnDelimiter",
+        group: "app.editor.lines",
+        kind: SettingKind::Text {
+            max_len: defaults::LINE_COLUMN_DELIMITER_MAX_CHARS as u32,
+        },
+    },
+    SettingSpec {
+        id: "app.editor.lines.preview",
+        group: "app.editor.lines",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.editor.lines.skipEmptyLines",
+        group: "app.editor.lines",
+        kind: SettingKind::Bool,
+    },
     // ---------- reader.json / 主题 ----------
     SettingSpec {
         id: "reader.theme",

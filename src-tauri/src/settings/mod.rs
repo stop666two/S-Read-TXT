@@ -16,6 +16,7 @@
 
 pub mod bundle;
 pub mod defaults;
+pub mod editor;
 pub mod migrate;
 pub mod model;
 pub mod reader;

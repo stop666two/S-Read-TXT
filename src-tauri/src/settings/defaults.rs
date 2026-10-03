@@ -2,13 +2,16 @@
 
 use std::collections::BTreeMap;
 
+use crate::settings::editor::{
+    LineCaseMode, LineDedupeMode, LineIndentStyle, LineScopeKind, LineSortMode,
+};
 use crate::settings::model::{Language, LogLevel};
 use crate::settings::reader::{BackgroundFill, TextAlign};
 
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
 /// v2：新增 `hardLimitMB` / `startup` / `statusBar` / 排版扩展等字段（字段补齐式迁移，见 `settings::migrate`）。
 /// v3：主题升级为 id 体系（旧值 `eye` 迁移为 `paper-cream`；新增主题动画字段）。
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 // ---------- settings.json ----------
 
@@ -125,6 +128,35 @@ pub const DEFAULT_STATUS_BAR_SHOW_ENCODING: bool = true;
 pub const DEFAULT_STARTUP_RESTORE_SESSION: bool = true;
 /// 启动默认恢复窗口位置与大小
 pub const DEFAULT_STARTUP_RESTORE_WINDOW: bool = true;
+
+// ---------- settings.json / 编辑器行操作默认值 ----------
+
+/// 行操作默认作用范围（全文）
+pub const DEFAULT_LINE_SCOPE: LineScopeKind = LineScopeKind::All;
+/// 默认排序方式（字典序）
+pub const DEFAULT_LINE_SORT_MODE: LineSortMode = LineSortMode::Lex;
+/// 默认去重规则（保留首次）
+pub const DEFAULT_LINE_DEDUPE_MODE: LineDedupeMode = LineDedupeMode::KeepFirst;
+/// 去重默认忽略大小写
+pub const DEFAULT_LINE_DEDUPE_IGNORE_CASE: bool = false;
+/// 去重默认模糊匹配（NFKC + 忽略空白）
+pub const DEFAULT_LINE_DEDUPE_FUZZY: bool = false;
+/// 默认缩进宽度（空格数）
+pub const DEFAULT_LINE_INDENT_WIDTH: u32 = 4;
+/// 缩进宽度允许范围（闭区间）
+pub const LINE_INDENT_WIDTH_RANGE: (u32, u32) = (1, 16);
+/// 默认缩进字符（空格）
+pub const DEFAULT_LINE_INDENT_STYLE: LineIndentStyle = LineIndentStyle::Spaces;
+/// 默认大小写转换模式（小写）
+pub const DEFAULT_LINE_CASE_MODE: LineCaseMode = LineCaseMode::Lower;
+/// 默认列编辑分隔符（制表符）
+pub const DEFAULT_LINE_COLUMN_DELIMITER: &str = "\t";
+/// 列分隔符最大字符数（超长回退默认）
+pub const LINE_COLUMN_DELIMITER_MAX_CHARS: usize = 16;
+/// 行操作默认开启操作预览
+pub const DEFAULT_LINE_PREVIEW: bool = true;
+/// 行操作默认跳过空行
+pub const DEFAULT_LINE_SKIP_EMPTY: bool = false;
 
 // ---------- shortcuts.json ----------
 
