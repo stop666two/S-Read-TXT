@@ -56,10 +56,10 @@ export const en: Record<MessageKey, string> = {
   'status.noFile': 'No file open',
 
   // ---------- Empty state ----------
-  'empty.title': 'No file open',
-  'empty.hint': 'Drag a TXT file into the window, or click the button below',
   'empty.open': 'Open file',
-  'empty.shortcutHint': 'Shortcut: Ctrl+O · Multiple files supported',
+  'empty.tagline': 'A lightweight text reader · Fully offline · Data travels with you',
+  'empty.recent': 'Recent files',
+  'empty.note': 'Or drop a txt file into the window · double-click text to edit',
 
   // ---------- Drop overlay ----------
   'drop.release': 'Release to open the TXT file',

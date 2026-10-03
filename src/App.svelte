@@ -1127,7 +1127,12 @@
         layoutKey={typographyKey}
       />
     {:else}
-      <EmptyState onOpen={openFile} />
+      <EmptyState
+        onOpen={openFile}
+        recent={recentEntries}
+        onOpenRecent={(entry) => void historyStore.openEntry(entry)}
+        bindings={shortcuts as Record<string, string>}
+      />
     {/if}
   </div>
   <StatusBar

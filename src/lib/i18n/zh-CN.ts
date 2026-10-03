@@ -54,10 +54,10 @@ export const zhCN = {
   'status.noFile': '未打开文件',
 
   // ---------- 空状态 ----------
-  'empty.title': '未打开任何文件',
-  'empty.hint': '拖拽 TXT 文件到窗口，或点击下方按钮打开',
   'empty.open': '打开文件',
-  'empty.shortcutHint': '快捷键 Ctrl+O · 支持同时打开多个文件',
+  'empty.tagline': '轻量文本阅读器 · 完全离线 · 数据随身',
+  'empty.recent': '最近打开',
+  'empty.note': '或将 txt 文件直接拖入窗口 · 双击文本进入编辑',
 
   // ---------- 拖拽遮罩 ----------
   'drop.release': '松开以打开 TXT 文件',
