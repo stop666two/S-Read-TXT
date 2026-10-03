@@ -20,7 +20,7 @@
   import { scrollMemory } from '../reader/scroll-memory';
   import { computePercent, computeWindow, planBatches } from '../reader/viewport';
   import { toasts } from '../state/toasts.svelte';
-  import type { EditorLinesSettings, MultiCursorSettings } from '../ipc';
+  import type { EditorLinesSettings, FindSettings, MultiCursorSettings } from '../ipc';
 
   interface Props {
     /** 当前活动标签（组件仅服务活动标签） */
@@ -37,8 +37,10 @@
     lineDefaults?: EditorLinesSettings | null;
   /** 多光标设置（透传编辑层） */
   multiCursor?: MultiCursorSettings | null;
+  /** 查找设置（透传编辑层；未就绪为 null） */
+  findSettings?: FindSettings | null;
   }
-  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor }: Props = $props();
+  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -592,7 +594,8 @@
         onApplied={handleEditApplied}
         {editorAction}
         lineDefaults={lineDefaults ?? null}
-    multiCursor={multiCursor ?? null}
+        multiCursor={multiCursor ?? null}
+        findSettings={findSettings ?? null}
       />
     {/if}
   </div>

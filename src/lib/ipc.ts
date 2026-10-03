@@ -367,6 +367,47 @@ export interface StartupSettings {
 }
 
 /** 主配置（与 Rust `AppSettings` 对应；字段名以 Rust 序列化为准）。 */
+/** 查找范围（与 Rust `FindScope` 对应）。 */
+export type FindScope = 'document' | 'selection' | 'rowRange';
+
+/** 查找设置（与 Rust `FindSettings` 对应）。 */
+export interface FindSettings {
+  /** 默认区分大小写 */
+  caseSensitive: boolean;
+  /** 默认全词匹配（仅字面模式生效） */
+  wholeWord: boolean;
+  /** 循环查找：到达文末后从文首继续 */
+  wrapAround: boolean;
+  /** 高亮全部匹配 */
+  highlightAll: boolean;
+  /** 显示匹配计数 */
+  matchCount: boolean;
+  /** 替换前预览确认 */
+  replacePreview: boolean;
+  /** 查找范围默认值 */
+  defaultScope: FindScope;
+  /** 查找历史条数上限（0 = 不留历史） */
+  historyLimit: number;
+  /** 匹配高亮颜色（空串 = 跟随主题内置色） */
+  highlightColor: string;
+}
+
+/** 正则设置（与 Rust `RegexSettings` 对应）。 */
+export interface RegexSettings {
+  /** 单次扫描超时（毫秒；超时中断并提示，不修改内容） */
+  timeoutMs: number;
+  /** 常用正则库（逐项编译校验） */
+  library: string[];
+}
+
+/** 匹配计数（与 Rust `MatchCount` 对应）。 */
+export interface MatchCount {
+  /** 匹配总数（上限 20 万） */
+  total: number;
+  /** 是否已达上限（total 为下限） */
+  truncated: boolean;
+}
+
 export interface AppSettings {
   schemaVersion: number;
   logLevel: string;
@@ -379,6 +420,10 @@ export interface AppSettings {
   locale: 'zh-CN' | 'en';
   /** 编辑器设置（P1-2 起） */
   editor: EditorSettings;
+  /** 查找设置（P1-6 起） */
+  find: FindSettings;
+  /** 正则设置（P1-6 起） */
+  regex: RegexSettings;
   startup: StartupSettings;
 }
 
@@ -532,7 +577,9 @@ export type SettingKind =
   | { type: 'bool' }
   | { type: 'enum'; values: string[] }
   | { type: 'text'; maxLen: number }
-  | { type: 'shortcuts' };
+  | { type: 'shortcuts' }
+  | { type: 'color' }
+  | { type: 'stringList'; maxItems: number; maxChars: number };
 
 /** 设置项元数据（与 Rust `SettingSpec` 对应；标签/描述由前端按 `setting.<id>` 解析语言包）。 */
 export interface SettingSpec {
@@ -661,14 +708,17 @@ export const ipc = {
     query: string,
     caseSensitive: boolean,
     mode: SearchMode,
+    wholeWord: boolean,
     from: [number, number] | null,
-  ) => invoke<FindHit | null>('find_in_edit', { tabId, query, caseSensitive, mode, from }),
+  ) =>
+    invoke<FindHit | null>('find_in_edit', { tabId, query, caseSensitive, mode, wholeWord, from }),
   /** 替换一次（从 from 起）并返回后续命中；正则替换支持 $1 捕获展开。 */
   replaceInEdit: (
     tabId: number,
     query: string,
     caseSensitive: boolean,
     mode: SearchMode,
+    wholeWord: boolean,
     from: [number, number] | null,
     replacement: string,
   ) =>
@@ -677,6 +727,7 @@ export const ipc = {
       query,
       caseSensitive,
       mode,
+      wholeWord,
       from,
       replacement,
     }),
@@ -686,6 +737,7 @@ export const ipc = {
     query: string,
     caseSensitive: boolean,
     mode: SearchMode,
+    wholeWord: boolean,
     replacement: string,
   ) =>
     invoke<ReplaceAllOutcome>('replace_all_in_edit', {
@@ -693,6 +745,7 @@ export const ipc = {
       query,
       caseSensitive,
       mode,
+      wholeWord,
       replacement,
     }),
   /** 生成「全部替换」预览（二次确认弹窗数据源；命中过多时报 QUERY_TOO_BROAD）。 */
@@ -701,6 +754,7 @@ export const ipc = {
     query: string,
     caseSensitive: boolean,
     mode: SearchMode,
+    wholeWord: boolean,
     replacement: string,
   ) =>
     invoke<ReplacePreview>('preview_replace_all_in_edit', {
@@ -708,6 +762,7 @@ export const ipc = {
       query,
       caseSensitive,
       mode,
+      wholeWord,
       replacement,
     }),
   /** 执行「全部替换」：selected=null 全部；数组 = 仅替换所列序号（预览剔除后）。 */
@@ -716,6 +771,7 @@ export const ipc = {
     query: string,
     caseSensitive: boolean,
     mode: SearchMode,
+    wholeWord: boolean,
     replacement: string,
     selected: number[] | null,
     expectStateId: number,
@@ -725,6 +781,7 @@ export const ipc = {
       query,
       caseSensitive,
       mode,
+      wholeWord,
       replacement,
       selected,
       expectStateId,
@@ -735,6 +792,7 @@ export const ipc = {
     query: string,
     caseSensitive: boolean,
     mode: SearchMode,
+    wholeWord: boolean,
     startRow: number,
     count: number,
   ) =>
@@ -743,9 +801,25 @@ export const ipc = {
       query,
       caseSensitive,
       mode,
+      wholeWord,
       startRow,
       count,
     }),
+  /** 统计全文档匹配数（上限 20 万；truncated = 已达上限）。 */
+  countMatchesInEdit: (
+    tabId: number,
+    query: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+    wholeWord: boolean,
+  ) =>
+    invoke<MatchCount>('count_matches_in_edit', { tabId, query, caseSensitive, mode, wholeWord }),
+  /** 查找历史（去重置顶；上限取设置）。 */
+  listFindHistory: () => invoke<string[]>('list_find_history'),
+  /** 记录一条查找历史（返回最新列表）。 */
+  addFindHistory: (query: string) => invoke<string[]>('add_find_history', { query }),
+  /** 清空查找历史（返回空列表）。 */
+  clearFindHistory: () => invoke<string[]>('clear_find_history'),
   /** 预览批量序号（容量预检在此阶段报 BATCH_INVALID）。 */
   previewBatchNumbering: (tabId: number, config: BatchNumberingConfig) =>
     invoke<BatchPreview>('preview_batch_numbering', { tabId, config }),

@@ -9,7 +9,7 @@
 
   import { readText, writeHtml, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
-  import { describeIpcError, ipc, toIpcError, type BatchNumberingConfig, type BatchPreview, type ClipboardEntry, type EditApplied, type FindHit, type ReplacePreview, type SearchMode } from '../ipc';
+  import { describeIpcError, ipc, toIpcError, type BatchNumberingConfig, type BatchPreview, type ClipboardEntry, type EditApplied, type FindHit, type FindScope, type FindSettings, type ReplacePreview, type SearchMode } from '../ipc';
   import {
     clampPos,
     collapsed,
@@ -81,6 +81,8 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
     lineDefaults?: EditorLinesSettings | null;
     /** 多光标设置（编辑器设置；未就绪为 null 时使用兜底常量） */
     multiCursor?: MultiCursorSettings | null;
+    /** 查找设置（未就绪为 null 时使用兜底常量） */
+    findSettings?: FindSettings | null;
   }
   let {
     tabId,
@@ -95,6 +97,7 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
     editorAction,
     lineDefaults,
     multiCursor,
+    findSettings,
   }: Props = $props();
 
   /** 叠加层盒子（相对 .page 的像素坐标） */
@@ -135,11 +138,41 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
   const MATCH_HIGHLIGHT_MAX = 800;
   /** 文档内全部命中高亮盒（当前可见行窗口内） */
   let matchBoxes = $state<Box[]>([]);
-  /** 最近一次查询条件（FindBar 上报；驱动高亮刷新） */
-  let liveQuery = $state<{ query: string; caseSensitive: boolean; mode: SearchMode }>({
+  /** 查找设置兜底（与 Rust 默认一致）。 */
+  const FALLBACK_FIND: FindSettings = {
+    caseSensitive: false,
+    wholeWord: false,
+    wrapAround: true,
+    highlightAll: true,
+    matchCount: true,
+    replacePreview: true,
+    defaultScope: 'document',
+    historyLimit: 50,
+    highlightColor: '',
+  };
+  /** 生效的查找设置。 */
+  const findDefaults = $derived(findSettings ?? FALLBACK_FIND);
+  /** 查找历史（最新在前；空数组 = 无历史） */
+  let findHistory = $state<string[]>([]);
+  /** 命中计数文案（空串 = 不显示） */
+  let findCountText = $state('');
+  /** 计数请求序号（丢弃过期响应） */
+  let countSeq = 0;
+  /** 最近一次查询条件（FindBar 上报；驱动高亮与计数刷新） */
+  let liveQuery = $state<{
+    query: string;
+    caseSensitive: boolean;
+    mode: SearchMode;
+    wholeWord: boolean;
+    scope: FindScope;
+    range: [number, number] | null;
+  }>({
     query: '',
     caseSensitive: false,
     mode: 'literal',
+    wholeWord: false,
+    scope: 'document',
+    range: null,
   });
   /** 高亮刷新防抖定时器 */
   let matchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -153,6 +186,7 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
     replacement: string;
     caseSensitive: boolean;
     mode: SearchMode;
+    wholeWord: boolean;
   } | null = null;
   /** 预览弹窗开关 */
   let previewOpen = $state(false);
@@ -824,12 +858,14 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     findOpen = true;
     replaceOpen = replace;
     findFocusSeq += 1;
+    void refreshFindHistory();
   }
 
   /** 关闭查找条、清除高亮并归还键盘焦点。 */
   function closeFind(): void {
     findOpen = false;
     matchBoxes = [];
+    findCountText = '';
     focusInput();
   }
 
@@ -841,15 +877,71 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     });
   }
 
-  /** 查询条件变化（FindBar 上报）：记录，高亮由防抖 effect 统一刷新。 */
-  function handleQueryChange(query: string, caseSensitive: boolean, mode: SearchMode): void {
-    liveQuery = { query, caseSensitive, mode };
+  /** 查询条件变化（FindBar 上报）：记录，高亮/计数由防抖 effect 统一刷新。 */
+  function handleQueryChange(
+    query: string,
+    caseSensitive: boolean,
+    mode: SearchMode,
+    wholeWord: boolean,
+    scope: FindScope,
+    range: [number, number] | null,
+  ): void {
+    liveQuery = { query, caseSensitive, mode, wholeWord, scope, range };
+  }
+
+  /**
+   * 解析查找范围：document → null；selection → 当前选中行；rowRange → 输入值。
+   * 输入为 1 基行号，内部坐标为 0 基；非法（<1 或倒挂）返回 'invalid'。
+   */
+  function boundsOf(
+    scope: FindScope,
+    range: [number, number] | null,
+  ): [number, number] | 'invalid' | null {
+    if (scope === 'document') return null;
+    if (scope === 'selection') {
+      const sel = orderedSelection(selection);
+      return [sel.start.row, sel.end.row];
+    }
+    if (!range) return null;
+    const [from, to] = range;
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from < 1 || to < 1 || from > to) {
+      return 'invalid';
+    }
+    return [from - 1, to - 1];
+  }
+
+  /** 拉取查找历史（打开查找条/记录后刷新；辅助功能失败静默）。 */
+  async function refreshFindHistory(): Promise<void> {
+    try {
+      findHistory = await ipc.listFindHistory();
+    } catch {
+      findHistory = [];
+    }
+  }
+
+  /** 记录一次查找历史（辅助功能：失败静默）。 */
+  async function recordFindHistory(query: string): Promise<void> {
+    try {
+      findHistory = await ipc.addFindHistory(query);
+    } catch {
+      // 历史为辅助功能：失败不影响查找流程，静默
+    }
+  }
+
+  /** 清空查找历史（辅助功能：失败静默）。 */
+  async function clearFindHistory(): Promise<void> {
+    try {
+      findHistory = await ipc.clearFindHistory();
+    } catch {
+      // 同上：静默
+    }
   }
 
   /** 可见行窗口内全部命中 → 高亮盒（正则语法错误等静默；动作路径有 toast 反馈）。 */
   async function refreshMatches(): Promise<void> {
-    const { query, caseSensitive, mode } = liveQuery;
-    if (!findOpen || query.length === 0) {
+    const { query, caseSensitive, mode, wholeWord, scope, range } = liveQuery;
+    const bounds = boundsOf(scope, range);
+    if (!findOpen || query.length === 0 || !findDefaults.highlightAll || bounds === 'invalid') {
       matchBoxes = [];
       return;
     }
@@ -883,6 +975,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
         query,
         caseSensitive,
         mode,
+        wholeWord,
         minRow,
         maxRow - minRow + 1,
       );
@@ -892,6 +985,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       const pageRect = page.getBoundingClientRect();
       const boxes: Box[] = [];
       for (const hit of hits.slice(0, MATCH_HIGHLIGHT_MAX)) {
+        if (bounds && (hit.startRow < bounds[0] || hit.startRow > bounds[1])) continue;
         const lastRow = Math.min(hit.endRow, maxRow);
         for (let row = hit.startRow; row <= lastRow; row += 1) {
           const node = rowNode(row);
@@ -922,17 +1016,78 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     }
   }
 
-  /** 查找下一个：从当前光标起；到文末未命中时从头再试一次。 */
+  /** 匹配计数：document = 全文计数；限定范围 = 窗口内命中数（防抖后调用）。 */
+  async function refreshCount(): Promise<void> {
+    const { query, caseSensitive, mode, wholeWord, scope, range } = liveQuery;
+    if (!findOpen || query.length === 0 || !findDefaults.matchCount) {
+      findCountText = '';
+      return;
+    }
+    const bounds = boundsOf(scope, range);
+    if (bounds === 'invalid') {
+      findCountText = '';
+      return;
+    }
+    const seq = ++countSeq;
+    try {
+      if (bounds === null) {
+        const result = await ipc.countMatchesInEdit(tabId, query, caseSensitive, mode, wholeWord);
+        if (seq !== countSeq || !findOpen) return;
+        findCountText = result.truncated
+          ? t('find.countMore')
+          : t('find.count', { total: result.total });
+      } else {
+        const hits = await ipc.matchWindow(
+          tabId,
+          query,
+          caseSensitive,
+          mode,
+          wholeWord,
+          bounds[0],
+          Math.max(1, bounds[1] - bounds[0] + 1),
+        );
+        if (seq !== countSeq || !findOpen) return;
+        const inRange = hits.filter(
+          (hit) => hit.startRow >= bounds[0] && hit.startRow <= bounds[1],
+        );
+        findCountText = t('find.count', { total: inRange.length });
+      }
+    } catch {
+      // 正则语法错误等：计数静默
+      findCountText = '';
+    }
+  }
+
+  /** 查找下一个：从当前光标/范围起点起；范围外命中忽略；按设置循环。 */
   async function doFindNext(
     query: string,
     caseSensitive: boolean,
     mode: SearchMode,
+    wholeWord: boolean,
+    scope: FindScope,
+    range: [number, number] | null,
   ): Promise<void> {
     if (query.length === 0) return;
+    const bounds = boundsOf(scope, range);
+    if (bounds === 'invalid') {
+      toasts.error(t('find.rangeInvalid'));
+      return;
+    }
     try {
       const head = selection.head;
-      let hit = await ipc.findInEdit(tabId, query, caseSensitive, mode, [head.row, head.utf16]);
-      if (!hit) hit = await ipc.findInEdit(tabId, query, caseSensitive, mode, null);
+      const headInside = bounds === null || (head.row >= bounds[0] && head.row <= bounds[1]);
+      const startFrom: [number, number] | null = headInside
+        ? [head.row, head.utf16]
+        : bounds !== null
+          ? [bounds[0], 0]
+          : null;
+      let hit = await ipc.findInEdit(tabId, query, caseSensitive, mode, wholeWord, startFrom);
+      if (hit && bounds && (hit.startRow < bounds[0] || hit.startRow > bounds[1])) hit = null;
+      if (!hit && findDefaults.wrapAround) {
+        const wrapFrom: [number, number] | null = bounds !== null ? [bounds[0], 0] : null;
+        hit = await ipc.findInEdit(tabId, query, caseSensitive, mode, wholeWord, wrapFrom);
+        if (hit && bounds && (hit.startRow < bounds[0] || hit.startRow > bounds[1])) hit = null;
+      }
       if (!hit) {
         toasts.error(t('find.notFound', { query }));
         return;
@@ -940,6 +1095,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       selectHit(hit);
       void ensureRow(hit.startRow);
       void ensureRow(hit.endRow);
+      void recordFindHistory(query);
     } catch (error) {
       const payload = toIpcError(error);
       if (import.meta.env.DEV) console.error('[edit] 查找失败', payload);
@@ -947,22 +1103,46 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     }
   }
 
-  /** 替换一个：优先替换当前选区起点处的命中，否则替换光标后的第一个；随后选中下一个。 */
+  /** 替换一个：优先替换当前选区起点处的命中；范围内时先定位范围内命中。 */
   async function doReplace(
     query: string,
     replacement: string,
     caseSensitive: boolean,
     mode: SearchMode,
+    wholeWord: boolean,
+    scope: FindScope,
+    range: [number, number] | null,
   ): Promise<void> {
     if (query.length === 0) return;
+    const bounds = boundsOf(scope, range);
+    if (bounds === 'invalid') {
+      toasts.error(t('find.rangeInvalid'));
+      return;
+    }
     try {
-      const start = orderedSelection(selection).start;
+      let from: [number, number] | null;
+      if (bounds !== null) {
+        // 范围限定：先定位下一个范围内命中，再以其起点执行替换
+        const start = orderedSelection(selection).start;
+        const startFrom: [number, number] =
+          start.row >= bounds[0] && start.row <= bounds[1] ? [start.row, start.utf16] : [bounds[0], 0];
+        const probe = await ipc.findInEdit(tabId, query, caseSensitive, mode, wholeWord, startFrom);
+        if (!probe || probe.startRow < bounds[0] || probe.startRow > bounds[1]) {
+          toasts.error(t('find.notFound', { query }));
+          return;
+        }
+        from = [probe.startRow, probe.startUtf16];
+      } else {
+        const start = orderedSelection(selection).start;
+        from = [start.row, start.utf16];
+      }
       const outcome = await ipc.replaceInEdit(
         tabId,
         query,
         caseSensitive,
         mode,
-        [start.row, start.utf16],
+        wholeWord,
+        from,
         replacement,
       );
       if (!outcome) {
@@ -972,10 +1152,15 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       applyOutcome(outcome.applied);
       // 替换会改变文档：把键盘焦点交还编辑器（否则 Ctrl+Z 等编辑按键落在查找条上无效）
       focusEditorProxy();
-      if (outcome.next) {
+      if (
+        outcome.next &&
+        (bounds === null ||
+          (outcome.next.startRow >= bounds[0] && outcome.next.startRow <= bounds[1]))
+      ) {
         selectHit(outcome.next);
         void ensureRow(outcome.next.startRow);
       }
+      void recordFindHistory(query);
     } catch (error) {
       const payload = toIpcError(error);
       if (import.meta.env.DEV) console.error('[edit] 替换失败', payload);
@@ -983,26 +1168,57 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     }
   }
 
-  /** 全部替换：先预览；命中 =0 提示，=1 直接执行，≥2 弹二次确认（可逐条剔除）。 */
+  /** 全部替换：先预览；范围限定=直接替换范围内命中；整文档按设置决定是否二次确认（可剔除）。 */
   async function doReplaceAll(
     query: string,
     replacement: string,
     caseSensitive: boolean,
     mode: SearchMode,
+    wholeWord: boolean,
+    scope: FindScope,
+    range: [number, number] | null,
   ): Promise<void> {
     if (query.length === 0) return;
+    const bounds = boundsOf(scope, range);
+    if (bounds === 'invalid') {
+      toasts.error(t('find.rangeInvalid'));
+      return;
+    }
     try {
-      const preview = await ipc.previewReplaceAll(tabId, query, caseSensitive, mode, replacement);
+      const preview = await ipc.previewReplaceAll(
+        tabId,
+        query,
+        caseSensitive,
+        mode,
+        wholeWord,
+        replacement,
+      );
       if (preview.total === 0) {
         toasts.error(t('find.notFound', { query }));
         return;
       }
-      if (preview.total === 1) {
-        await applyReplaceAll(preview, query, replacement, caseSensitive, mode, null);
+      if (bounds !== null) {
+        // 范围限定：直接替换范围内命中（预览剔除流程仅用于整文档；预览被截断时无法枚举，提示收窄范围）
+        if (preview.truncated) {
+          toasts.error(t('find.countMore'));
+          return;
+        }
+        const selected = preview.items
+          .filter((item) => item.startRow >= bounds[0] && item.startRow <= bounds[1])
+          .map((item) => item.index);
+        if (selected.length === 0) {
+          toasts.error(t('find.notFound', { query }));
+          return;
+        }
+        await applyReplaceAll(preview, query, replacement, caseSensitive, mode, wholeWord, selected);
+        return;
+      }
+      if (preview.total === 1 || !findDefaults.replacePreview) {
+        await applyReplaceAll(preview, query, replacement, caseSensitive, mode, wholeWord, null);
         return;
       }
       previewData = preview;
-      previewArgs = { query, replacement, caseSensitive, mode };
+      previewArgs = { query, replacement, caseSensitive, mode, wholeWord };
       previewOpen = true;
     } catch (error) {
       const payload = toIpcError(error);
@@ -1018,6 +1234,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     replacement: string,
     caseSensitive: boolean,
     mode: SearchMode,
+    wholeWord: boolean,
     selected: number[] | null,
   ): Promise<void> {
     try {
@@ -1026,6 +1243,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
         query,
         caseSensitive,
         mode,
+        wholeWord,
         replacement,
         selected,
         preview.stateId,
@@ -1033,6 +1251,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       if (outcome.applied) applyOutcome(outcome.applied);
       focusEditorProxy();
       toasts.show(t('edit.replaceDone', { count: outcome.replaced }));
+      void recordFindHistory(query);
     } catch (error) {
       const payload = toIpcError(error);
       if (import.meta.env.DEV) console.error('[edit] 全部替换失败', payload);
@@ -1054,6 +1273,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       args.replacement,
       args.caseSensitive,
       args.mode,
+      args.wholeWord,
       selected,
     );
   }
@@ -1585,12 +1805,24 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       if (matchTimer) clearTimeout(matchTimer);
       if (!findOpen) {
         matchBoxes = [];
+        findCountText = '';
         return;
       }
       matchTimer = setTimeout(() => {
         void refreshMatches();
+        void refreshCount();
       }, 150);
     });
+  });
+
+  // 匹配高亮颜色：设置非空时覆盖主题内置色（空串恢复内置）
+  $effect(() => {
+    const color = findDefaults.highlightColor.trim();
+    void revision;
+    const page = pageEl();
+    if (!page) return;
+    if (color.length > 0) page.style.setProperty('--find-highlight', color);
+    else page.style.removeProperty('--find-highlight');
   });
 
   // 卸载时清理高亮防抖定时器
@@ -1657,10 +1889,14 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     replaceMode={replaceOpen}
     focusSignal={findFocusSeq}
     anchor={getContainer}
-    onFindNext={(q, cs, mode) => void doFindNext(q, cs, mode)}
-    onReplace={(q, r, cs, mode) => void doReplace(q, r, cs, mode)}
-    onReplaceAll={(q, r, cs, mode) => void doReplaceAll(q, r, cs, mode)}
+    defaults={findDefaults}
+    countText={findCountText}
+    history={findHistory}
+    onFindNext={(q, cs, mode, ww, scope, range) => void doFindNext(q, cs, mode, ww, scope, range)}
+    onReplace={(q, r, cs, mode, ww, scope, range) => void doReplace(q, r, cs, mode, ww, scope, range)}
+    onReplaceAll={(q, r, cs, mode, ww, scope, range) => void doReplaceAll(q, r, cs, mode, ww, scope, range)}
     onQueryChange={handleQueryChange}
+    onClearHistory={() => void clearFindHistory()}
     onClose={closeFind}
   />
 {/if}
@@ -1736,7 +1972,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
   .match {
     position: absolute;
     z-index: -2;
-    background: rgba(255, 193, 7, 0.38);
+    background: var(--find-highlight, rgba(255, 193, 7, 0.38));
     border-radius: 2px;
     pointer-events: none;
   }

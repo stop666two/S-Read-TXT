@@ -12,6 +12,8 @@
   import ChoiceRow from './parts/ChoiceRow.svelte';
   import ThemeRow from './parts/ThemeRow.svelte';
   import FontFamilyRow from './parts/FontFamilyRow.svelte';
+import ColorRow from './parts/ColorRow.svelte';
+import StringListRow from './parts/StringListRow.svelte';
   import BackgroundRow from './parts/BackgroundRow.svelte';
   import SliderRow from './parts/SliderRow.svelte';
   import ToggleRow from './parts/ToggleRow.svelte';
@@ -276,6 +278,28 @@
                 value={String(getSettingValue(snapshot, spec.id) ?? '')}
                 options={enumOptions(spec)}
                 setting={spec.id}
+                onCommit={(value) => commit(spec, value)}
+                onReset={() => applyScope({ kind: 'field', id: spec.id })}
+                resetLabel={t('settings.resetField')}
+              />
+            {:else if spec.kind.type === 'color'}
+              <ColorRow
+                {label}
+                {desc}
+                value={String(getSettingValue(snapshot, spec.id) ?? '')}
+                setting={spec.id}
+                onCommit={(value) => commit(spec, value)}
+                onReset={() => applyScope({ kind: 'field', id: spec.id })}
+                resetLabel={t('settings.resetField')}
+              />
+            {:else if spec.kind.type === 'stringList'}
+              <StringListRow
+                {label}
+                {desc}
+                value={(getSettingValue(snapshot, spec.id) as string[] | undefined) ?? []}
+                setting={spec.id}
+                maxItems={spec.kind.maxItems}
+                maxChars={spec.kind.maxChars}
                 onCommit={(value) => commit(spec, value)}
                 onReset={() => applyScope({ kind: 'field', id: spec.id })}
                 resetLabel={t('settings.resetField')}
