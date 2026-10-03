@@ -176,6 +176,20 @@ async function main() {
     const dialogClosed = dialogShown ? await waitDialog(false) : false;
     check('B1 空状态「打开文件」→ 原生对话框出现并可关闭', dialogShown && dialogClosed);
 
+    const welcomeRaw = await evalJs(
+      `JSON.stringify({
+        brand: document.querySelector('.empty .brand .appname')?.textContent ?? '',
+        hints: document.querySelectorAll('.empty .hints span').length,
+        note: document.querySelector('.empty .note')?.textContent ?? '',
+      })`,
+    );
+    const welcomeInfo = JSON.parse(String(welcomeRaw));
+    check(
+      'B2 欢迎页区块（品牌/快捷键提示 4 条/提示语）',
+      welcomeInfo.brand === 'S-Read-TXT' && welcomeInfo.hints === 4 && welcomeInfo.note.length > 0,
+      JSON.stringify(welcomeInfo),
+    );
+
     // ---- C. 工具栏 ----
     currentStep = 'C1 打开样本文件';
     await evalJs(openPathDone(fileA));
