@@ -570,10 +570,6 @@ mod tests {
             loaded.typography.text_align,
             crate::settings::reader::TextAlign::Left
         );
-        assert!(loaded.status_bar.show_size);
-        assert!(!loaded.status_bar.show_encoding, "显式 false 应保留");
-        assert!(loaded.status_bar.show_file_name, "缺失字段取默认 true");
-        assert!(loaded.status_bar.show_percent, "缺失字段取默认 true");
     }
 
     /// 旧版 reader.json（无 pagePaddingY 字段）加载 → 取默认 48（向后兼容）。
@@ -688,10 +684,6 @@ mod tests {
             defaults::DEFAULT_FIRST_LINE_INDENT
         );
         assert!(loaded.typography.smooth_scroll);
-        assert_eq!(
-            loaded.status_bar,
-            crate::settings::reader::StatusBarSettings::default()
-        );
     }
 
     /// 空主题 id 回退默认（system）。

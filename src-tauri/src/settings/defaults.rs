@@ -130,16 +130,8 @@ pub const DEFAULT_TEXT_ALIGN: TextAlign = TextAlign::Left;
 /// 默认翻页平滑滚动
 pub const DEFAULT_SMOOTH_SCROLL: bool = true;
 
-// ---------- 状态栏与启动行为 ----------
+// ---------- 启动行为 ----------
 
-/// 状态栏默认显示文件名与进度
-pub const DEFAULT_STATUS_BAR_SHOW_FILE: bool = true;
-/// 状态栏默认显示阅读百分比
-pub const DEFAULT_STATUS_BAR_SHOW_PERCENT: bool = true;
-/// 状态栏默认显示文件大小
-pub const DEFAULT_STATUS_BAR_SHOW_SIZE: bool = true;
-/// 状态栏默认显示编码切换
-pub const DEFAULT_STATUS_BAR_SHOW_ENCODING: bool = true;
 /// 启动默认恢复上次会话（标签）
 pub const DEFAULT_STARTUP_RESTORE_SESSION: bool = true;
 /// 启动默认恢复窗口位置与大小

@@ -627,8 +627,8 @@ async function main() {
     // S16 状态栏元素开关（阅读排版页）与启动行为开关（常规页）
     currentStep = 'S16 界面与启动开关';
     await clickTab('阅读排版');
-    check('S16a 状态栏开关切换', (await toggleRow('reader.statusBar.showSize', false)) === true);
-    check('S16b 状态栏开关还原', (await toggleRow('reader.statusBar.showSize', true)) === true);
+    check('S16a 状态栏开关切换', (await toggleRow('app.status.clickableEncoding', false)) === true);
+    check('S16b 状态栏开关还原', (await toggleRow('app.status.clickableEncoding', true)) === true);
     await clickTab('常规');
     check('S16c 启动恢复会话开关切换', (await toggleRow('app.startup.restoreSession', false)) === true);
     check('S16d 启动恢复会话开关还原', (await toggleRow('app.startup.restoreSession', true)) === true);

@@ -94,31 +94,6 @@ impl Default for Typography {
     }
 }
 
-/// 状态栏元素显隐（`reader.json` 的嵌套对象 `statusBar`）。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct StatusBarSettings {
-    /// 显示文件名与进度
-    pub show_file_name: bool,
-    /// 显示阅读百分比
-    pub show_percent: bool,
-    /// 显示文件大小
-    pub show_size: bool,
-    /// 显示编码切换按钮
-    pub show_encoding: bool,
-}
-
-impl Default for StatusBarSettings {
-    fn default() -> Self {
-        Self {
-            show_file_name: defaults::DEFAULT_STATUS_BAR_SHOW_FILE,
-            show_percent: defaults::DEFAULT_STATUS_BAR_SHOW_PERCENT,
-            show_size: defaults::DEFAULT_STATUS_BAR_SHOW_SIZE,
-            show_encoding: defaults::DEFAULT_STATUS_BAR_SHOW_ENCODING,
-        }
-    }
-}
-
 /// 背景图填充模式。
 ///
 /// 语义与 [`Theme`] 相同：未知取值归入 `Unknown`，经 [`BackgroundFill::normalized`]
@@ -221,8 +196,6 @@ pub struct ReaderSettings {
     pub theme_anim_ms: u32,
     /// 排版参数
     pub typography: Typography,
-    /// 状态栏元素显隐
-    pub status_bar: StatusBarSettings,
     /// 背景图
     pub background: BackgroundSettings,
 }
@@ -235,7 +208,6 @@ impl Default for ReaderSettings {
             theme_anim_enabled: defaults::DEFAULT_THEME_ANIM_ENABLED,
             theme_anim_ms: defaults::DEFAULT_THEME_ANIM_MS,
             typography: Typography::default(),
-            status_bar: StatusBarSettings::default(),
             background: BackgroundSettings::default(),
         }
     }

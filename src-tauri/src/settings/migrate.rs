@@ -78,8 +78,13 @@ fn v7_to_v8(_value: &mut Value) {}
 /// v8 → v9：新增 `find.multifileEnabled` / `find.multifileConcurrency` 字段（serde default 补齐）。
 fn v8_to_v9(_value: &mut Value) {}
 
-/// v9 → v10：新增 `status` 节（字段补齐由 serde default 处理）。
-fn v9_to_v10(_value: &mut Value) {}
+/// v9 → v10：新增 `status` 节（serde default 补齐）；移除已被 `app.status.items`
+/// 取代的 `reader.statusBar` 节（旧包导入时先迁移后校验，保证兼容）。
+fn v9_to_v10(value: &mut Value) {
+    if let Some(object) = value.as_object_mut() {
+        object.remove("statusBar");
+    }
+}
 
 /// v1 → v2：字段补齐式迁移（无结构变换）。
 fn v1_to_v2(_value: &mut Value) {}

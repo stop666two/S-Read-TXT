@@ -330,27 +330,6 @@ pub const SPECS: &[SettingSpec] = &[
         group: "reader.typography",
         kind: SettingKind::Bool,
     },
-    // ---------- reader.json / 状态栏 ----------
-    SettingSpec {
-        id: "reader.statusBar.showFileName",
-        group: "reader.statusBar",
-        kind: SettingKind::Bool,
-    },
-    SettingSpec {
-        id: "reader.statusBar.showPercent",
-        group: "reader.statusBar",
-        kind: SettingKind::Bool,
-    },
-    SettingSpec {
-        id: "reader.statusBar.showSize",
-        group: "reader.statusBar",
-        kind: SettingKind::Bool,
-    },
-    SettingSpec {
-        id: "reader.statusBar.showEncoding",
-        group: "reader.statusBar",
-        kind: SettingKind::Bool,
-    },
     // ---------- reader.json / 背景图 ----------
     SettingSpec {
         id: "reader.background.enabled",
@@ -1048,7 +1027,7 @@ mod tests {
             validate_value(spec("app.locale"), &serde_json::json!("fr")).expect_err("枚举应拒绝");
         assert!(err.contains("非法取值"), "{err}");
 
-        let err = validate_value(spec("reader.statusBar.showSize"), &serde_json::json!("yes"))
+        let err = validate_value(spec("reader.background.enabled"), &serde_json::json!("yes"))
             .expect_err("类型应拒绝");
         assert!(err.contains("true/false"), "{err}");
 

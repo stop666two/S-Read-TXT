@@ -65,7 +65,6 @@ function seedV1Files() {
           textAlign: 'left',
           smoothScroll: true,
         },
-        statusBar: { showFileName: true, showPercent: true, showSize: true, showEncoding: true },
       },
       null,
       2,
