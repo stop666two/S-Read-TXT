@@ -326,3 +326,10 @@
   - 关键解谜（记入脚本头注）：Node `spawn/spawnSync` 启动 `highestAvailable` 清单的 NSIS 安装器/卸载器会得到 **EACCES**（CreateProcess 返回 ERROR_ELEVATION_REQUIRED=740，libuv 映射为 EACCES）——必须经 ShellExecute（PowerShell `Start-Process`）；此前链式运行中所有 “status=null” 均为此因，而非卡死。
   - `scripts/smoke-settings.mjs` 加固：`Page.bringToFront` + `startRecording`（点击后确认进入录制态、首击偶发丢失时重试一次）+ S2a/S2b 输出诊断详情；**27/27 通过**（此前一次 16/27 属首个按键注入的时序抖动，探针证实功能正常）。
 - **验证汇总**：cargo 244（222 lib + 15 对抗 + 2 助手 + 5 集成）；svelte-check 0 错 0 警；smoke-settings 27/27；smoke-uninstall 6/6；提交见 git 历史。
+
+## 设置入口扩充与滚动完整性套件（2026-10-03，维护者反馈第 3 轮）
+- **设置入口扩充（B 批次，已确认三项全选）**：标题栏齿轮按钮（`TitleBar` 增 `showSettings`/`onSettings`，aria「打开设置」，设置窗口自身不显示）；文件菜单「设置…」；工具栏「设置」按钮改带文字标签（图标 + 文本，`icon-btn.with-text`）。
+- **滚动渲染完整性套件**（维护者反馈「滑动多次渲染不出来」）：新增常驻 `scripts/smoke-scroll.mjs` —— A 随机跳转 30 轮 / B 滚轮连发 5×20 / C 上下震荡 3×30（落点稳定性）/ D 滑块连调 13 轮（滑块 input/change 与数字框交替、含 8/72 极值），逐轮断言可视行内容完整、排版变量到位；并入 verify-all（21 步）。当前构建 **4/4 全绿**（既有 30 跳 + 100 滚轮探针亦 0 空白）；该缺陷类别已由 `7c81032`（占位即时重算）与状态（fetch 完成/缓存写入均触发重渲染）覆盖，后续回归由本套件兜底。
+- **修复**：设置导航容器 `nav` → `div`（a11y：non-interactive 元素不得承载 tablist 角色，svelte-check 恢复 0/0）。
+- **扩展路径记录**：维护者提示「之后可能扩充语言」——文案集中组件层，届时按「语言包 + 设置项」整体抽取（已记入设计文档 § 功能范围）。
+- **验证**：`smoke-titlebar` **10/10**（新增 T9 齿轮开设置 / T9b 关闭）、`smoke-buttons` **32/32**（新增 D13a 工具栏文字标签 / D13b 文件菜单入口）；`npm run check` 0 错 0 警。
