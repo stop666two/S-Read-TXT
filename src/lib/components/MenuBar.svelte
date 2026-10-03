@@ -89,6 +89,8 @@
   let openMenu = $state<MenuName | null>(null);
   /** 「最近打开」子菜单展开（悬停/点击切换） */
   let recentOpen = $state(false);
+  /** 「复制为」子菜单展开（悬停控制；P1-5） */
+  let copyAsOpen = $state(false);
 
   /** 切换菜单开合 */
   function toggle(name: MenuName): void {
@@ -217,6 +219,37 @@
         onclick={() => run(() => onEditorAction?.('lineOps'))}
       >
         <span>{t('menu.edit.lineOps')}</span>
+      </button>
+      <div
+        class="submenu-wrap"
+        role="presentation"
+        onmouseenter={() => (copyAsOpen = true)}
+        onmouseleave={() => (copyAsOpen = false)}
+      >
+        <button class="item" disabled={!editing}>
+          <span>{t('menu.edit.copyAs')}</span>
+          <span class="hint">▸</span>
+        </button>
+        {#if copyAsOpen}
+          <div class="flyout">
+            <button class="item" onclick={() => run(() => onEditorAction?.('copy'))}>
+              <span>{t('menu.edit.copyAsPlain')}</span>
+            </button>
+            <button class="item" onclick={() => run(() => onEditorAction?.('copyHtml'))}>
+              <span>{t('menu.edit.copyAsHtml')}</span>
+            </button>
+            <button class="item" onclick={() => run(() => onEditorAction?.('copyMarkdown'))}>
+              <span>{t('menu.edit.copyAsMarkdown')}</span>
+            </button>
+          </div>
+        {/if}
+      </div>
+      <button
+        class="item"
+        disabled={!editing}
+        onclick={() => run(() => onEditorAction?.('clipboardHistory'))}
+      >
+        <span>{t('menu.edit.clipboardHistory')}</span>
       </button>
       <div class="separator"></div>
       <button

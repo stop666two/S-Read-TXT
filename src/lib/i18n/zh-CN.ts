@@ -78,6 +78,7 @@ export const zhCN = {
 
   // ---------- 通用 ----------
   'common.cancel': '取消',
+  'common.close': '关闭',
   'common.save': '保存',
 
   // ---------- 查找条 ----------
@@ -482,6 +483,19 @@ export const zhCN = {
   'settings.fontManager.deleteMessage': '确定删除字体「{name}」？删除后无法恢复。',
   'menu.edit.batchNumbering': '批量插入/序号…',
   'menu.edit.lineOps': '行操作…',
+  'menu.edit.copyAs': '复制为',
+  'menu.edit.copyAsPlain': '纯文本',
+  'menu.edit.copyAsHtml': 'HTML',
+  'menu.edit.copyAsMarkdown': 'Markdown',
+  'menu.edit.clipboardHistory': '剪贴板历史…',
+  'clipboardHistory.title': '剪贴板历史',
+  'clipboardHistory.empty': '暂无复制记录',
+  'clipboardHistory.insert': '插入',
+  'clipboardHistory.remove': '删除',
+  'clipboardHistory.clear': '清空历史',
+  'clipboardHistory.clearTitle': '清空剪贴板历史',
+  'clipboardHistory.clearMessage': '将删除全部 {count} 条记录，且不可恢复。是否继续？',
+  'clipboardHistory.meta': '{time} · {chars} 字符',
   'batch.title': '批量插入序号',
   'batch.format': '编号格式',
   'batch.start': '起始编号',

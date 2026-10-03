@@ -593,6 +593,14 @@ export interface SettingsSaveRequest {
 }
 
 /** 类型化 IPC 命令集合（参数名与 Tauri 的 camelCase 约定一致）。 */
+/** 剪贴板历史条目（P1-5）。 */
+export interface ClipboardEntry {
+  /** 条目文本（复制内容原样） */
+  text: string;
+  /** 复制时间（RFC 3339，UTC） */
+  at: string;
+}
+
 export const ipc = {
   /** 应用信息（版本 / 数据目录）。 */
   getAppInfo: () => invoke<AppInfo>('get_app_info'),
@@ -756,6 +764,15 @@ export const ipc = {
   /** 稀疏按行取文本（过滤视图虚拟窗口；单次 ≤512 行）。 */
   fetchRowsAt: (tabId: number, rows: number[]) =>
     invoke<RowsPayload['rows']>('fetch_rows_at', { tabId, rows }),
+  /** 剪贴板历史（读取最新列表）。 */
+  listClipboardHistory: () => invoke<ClipboardEntry[]>('list_clipboard_history'),
+  /** 记录一次复制到历史（空文本/禁用时后端 no-op；返回最新列表）。 */
+  addClipboardEntry: (text: string) => invoke<ClipboardEntry[]>('add_clipboard_entry', { text }),
+  /** 删除历史单条（返回最新列表）。 */
+  removeClipboardEntry: (index: number) =>
+    invoke<ClipboardEntry[]>('remove_clipboard_entry', { index }),
+  /** 清空剪贴板历史（返回空列表）。 */
+  clearClipboardHistory: () => invoke<ClipboardEntry[]>('clear_clipboard_history'),
   /** 配置快照（快捷键等；后端为唯一真源）。 */
   getSettings: () => invoke<SettingsSnapshot>('get_settings'),
   /** 保存配置（返回保存后的快照）。 */

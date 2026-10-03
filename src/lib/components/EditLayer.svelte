@@ -7,9 +7,9 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
 
-  import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
+  import { readText, writeHtml, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
-  import { describeIpcError, ipc, toIpcError, type BatchNumberingConfig, type BatchPreview, type EditApplied, type FindHit, type ReplacePreview, type SearchMode } from '../ipc';
+  import { describeIpcError, ipc, toIpcError, type BatchNumberingConfig, type BatchPreview, type ClipboardEntry, type EditApplied, type FindHit, type ReplacePreview, type SearchMode } from '../ipc';
   import {
     clampPos,
     collapsed,
@@ -45,6 +45,7 @@
   import ReplacePreviewDialog from './ReplacePreviewDialog.svelte';
   import BatchNumberingDialog from './BatchNumberingDialog.svelte';
   import LineOpsDialog from './LineOpsDialog.svelte';
+import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
   import type {
     EditOp,
     EditorLinesSettings,
@@ -161,6 +162,9 @@
 
   /** 行操作弹窗开关（P1-2） */
   let lineOpsOpen = $state(false);
+/** 剪贴板历史弹窗与列表（P1-5）。 */
+let clipboardOpen = $state(false);
+let clipboardEntries = $state<ClipboardEntry[]>([]);
 
   /** 多光标设置兜底（与 Rust 默认一致）。 */
   const FALLBACK_MULTI: MultiCursorSettings = { enabled: true, rectModifier: 'alt', maxCount: 1000 };
@@ -781,6 +785,7 @@
         toasts.error(t('edit.copyFailed'));
         return;
       }
+      recordClipboard(text);
       if (cut) await deleteRect(rect);
       return;
     }
@@ -793,6 +798,7 @@
       toasts.error(t('edit.copyFailed'));
       return;
     }
+    recordClipboard(text);
     if (cut) {
       const resolved = await resolveSelection();
       await applyResult(() => ipc.applyEdits(tabId, [deleteOp(logicalSelection(resolved))]));
@@ -1127,6 +1133,80 @@
     }
   }
 
+  // ---- 剪贴板历史与复制格式（P1-5） ----
+
+  /** 记录复制文本到历史（历史为辅助功能，失败静默不打扰阅读）。 */
+  function recordClipboard(text: string): void {
+    if (!text) return;
+    void ipc.addClipboardEntry(text).catch(() => {});
+  }
+
+  /** 打开剪贴板历史并拉取最新列表。 */
+  async function openClipboardHistory(): Promise<void> {
+    clipboardOpen = true;
+    await refreshClipboardHistory();
+  }
+
+  /** 刷新历史列表（后端返回最新列表，前端整体替换）。 */
+  async function refreshClipboardHistory(): Promise<void> {
+    try {
+      clipboardEntries = await ipc.listClipboardHistory();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 从历史插入条目（复用输入链路：选区替换/多光标统一处理）。 */
+  async function insertClipboardEntry(text: string): Promise<void> {
+    clipboardOpen = false;
+    focusEditorProxy();
+    await doInsert(text);
+  }
+
+  /** 删除历史单条。 */
+  async function removeClipboardEntry(index: number): Promise<void> {
+    try {
+      clipboardEntries = await ipc.removeClipboardEntry(index);
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 清空全部历史。 */
+  async function clearClipboardHistory(): Promise<void> {
+    try {
+      clipboardEntries = await ipc.clearClipboardHistory();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 复制为 HTML：选中行转义为段落，写入 HTML 剪贴板格式并以纯文本兜底；同时记录历史。 */
+  async function copyAsHtml(): Promise<void> {
+    if (isCollapsed(selection)) return;
+    const text = await gatherSelectedText();
+    if (text === null) return;
+    const html = text
+      .split(/\r\n|\r|\n/)
+      .map(
+        (line) =>
+          `<p>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`,
+      )
+      .join('');
+    try {
+      await writeHtml(html, text);
+    } catch {
+      toasts.error(t('edit.copyFailed'));
+      return;
+    }
+    recordClipboard(text);
+  }
+
+  /** 复制为 Markdown：纯文本内容本身即合法 Markdown，与普通复制等价（同样记录历史）。 */
+  async function copyAsMarkdown(): Promise<void> {
+    await doCopy(false);
+  }
+
   /** 外部动作分发（菜单触发）。 */
   function handleAction(type: EditActionType): void {
     switch (type) {
@@ -1159,6 +1239,15 @@
         break;
       case 'lineOps':
         lineOpsOpen = true;
+        break;
+      case 'clipboardHistory':
+        void openClipboardHistory();
+        break;
+      case 'copyHtml':
+        void copyAsHtml();
+        break;
+      case 'copyMarkdown':
+        void copyAsMarkdown();
         break;
     }
   }
@@ -1595,6 +1684,18 @@
     onApply={applyLineOps}
     onClose={() => {
       lineOpsOpen = false;
+      focusEditorProxy();
+    }}
+  />
+{/if}
+{#if clipboardOpen}
+  <ClipboardHistoryDialog
+    entries={clipboardEntries}
+    onInsert={insertClipboardEntry}
+    onRemove={removeClipboardEntry}
+    onClear={clearClipboardHistory}
+    onClose={() => {
+      clipboardOpen = false;
       focusEditorProxy();
     }}
   />

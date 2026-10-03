@@ -83,6 +83,7 @@ export const en: Record<MessageKey, string> = {
 
   // ---------- Common ----------
   'common.cancel': 'Cancel',
+  'common.close': 'Close',
   'common.save': 'Save',
 
   // ---------- Find bar ----------
@@ -495,6 +496,19 @@ export const en: Record<MessageKey, string> = {
   'settings.fontManager.deleteMessage': 'Delete the font "{name}"? This cannot be undone.',
   'menu.edit.batchNumbering': 'Batch numbering…',
   'menu.edit.lineOps': 'Line operations…',
+  'menu.edit.copyAs': 'Copy as',
+  'menu.edit.copyAsPlain': 'Plain text',
+  'menu.edit.copyAsHtml': 'HTML',
+  'menu.edit.copyAsMarkdown': 'Markdown',
+  'menu.edit.clipboardHistory': 'Clipboard history…',
+  'clipboardHistory.title': 'Clipboard history',
+  'clipboardHistory.empty': 'No copied items yet',
+  'clipboardHistory.insert': 'Insert',
+  'clipboardHistory.remove': 'Remove',
+  'clipboardHistory.clear': 'Clear history',
+  'clipboardHistory.clearTitle': 'Clear clipboard history',
+  'clipboardHistory.clearMessage': 'This removes all {count} items permanently. Continue?',
+  'clipboardHistory.meta': '{time} · {chars} chars',
   'batch.title': 'Batch numbering',
   'batch.format': 'Format',
   'batch.start': 'Start',
