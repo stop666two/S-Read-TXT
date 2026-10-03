@@ -172,8 +172,10 @@ async function runScenarios() {
   check('set_encoding 恢复自动检测', /UTF/i.test(String(restored.encoding)), String(restored.encoding));
 
   // —— 前端（store → UI）端到端 ——
-  const emptyText = await evalJs("document.querySelector('.empty h1')?.textContent ?? ''");
-  check('空状态显示', emptyText === '未打开任何文件', `空状态="${emptyText}"`);
+  const emptyText = await evalJs(
+    "(() => { const el = document.querySelector('.empty'); return el ? (el.querySelector('.open-btn')?.textContent ?? '') : ''; })()",
+  );
+  check('空状态显示', emptyText.includes('打开'), `空状态="${emptyText}"`);
 
   // WebView2：直接对函数返回的 Promise 做 CDP awaitPromise 会报 “Promise was collected”，
   // 统一经 IIFE 包裹（见 scripts/lib/smoke-cdp.mjs 的 openPathDone 说明）。
@@ -190,8 +192,10 @@ async function runScenarios() {
   await delay(300);
   const remainingTabs = await evalJs("document.querySelectorAll('.tab-bar .tab').length");
   check('关闭标签后标签栏清空', remainingTabs === 0, `tabs=${remainingTabs}`);
-  const emptyBack = await evalJs("document.querySelector('.empty h1')?.textContent ?? ''");
-  check('关闭后回到空状态', emptyBack === '未打开任何文件', `空状态="${emptyBack}"`);
+  const emptyBack = await evalJs(
+    "(() => { const el = document.querySelector('.empty'); return el ? (el.querySelector('.open-btn')?.textContent ?? '') : ''; })()",
+  );
+  check('关闭后回到空状态', emptyBack.includes('打开'), `空状态="${emptyBack}"`);
 
   // —— 虚拟滚动（2 万行大文件）——
   const bigPath = join(sampleDir, 'sample-big.txt');

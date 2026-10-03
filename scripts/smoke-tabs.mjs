@@ -181,8 +181,10 @@ async function main() {
       `(() => { const b = [...document.querySelectorAll('.tab-menu button')].find((x) => x.textContent.trim() === '关闭全部'); b?.click(); return true; })()`,
     );
     const allClosed = await waitForValue(async () => ((await count()) === 0 ? true : null), 8000);
-    const emptyShown = await evalJs(`document.querySelector('.empty h1')?.textContent ?? ''`);
-    check('T5 「关闭全部」后回到空状态', allClosed === true && emptyShown === '未打开任何文件');
+    const emptyShown = await evalJs(
+      `(() => { const el = document.querySelector('.empty'); return el ? (el.querySelector('.open-btn')?.textContent ?? '') : ''; })()`,
+    );
+    check('T5 「关闭全部」后回到空状态', allClosed === true && emptyShown.includes('打开'));
 
     // ---- T6 标签上限提示（maxTabs=2） ----
     const settingsRaw = await evalJs(
