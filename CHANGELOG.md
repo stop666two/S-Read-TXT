@@ -1,4 +1,4 @@
-﻿# 变更日志
+# 变更日志
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。
 

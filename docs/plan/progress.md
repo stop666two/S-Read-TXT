@@ -1,4 +1,4 @@
-﻿# S-Read-TXT 项目进度台账
+# S-Read-TXT 项目进度台账
 
 - 作用：记录阶段与切片的执行状态、验证证据、提交记录；是实施计划（`docs/plan/implementation-plan.md`）的实时执行账本。
 - 维护规则（文档同步义务）：
