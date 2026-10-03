@@ -5,11 +5,13 @@
 import { emitTo } from '@tauri-apps/api/event';
 
 import { t } from '../../lib/i18n/index.svelte';
+import { formatBytes } from '../../lib/format';
 import {
   describeIpcError,
   ipc,
   toIpcError,
   type AppSettings,
+  type DiskUsageReport,
   type ReaderSettings,
   type ResetScope,
   type SettingSpec,
@@ -125,6 +127,38 @@ class SettingsStore {
     try {
       this.snapshot = await ipc.importSettings(path);
       toasts.show(t('settings.importDone'));
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 磁盘占用（P0-8；打开「常规」页时载入） */
+  disk = $state<DiskUsageReport | null>(null);
+
+  /** 载入磁盘占用分项 */
+  async loadDisk(): Promise<void> {
+    try {
+      this.disk = await ipc.getDiskUsage();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 清理缓存范围并刷新占用（被占用文件计入 skipped，提示中说明） */
+  async clearCache(scope: 'logs' | 'webview' | 'backups'): Promise<void> {
+    try {
+      const result = await ipc.clearCache(scope);
+      if (result.skipped > 0) {
+        toasts.show(
+          t('settings.disk.clearedPartial', {
+            bytes: formatBytes(result.clearedBytes),
+            skipped: result.skipped,
+          }),
+        );
+      } else {
+        toasts.show(t('settings.disk.cleared', { bytes: formatBytes(result.clearedBytes) }));
+      }
+      await this.loadDisk();
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
     }

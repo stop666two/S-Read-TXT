@@ -13,6 +13,7 @@
   import { ipc } from '../../lib/ipc';
   import AboutTab from './AboutTab.svelte';
   import BackupSection from './BackupSection.svelte';
+  import DiskSection from './DiskSection.svelte';
   import HistoryTab from './HistoryTab.svelte';
   import RegistryPage from './RegistryPage.svelte';
   import ShortcutsTab from './ShortcutsTab.svelte';
@@ -82,6 +83,7 @@
       media.addEventListener('change', apply);
     });
     void settings.loadRegistry();
+    void settings.loadDisk();
     return () => media.removeEventListener('change', apply);
   });
 </script>
@@ -128,6 +130,7 @@
         <RegistryPage groups={['app.basic', 'app.startup']} {query} />
         {#if !searchActive}
           <BackupSection />
+          <DiskSection />
         {/if}
       {:else if tab === 'typography'}
         <RegistryPage groups={['reader.basic', 'reader.typography', 'reader.statusBar']} {query} />

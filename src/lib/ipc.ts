@@ -307,6 +307,25 @@ export type ResetScope =
   | { kind: 'group'; name: string }
   | { kind: 'field'; id: string };
 
+/** 磁盘占用分项（与 Rust `DiskUsageItem` 对应）。 */
+export interface DiskUsageItem {
+  key: 'logs' | 'webview' | 'fonts' | 'backups' | 'files' | 'others';
+  bytes: number;
+  files: number;
+}
+
+/** 磁盘占用报告（与 Rust `DiskUsageReport` 对应）。 */
+export interface DiskUsageReport {
+  items: DiskUsageItem[];
+  totalBytes: number;
+}
+
+/** 清理结果（与 Rust `ClearResult` 对应）。 */
+export interface ClearResult {
+  clearedBytes: number;
+  skipped: number;
+}
+
 /** 配置聚合快照（`get_settings` 返回体）。 */
 export interface SettingsSnapshot {
   app: AppSettings;
@@ -480,6 +499,8 @@ export const ipc = {
   importSettings: (path: string) => invoke<SettingsSnapshot>('import_settings', { path }),
   /** 重置设置（全部 / 分组 / 单项；返回重置后的快照）。 */
   resetSettings: (scope: ResetScope) => invoke<SettingsSnapshot>('reset_settings', { scope }),
+  getDiskUsage: () => invoke<DiskUsageReport>('get_disk_usage'),
+  clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
   /** 默认快捷键表（设置界面「恢复默认」用）。 */
   getDefaultShortcuts: () => invoke<Record<string, string>>('get_default_shortcuts'),
   /** 历史记录（去重剪枝后、时间倒序）。 */
