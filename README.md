@@ -75,6 +75,9 @@ npm run test
 
 # 打包（NSIS 安装器输出于 src-tauri/target/release/bundle/nsis/）
 npm run tauri build
+
+# 生成便携版 zip（输出于 portable-dist/；需先完成上面的打包）
+node scripts/make-portable.mjs
 ```
 
 ## 数据与隐私
@@ -136,7 +139,7 @@ npm run tauri build
 
 ```
 docs/            设计文档、实施计划、配置说明、测试报告、截图
-scripts/         Node 脚本（图标生成、编码自检、内存采样、git 钩子、CI/CD 辅助）
+scripts/         Node 脚本（图标生成、编码自检、内存采样、便携版打包、全量自检、git 钩子、CI/CD 辅助）
 src/             Svelte 前端
 src-tauri/       Rust 后端（Tauri）
 ```
@@ -148,3 +151,5 @@ src-tauri/       Rust 后端（Tauri）
 - 配置逐字段说明：`docs/configuration.md`（随阶段补充）
 - 已知问题与限制：`docs/known-issues.md`（发布时自动纳入 Release 描述）
 - 测试报告：`docs/test-report.md`（阶段 9 交付）
+- 剩余工作总览：`docs/plan/remaining-work.md`（未完成清单唯一入口）
+- 分期计划与提案：`docs/plan/2026-10-03-p0-plan.md`、`docs/plan/2026-10-03-phase-plan.md`、`docs/proposals/`
