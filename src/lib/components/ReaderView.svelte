@@ -30,6 +30,7 @@
     FindSettings,
     InsertSettings,
     MultiCursorSettings,
+  ReadingSettings,
     TextStats,
   } from '../ipc';
 
@@ -50,6 +51,10 @@
   multiCursor?: MultiCursorSettings | null;
   /** 查找设置（透传编辑层；未就绪为 null） */
   findSettings?: FindSettings | null;
+  /** 阅读模式设置（P2-4b：专注/打字机/进度记忆；空对象=默认行为） */
+  readingSettings?: ReadingSettings | null;
+  /** 用户主动滚动回调（用于停止自动滚动） */
+  onUserScroll?: () => void;
   /** 时间戳插入设置（透传编辑层；未就绪为 null） */
   insertSettings?: InsertSettings | null;
   /** 括号匹配/自动缩进设置（透传编辑层；未就绪为 null） */
@@ -67,7 +72,7 @@
     /** 编辑态光标所在显示行（0 基；当前行高亮/相对行号参照；阅读态忽略） */
     editCaretRow?: number | null;
   }
-  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow }: Props = $props();
+  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, readingSettings, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -469,12 +474,14 @@
       // 实时记录顶部定位行（会话/标签切换共用数据源）；
       // 此前仅在切换标签的清理阶段记录，导致「滚动后直接退出」恢复不到位置。
       // 过滤视图下跳过（显示行 ≠ 文件行）。
-      if (filterRows === null) {
+      if (filterRows === null && (readingSettings?.progressMemory ?? true)) {
         scrollMemory.set(
           tab.tabId,
           heights.rowAtOffset(contentScrollTop(), Math.max(1, viewRowsTotal())),
         );
       }
+      // 用户主动滚动（非程序化路径）：通知外部停止自动滚动
+      onUserScroll?.();
       reportTopRow();
     });
   }
@@ -633,8 +640,12 @@
     const attempt = (): void => {
       if (!container || scrollEpoch !== epoch) return;
       const contentTop = heights.offsetOf(row, Math.max(1, rowsTotal));
-      setContentScrollTop(contentTop);
-      if (Math.abs(container.scrollTop - (contentTop + pagePadTop)) <= 2 || attempts >= 120) {
+      // 打字机模式：程序化定位（跳转/恢复）时目标行保持视口中部
+      const target = (readingSettings?.typewriter ?? false)
+        ? Math.max(0, contentTop - (container.clientHeight - heights.heightOf(row)) / 2)
+        : contentTop;
+      setContentScrollTop(target);
+      if (Math.abs(container.scrollTop - (target + pagePadTop)) <= 2 || attempts >= 120) {
         requestAnimationFrame(() => refreshWindow());
         return;
       }
@@ -670,10 +681,12 @@
       }
     });
     return () => {
-      scrollMemory.set(
-        currentTabId,
-        heights.rowAtOffset(contentScrollTop(), Math.max(1, rowsTotal)),
-      );
+      if (readingSettings?.progressMemory ?? true) {
+        scrollMemory.set(
+          currentTabId,
+          heights.rowAtOffset(contentScrollTop(), Math.max(1, rowsTotal)),
+        );
+      }
     };
   });
 

@@ -254,6 +254,10 @@ export const zhCN = {
   'menu.view.fontDecrease': '字号减小',
   'menu.view.fontReset': '重置字号',
   'menu.view.fullscreen': '全屏',
+  'menu.view.autoScroll': '自动滚动',
+  'menu.view.focusMode': '专注模式',
+  'menu.view.typewriter': '打字机模式',
+  'reading.autoScrollEnd': '已滚动到文件末尾，自动滚动已停止',
   'menu.help.shortcuts': '快捷键…',
   'menu.help.about': '关于 S-Read-TXT',
 

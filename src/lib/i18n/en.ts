@@ -262,6 +262,10 @@ export const en: Record<MessageKey, string> = {
   'menu.view.fontDecrease': 'Decrease font size',
   'menu.view.fontReset': 'Reset font size',
   'menu.view.fullscreen': 'Full screen',
+  'menu.view.autoScroll': 'Auto scroll',
+  'menu.view.focusMode': 'Focus mode',
+  'menu.view.typewriter': 'Typewriter mode',
+  'reading.autoScrollEnd': 'Reached the end of file; auto scroll stopped',
   'menu.help.shortcuts': 'Shortcuts…',
   'menu.help.about': 'About S-Read-TXT',
 

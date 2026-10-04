@@ -39,6 +39,18 @@
     onEditorAction?: (type: EditActionType) => void;
     /** 全屏切换回调（查看菜单） */
     onToggleFullscreen?: () => void;
+  /** 自动滚动开关状态（查看菜单，勾选标记） */
+  autoScroll?: boolean;
+  /** 切换自动滚动 */
+  onToggleAutoScroll?: () => void;
+  /** 专注模式状态（查看菜单） */
+  focusMode?: boolean;
+  /** 切换专注模式 */
+  onToggleFocusMode?: () => void;
+  /** 打字机模式状态（查看菜单） */
+  typewriter?: boolean;
+  /** 切换打字机模式 */
+  onToggleTypewriter?: () => void;
     /** 字号增大（查看菜单；步进由 App 归一后保存） */
     onFontIncrease?: () => void;
     /** 字号减小（查看菜单） */
@@ -78,6 +90,12 @@
     onReload,
     onEditorAction,
     onToggleFullscreen,
+  autoScroll,
+  onToggleAutoScroll,
+  focusMode,
+  onToggleFocusMode,
+  typewriter,
+  onToggleTypewriter,
     onFontIncrease,
     onFontDecrease,
     onFontReset,
@@ -385,6 +403,9 @@
       <button class="item" onclick={() => run(() => onFontDecrease?.())}><span>{t('menu.view.fontDecrease')}</span></button>
       <button class="item" onclick={() => run(() => onFontReset?.())}><span>{t('menu.view.fontReset')}</span></button>
       <div class="separator"></div>
+      <button class="item" onclick={() => run(() => onToggleAutoScroll?.())}><span>{t('menu.view.autoScroll')}</span><span class="hint">{autoScroll ? '✓' : ''}</span></button>
+      <button class="item" onclick={() => run(() => onToggleFocusMode?.())}><span>{t('menu.view.focusMode')}</span><span class="hint">{focusMode ? '✓' : ''}</span></button>
+      <button class="item" onclick={() => run(() => onToggleTypewriter?.())}><span>{t('menu.view.typewriter')}</span><span class="hint">{typewriter ? '✓' : ''}</span></button>
       <button class="item" onclick={() => run(onToggleFullscreen)}><span>{t('menu.view.fullscreen')}</span><span class="hint">F11</span></button>
     </div>
   {:else if openMenu === 'help'}

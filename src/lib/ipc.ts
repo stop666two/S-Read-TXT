@@ -606,6 +606,8 @@ export interface ReaderSettings {
   themeAnimMs: number;
   typography: TypographySettings;
   margins: MarginSettings;
+  /** 阅读模式设置（P2-4：专注/打字机/自动滚动/提醒等） */
+  reading: ReadingSettings;
   background: BackgroundSettings;
 }
 

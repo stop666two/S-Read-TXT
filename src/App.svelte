@@ -379,7 +379,10 @@
       }
       // 先预热滚动锚点再应用视图：活动标签首次渲染即可恢复到记录位置
       for (const seed of seeds) {
-        scrollMemory.seed(seed.tabId, seed.row);
+        // 进度记忆关闭：不恢复历史位置（会话仍保存窗口与标签）
+        if (readerSettings?.reading.progressMemory !== false) {
+          scrollMemory.seed(seed.tabId, seed.row);
+        }
       }
       tabs.applyView(await ipc.listTabs());
       const target = tabs.tabs[session.activeTabIndex];
@@ -1046,7 +1049,85 @@
     scheduleHistoryRefresh();
   });
 
-  onMount(() => {
+  /** 专注模式生效中（阅读态且未编辑；标题栏保留窗口控制，其余栏隐藏） */
+    const focusReading = $derived(
+    (readerSettings?.reading.focusMode ?? false) && !(active?.editing ?? false),
+  );
+
+  /** 自动滚动（菜单开关；rAF 循环；用户主动滚动即停止） */
+  let autoScrollOn = $state(false);
+  let autoScrollRaf = 0;
+
+  function stopAutoScroll(): void {
+    cancelAnimationFrame(autoScrollRaf);
+    autoScrollRaf = 0;
+  }
+
+  function startAutoScroll(): void {
+    stopAutoScroll();
+    let last = performance.now();
+    const step = (now: number): void => {
+      if (!autoScrollOn) return;
+      const el = document.querySelector<HTMLElement>('.reader');
+      if (!el) {
+        autoScrollOn = false;
+        return;
+      }
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const speed = readerSettings?.reading.autoScrollSpeed ?? 30;
+      const before = el.scrollTop;
+      el.scrollTop = before + speed * dt;
+      const atBottom = before + el.clientHeight >= el.scrollHeight - 1;
+      if (el.scrollTop === before && atBottom) {
+        autoScrollOn = false;
+        toasts.show(t('reading.autoScrollEnd'));
+        return;
+      }
+      autoScrollRaf = requestAnimationFrame(step);
+    };
+    autoScrollRaf = requestAnimationFrame(step);
+  }
+
+  function toggleAutoScroll(): void {
+    if (!active || active.editing) return;
+    autoScrollOn = !autoScrollOn;
+    if (autoScrollOn) startAutoScroll();
+    else stopAutoScroll();
+  }
+
+  /** 用户主动滚动 → 停止自动滚动（阅读节奏让位于用户） */
+  function handleUserScroll(): void {
+    if (autoScrollOn) {
+      autoScrollOn = false;
+      stopAutoScroll();
+    }
+  }
+
+  function toggleFocusMode(): void {
+    if (!readerSettings) return;
+    void persistReader({
+      reading: { ...readerSettings.reading, focusMode: !readerSettings.reading.focusMode },
+    });
+  }
+
+  function toggleTypewriter(): void {
+    if (!readerSettings) return;
+    void persistReader({
+      reading: { ...readerSettings.reading, typewriter: !readerSettings.reading.typewriter },
+    });
+  }
+
+  // 进入编辑模式时自动停止自动滚动
+  $effect(() => {
+    if ((active?.editing ?? false) && autoScrollOn) {
+      autoScrollOn = false;
+      stopAutoScroll();
+    }
+  });
+
+  
+onMount(() => {
     // 启动显示策略（维护者确认）：窗口由 Rust 侧在启动时立即显示
     // （主题背景色 + HTML 内置占位先行）；窗口几何恢复也已在 Rust 侧完成
     // （显示之前，避免可见跳动）。这里只归还键盘焦点。
@@ -1149,7 +1230,13 @@
       });
 
     // 全局快捷键（捕获阶段：先于编辑层与浏览器默认行为）
-    const onGlobalKeydown = (event: KeyboardEvent): void => {
+  const onGlobalKeydown = (event: KeyboardEvent): void => {
+    // 专注模式：Esc 退出（阅读态专属；编辑/弹窗各自处理 Esc）
+    if (event.key === 'Escape' && focusReading) {
+      event.preventDefault();
+      toggleFocusMode();
+      return;
+    }
       const decision = decideShortcut(comboFromEvent(event), shortcuts, {
         editorContext: isEditorContext(event.target),
         modalOpen: modalOpen(),
@@ -1169,6 +1256,7 @@
     window.addEventListener('keydown', onGlobalKeydown, true);
 
     return () => {
+      stopAutoScroll();
       unlisten?.();
       unlistenClose?.();
       unlistenSettings?.();
@@ -1183,7 +1271,7 @@
   });
 </script>
 
-<div class="shell">
+<div class="shell" class:focus-reading={focusReading}>
   <TitleBar
     title={windowTitle}
     showSettings
@@ -1205,6 +1293,12 @@
     onReload={reloadFlow}
     onEditorAction={dispatchEditorAction}
     onToggleFullscreen={() => void toggleFullscreen()}
+    autoScroll={autoScrollOn}
+    onToggleAutoScroll={toggleAutoScroll}
+    focusMode={readerSettings?.reading.focusMode ?? false}
+    onToggleFocusMode={toggleFocusMode}
+    typewriter={readerSettings?.reading.typewriter ?? false}
+    onToggleTypewriter={toggleTypewriter}
     onFontIncrease={() => adjustFontSize(1)}
     onFontDecrease={() => adjustFontSize(-1)}
     onFontReset={resetFontSize}
@@ -1269,6 +1363,8 @@
         onCaretInfo={(info) => (caretInfo = info)}
         displaySettings={appSettings?.display ?? null}
         editCaretRow={caretInfo ? caretInfo.row - 1 : null}
+        readingSettings={readerSettings?.reading ?? null}
+        onUserScroll={handleUserScroll}
         layoutKey={typographyKey}
       />
     {:else}
@@ -1385,6 +1481,14 @@
     display: flex;
     flex: 1;
     min-height: 0;
+  }
+
+  /* 专注模式：隐藏菜单/工具栏/标签栏/状态栏（标题栏保留以维持窗口控制与拖拽；Esc 退出） */
+  .focus-reading :global(.menu-bar),
+  .focus-reading :global(.toolbar),
+  .focus-reading :global(.tab-bar),
+  .focus-reading :global(.status-bar) {
+    display: none;
   }
 
   .bg-layer {
