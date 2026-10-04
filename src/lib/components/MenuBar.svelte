@@ -49,6 +49,10 @@
   onToggleFocusMode?: () => void;
   /** 打字机模式状态（查看菜单） */
   typewriter?: boolean;
+  /** 折叠功能启用（显示设置 V-08 非关闭） */
+  foldingEnabled?: boolean;
+  onFoldAll?: () => void;
+  onFoldNone?: () => void;
   /** 切换打字机模式 */
   onToggleTypewriter?: () => void;
   /** 番茄钟进行中（影响菜单项文案） */
@@ -100,6 +104,9 @@
   onToggleFocusMode,
   typewriter,
   onToggleTypewriter,
+    foldingEnabled,
+    onFoldAll,
+    onFoldNone,
   pomodoroOn,
   onTogglePomodoro,
     onFontIncrease,
@@ -412,6 +419,8 @@
       <button class="item" onclick={() => run(() => onToggleAutoScroll?.())}><span>{t('menu.view.autoScroll')}</span><span class="hint">{autoScroll ? '✓' : ''}</span></button>
       <button class="item" onclick={() => run(() => onToggleFocusMode?.())}><span>{t('menu.view.focusMode')}</span><span class="hint">{focusMode ? '✓' : ''}</span></button>
       <button class="item" onclick={() => run(() => onToggleTypewriter?.())}><span>{t('menu.view.typewriter')}</span><span class="hint">{typewriter ? '✓' : ''}</span></button>
+<button class="item" disabled={!foldingEnabled} onclick={() => run(() => onFoldAll?.())}><span>{t('menu.view.foldAll')}</span></button>
+<button class="item" disabled={!foldingEnabled} onclick={() => run(() => onFoldNone?.())}><span>{t('menu.view.foldNone')}</span></button>
         <button class="item" onclick={() => run(onTogglePomodoro)}
           ><span>{pomodoroOn ? t('menu.view.pomodoroStop') : t('menu.view.pomodoroStart')}</span><span
             class="hint">{pomodoroOn ? '✓' : ''}</span

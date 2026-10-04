@@ -502,6 +502,19 @@ export interface AppSettings {
 /** 折叠方式（显示选项 V-08）。 */
 export type FoldingMode = 'off' | 'indent' | 'heading' | 'regex';
 
+/** 大纲条目（P2-6 V-09；显示行坐标与渲染/跳转一致）。 */
+export interface OutlineItem {
+  row: number;
+  title: string;
+  level: number;
+}
+
+/** 折叠区间（P2-6b V-08；闭区间，startRow 为可点击的折叠标记行）。 */
+export interface FoldRegion {
+  startRow: number;
+  endRow: number;
+}
+
 /** 显示选项（与 Rust `DisplaySettings` 对应，P2-2）。 */
 export interface DisplaySettings {
   lineNumbers: boolean;
@@ -1096,6 +1109,10 @@ export const ipc = {
   /** 稀疏按行取文本（过滤视图虚拟窗口；单次 ≤512 行）。 */
   fetchRowsAt: (tabId: number, rows: number[]) =>
     invoke<RowsPayload['rows']>('fetch_rows_at', { tabId, rows }),
+  /** 大纲提取（P2-6 V-09；空正则列表后端回退内置默认）。 */
+  outlineItems: (tabId: number) => invoke<OutlineItem[]>('outline_items', { tabId }),
+  /** 折叠区间（P2-6b V-08；按当前折叠设置计算）。 */
+  foldRegions: (tabId: number) => invoke<FoldRegion[]>('fold_regions', { tabId }),
   /** 剪贴板历史（读取最新列表）。 */
   listClipboardHistory: () => invoke<ClipboardEntry[]>('list_clipboard_history'),
   /** 记录一次复制到历史（空文本/禁用时后端 no-op；返回最新列表）。 */

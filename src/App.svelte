@@ -1081,6 +1081,16 @@
   /** 自动滚动（菜单开关；rAF 循环；用户主动滚动即停止） */
   let autoScrollOn = $state(false);
   let autoScrollRaf = 0;
+  /** 折叠指令（P2-6b V-08）：菜单广播给 ReaderView（seq 去重） */
+  let foldCommand = $state<{ kind: 'all' | 'none'; seq: number } | null>(null);
+  let foldSeq = 0;
+  const foldingEnabled = $derived((appSettings?.display.folding ?? 'off') !== 'off');
+  function foldAll(): void {
+    foldCommand = { kind: 'all', seq: ++foldSeq };
+  }
+  function foldNone(): void {
+    foldCommand = { kind: 'none', seq: ++foldSeq };
+  }
 
   function stopAutoScroll(): void {
     cancelAnimationFrame(autoScrollRaf);
@@ -1414,6 +1424,9 @@ onMount(() => {
     onToggleFocusMode={toggleFocusMode}
     typewriter={readerSettings?.reading.typewriter ?? false}
     onToggleTypewriter={toggleTypewriter}
+          foldingEnabled={foldingEnabled}
+          onFoldAll={foldAll}
+          onFoldNone={foldNone}
     pomodoroOn={pomodoroOn}
     onTogglePomodoro={togglePomodoro}
     onFontIncrease={() => adjustFontSize(1)}
@@ -1483,6 +1496,7 @@ onMount(() => {
         readingSettings={readerSettings?.reading ?? null}
         pageTurn={pageTurnSignal}
         onUserScroll={handleUserScroll}
+              foldCommand={foldCommand}
         layoutKey={typographyKey}
       />
     {:else}

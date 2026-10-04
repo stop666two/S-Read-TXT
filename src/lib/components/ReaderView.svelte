@@ -12,9 +12,11 @@
     ipc,
     toIpcError,
     type EditApplied,
+    type FoldRegion,
     type FilterQuery,
     type TabInfo,
   } from '../ipc';
+  import { buildVisibleRows, hiddenIntervals } from '../reader/folds';
   import { HeightModel } from '../reader/heights';
   import { RowCache } from '../reader/row-cache';
   import { scrollMemory } from '../reader/scroll-memory';
@@ -55,6 +57,8 @@
   readingSettings?: ReadingSettings | null;
   /** 用户主动滚动回调（用于停止自动滚动） */
   onUserScroll?: () => void;
+  /** 折叠指令（P2-6b：菜单折叠全部/展开全部；seq 去重） */
+  foldCommand?: { kind: 'all' | 'none'; seq: number } | null;
   /** 时间戳插入设置（透传编辑层；未就绪为 null） */
   insertSettings?: InsertSettings | null;
   /** 括号匹配/自动缩进设置（透传编辑层；未就绪为 null） */
@@ -75,7 +79,7 @@
     editCaretRow?: number | null;
   }
   let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, readingSettings,
-    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll }: Props = $props();
+    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll, foldCommand = null }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -241,6 +245,20 @@
   let filterHideEmpty = $state(false);
   /** 命中显示行号；null = 过滤未启用 */
   let filterRows = $state<number[] | null>(null);
+  // ---------- 折叠（P2-6b V-08：与过滤共用视图行通道；过滤优先，分屏路径暂不启用） ----------
+  let foldRegions = $state<FoldRegion[] | null>(null);
+  let foldedRows = $state<Set<number>>(new Set());
+  const foldingMode = $derived(disp?.folding ?? 'off');
+  const foldsActive = $derived.by(() => foldingMode !== 'off' && !spreadMode);
+  const foldStarts = $derived(new Set((foldRegions ?? []).map((region) => region.startRow)));
+  const foldVisibleRows = $derived.by(() => {
+    if (!foldsActive || !foldRegions || foldedRows.size === 0) return null;
+    const hidden = hiddenIntervals(foldRegions, foldedRows);
+    if (hidden.length === 0) return null;
+    return buildVisibleRows(tab.rowsTotal, hidden);
+  });
+  /** 视图行通道：过滤优先，其次折叠（显示行索引 → 文件行） */
+  const viewRows = $derived(filterRows ?? foldVisibleRows);
   let filterTruncated = $state(false);
   let filterBusy = $state(false);
   let filterError = $state<string | null>(null);
@@ -248,13 +266,85 @@
 
   /** 显示行 → 文件行（过滤关闭时二者相同）。 */
   function fileRowOf(displayRow: number): number {
-    const filter = filterRows;
+    const filter = viewRows;
     return filter ? (filter[displayRow] ?? 0) : displayRow;
   }
 
   /** 当前视图总行数（过滤启用后为命中数）。 */
+  // 折叠状态随标签/编码切换重置（区间与折叠集属标签级；内容变更由 version 触发重载）
+  $effect(() => {
+    void tab.tabId;
+    void tab.encoding;
+    untrack(() => {
+      foldedRows = new Set();
+      foldRegions = null;
+    });
+  });
+
+  // 折叠区间加载（模式/标签/修订变化；300ms 防抖；失败提示一次并停止折叠）
+  let foldLoadSeq = 0;
+  $effect(() => {
+    const tabId = tab.tabId;
+    void version;
+    const active = foldsActive;
+    if (!active) {
+      foldRegions = null;
+      return;
+    }
+    const seq = ++foldLoadSeq;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const regions = await ipc.foldRegions(tabId);
+          if (seq === foldLoadSeq) foldRegions = regions;
+        } catch (error) {
+          if (seq === foldLoadSeq) {
+            foldRegions = [];
+            toasts.error(describeIpcError(toIpcError(error)));
+          }
+        }
+      })();
+    }, 300);
+    return () => clearTimeout(timer);
+  });
+
+  // 折叠指令（菜单：折叠全部/展开全部）
+  let foldCommandSeq = 0;
+  $effect(() => {
+    const command = foldCommand;
+    if (!command || command.seq === foldCommandSeq) return;
+    foldCommandSeq = command.seq;
+    if (!foldRegions) return;
+    foldedRows =
+      command.kind === 'all'
+        ? new Set(
+            foldRegions
+              .filter((region) => region.endRow > region.startRow)
+              .map((region) => region.startRow),
+          )
+        : new Set();
+    applyFoldChange();
+  });
+
+  /** 折叠切换后保持顶部行稳定并重排 */
+  function applyFoldChange(): void {
+    const topDisplay = heights.rowAtOffset(contentScrollTop(), viewRowsTotal());
+    const anchorRow = viewRows ? (viewRows[Math.min(topDisplay, viewRows.length - 1)] ?? 0) : topDisplay;
+    refreshWindow();
+    void untrack(() => applyInitialScroll(anchorRow, viewRowsTotal()));
+  }
+
+  /** 切换单行折叠 */
+  function toggleFold(row: number): void {
+    const next = new Set(foldedRows);
+    if (next.has(row)) next.delete(row);
+    else next.add(row);
+    foldedRows = next;
+    applyFoldChange();
+  }
+
   function viewRowsTotal(): number {
-    return filterRows ? filterRows.length : tab.rowsTotal;
+    return viewRows ? viewRows.length : tab.rowsTotal;
   }
 
   /** 过滤启用/清除后的视图基线重建（缓存、高度、窗口、滚动记忆统一重置）。 */
@@ -346,7 +436,7 @@
       if (inflight.has(key)) continue;
       inflight.add(key);
       const tabId = tab.tabId;
-      const filter = filterRows; // 快照：过滤结果变化后旧批次作废
+      const filter = viewRows; // 快照：视图行集变化后旧批次作废
       const fetch = filter
         ? ipc.fetchRowsAt(
             tabId,
@@ -356,7 +446,7 @@
       void fetch.then(
         (rows) => {
           inflight.delete(key);
-          if (tab.tabId !== tabId || filterRows !== filter) return;
+          if (tab.tabId !== tabId || viewRows !== filter) return;
           rows.forEach((row, index) => {
             const displayRow = filter ? batch.start + index : row.row;
             cache.set(displayRow, {
@@ -438,7 +528,7 @@
     spacerBottom = Math.max(0, heights.totalHeight(rowsTotal) - heights.offsetOf(end, rowsTotal));
     ensureRows(start, end);
     // 过滤视图的显示行与文件行不是同一坐标，不写入滚动记忆（会话恢复始终针对文件行）
-    if (filterRows === null) scrollMemory.set(tab.tabId, anchorRow);
+    if (viewRows === null) scrollMemory.set(tab.tabId, anchorRow);
     const percent = computePercent(heights, rowsTotal, anchorRow);
     if (Math.round(percent) !== lastPercent) {
       lastPercent = Math.round(percent);
@@ -452,13 +542,13 @@
   /** 计算并回报当前顶部行（过滤态映射回文件行；去抖）。 */
   function reportTopRow(): void {
     const topDisplayRow = heights.rowAtOffset(contentScrollTop(), Math.max(1, viewRowsTotal()));
-    if (filterRows === null) {
+    if (viewRows === null) {
       if (topDisplayRow !== lastTopRow) {
         lastTopRow = topDisplayRow;
         onTopRow?.(topDisplayRow + 1);
       }
     } else {
-      const fileRow = filterRows[Math.min(topDisplayRow, filterRows.length - 1)] ?? 0;
+      const fileRow = viewRows![Math.min(topDisplayRow, viewRows!.length - 1)] ?? 0;
       if (fileRow !== lastTopRow) {
         lastTopRow = fileRow;
         onTopRow?.(fileRow + 1);
@@ -484,7 +574,7 @@
       // 实时记录顶部定位行（会话/标签切换共用数据源）；
       // 此前仅在切换标签的清理阶段记录，导致「滚动后直接退出」恢复不到位置。
       // 过滤视图下跳过（显示行 ≠ 文件行）。
-      if (filterRows === null && (readingSettings?.progressMemory ?? true)) {
+      if (viewRows === null && (readingSettings?.progressMemory ?? true)) {
         scrollMemory.set(
           tab.tabId,
           heights.rowAtOffset(contentScrollTop(), Math.max(1, viewRowsTotal())),
@@ -744,7 +834,7 @@
   function topRowFromOffset(offset: number): number | null {
     const total = Math.max(1, viewRowsTotal());
     const display = heights.rowAtOffset(offset, total);
-    return filterRows ? (filterRows[display] ?? null) : display;
+    return viewRows ? (viewRows[display] ?? null) : display;
   }
   const spreadCols = $derived.by(() => {
     void version;
@@ -886,7 +976,7 @@
 {#snippet rowMarkup(item: { row: number; text: string }, absolute: boolean, top: number)}
   {@const marked = markRow(item.text)}
   {@const ann = rowAnn(item.row)}
-  <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow} style={absolute ? `top: ${top}px` : undefined}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.hl}<span class="hl" style={seg.color ? `--hl-color: ${seg.color}` : undefined}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
+  <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow} style={absolute ? `top: ${top}px` : undefined}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}{#if foldsActive && foldStarts.has(item.row)}<button class="fold-mark" class:folded={foldedRows.has(item.row)} data-fold-mark={item.row} aria-label={t('fold.toggle')} onpointerdown={(event) => event.stopPropagation()} onclick={(event) => { event.stopPropagation(); toggleFold(item.row); }}>{foldedRows.has(item.row) ? '▸' : '▾'}</button>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.hl}<span class="hl" style={seg.color ? `--hl-color: ${seg.color}` : undefined}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
 {/snippet}
 
 <svelte:window onkeydown={markUserInput} />
@@ -1127,6 +1217,23 @@
 
   /* 文本容器：仅结构标记（不可加 position/z-index——会盖住 edit-surface
      导致鼠标定位与修饰键点击失效） */
+  .fold-mark {
+    flex: none;
+    position: relative;
+    z-index: 7;
+    width: 1.1em;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: inherit;
+    font-family: inherit;
+    line-height: inherit;
+    cursor: pointer;
+  }
+  .fold-mark:hover {
+    color: var(--accent);
+  }
   .txt {
     display: inline;
   }
