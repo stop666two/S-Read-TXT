@@ -106,6 +106,13 @@
   /** 标签 → 顶部定位行的注册表（跨模块共享；见 reader/scroll-memory.ts） */
   /** 程序化滚动标记（锚定补偿时避免重入滚动处理） */
   let programmatic = false;
+
+  /** 最近一次真实用户输入时间（滚轮/指针/按键）。
+   *  自动滚动等程序化写入不产生输入事件，借此区分「用户滚动」并回调 onUserScroll。 */
+  let lastUserInputAt = 0;
+  function markUserInput(): void {
+    lastUserInputAt = performance.now();
+  }
   let lastPercent = -1;
   /** 当前渲染窗口首行（阅读态当前行高亮/相对行号参照） */
   let windowStartRow = $state(0);
@@ -483,8 +490,8 @@
           heights.rowAtOffset(contentScrollTop(), Math.max(1, viewRowsTotal())),
         );
       }
-      // 用户主动滚动（非程序化路径）：通知外部停止自动滚动
-      onUserScroll?.();
+      // 用户主动滚动（滚轮/指针/按键后 400ms 内）：通知外部停止自动滚动
+      if (performance.now() - lastUserInputAt < 400) onUserScroll?.();
       reportTopRow();
     });
   }
@@ -882,7 +889,8 @@
   <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow} style={absolute ? `top: ${top}px` : undefined}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.hl}<span class="hl" style={seg.color ? `--hl-color: ${seg.color}` : undefined}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
 {/snippet}
 
-<div class="reader" class:spread={spreadMode} bind:this={container} onscroll={handleScroll} onwheel={handleSpreadWheel}>
+<svelte:window onkeydown={markUserInput} />
+<div class="reader" class:spread={spreadMode} bind:this={container} onscroll={handleScroll} onwheel={handleSpreadWheel} onpointerdown={markUserInput} ontouchstart={markUserInput}>
   {#if !tab.editing && tab.rowsTotal > 0}
     <div class="filter-host">
       {#if filterActive && filterRows}
