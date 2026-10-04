@@ -405,3 +405,12 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 验证：cargo **386**（380 lib+15+2+6+5，含新颜色测试）；svelte-check 0/0；vitest 96；smoke-settings 复验 **48/48**（首次 41/48 为重建后首启偶发，二次全绿）。
 - 提交：feat（本批）+ docs（本台账/变更日志）。
 - 待续：S3 自定义主题编辑器+智能配色+AI 占位；S4 边距四向独立×编辑/阅读两套（schema v12）；S5 回归+物理验证。
+
+### 设置自定义化（第三批·S3 主题编辑器+智能配色，完成）
+- 后端：`theme.rs::save_manifest`（强校验+内置 id 拒+原子写 `data/themes/<id>.json`）；`save_theme` 命令（THEME_INVALID）；`import_theme` 重构复用同一校验链；新增测试（写入/覆盖/守卫）。
+- 前端：`ThemeEditor.svelte`（基于主题载入/中英命名/自定义 id/明暗基底/13 令牌颜色自由输入+取色器/保存覆盖确认/重置/就地错误）；`src/lib/theme/palette.ts` 智能配色（离线确定性；ink-base ≥7、accent-base ≥3、语义色固定；vitest 8 项）；「AI 生成」为占位提示（联网服务后续另行提供）。
+- 验证：cargo **409**（381 lib+15+2+6+5）；svelte-check 0/0；vitest **104**；smoke-settings **53/53**（S17a–e：卡片/13 合法色/保存入清单/AI 占位/清理）；smoke-theme 10/10 回归。
+- 提交：feat + test + docs（见提交记录）。
+
+### 设置自定义化（第四批·S4 边距四向独立，进行中）
+- 待完成：schema v12（`readingMargins`/`editingMargins` 各四向）、注册表 91、迁移 v12、CSS 变量按编辑态切换、S5 回归+物理验证。

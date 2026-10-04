@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 407（379 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 96；E2E 32 套 ≈522 项；verify-all 41 步。
+- 计数口径：Rust 409（381 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 104；E2E 32 套 ≈522 项；verify-all 41 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -42,7 +42,7 @@
 | smoke-longline | 9 | 100MB 无换行：分段/滚动/编辑/保存字节级 |
 | offline-check | 4 | 离线核查：依赖树（静态）+ 运行时零外联（动态） |
 
-## 2. IPC 命令 × 证据（43 个）
+## 2. IPC 命令 × 证据（77 个）
 
 | 命令 | 证据 |
 |---|---|
@@ -70,6 +70,10 @@
 
 | document_stats / selection_stats | smoke-status S1/S2/S5（文档与选中统计）+ Rust stats 7 项 + tests/stats_flow.rs 6 项 |
 | convert_eol | smoke-status S6（菜单转换 + CRLF 生效 + Toast + 单撤销语义）+ Rust 回归（多字节+编辑） |
+| list_clipboard_history / add_clipboard_entry / remove_clipboard_entry / clear_clipboard_history | smoke-clipboard（19 项：复制记录/插入/删除/清空/持久化/上限/禁用）；Rust clipboard_history 8 项 |
+| export_shortcuts / import_shortcuts | smoke-settings-io（快捷键导出 / 合法导入 / 非法包拒绝） |
+| set_background_file / clear_background_file / read_background_image | smoke-bg B1–B9；Rust background 6 项 |
+| list_themes / get_theme / import_theme / save_theme / export_theme / remove_theme | smoke-theme T1–T10；smoke-settings S17（save_theme：智能配色/保存入清单/清理）；Rust theme 10 项 |
 
 ## 3. 错误码 × 证据（24 个）
 
