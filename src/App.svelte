@@ -407,7 +407,27 @@
   }
 
   /** 翻页（阅读态）：约一屏（留 3 行重叠）；平滑动画可经设置关闭 */
+  /** 分屏（分页/双页/双栏）路由：快捷键翻屏交由 ReaderView 处理 */
+  let pageTurnSignal = $state<{ seq: number; kind: 'up' | 'down' | 'top' | 'bottom' } | null>(null);
+  let pageTurnSeq = 0;
+
+  function readerSplitMode(): boolean {
+    const reading = readerSettings?.reading;
+    if (!reading || active?.editing) return false;
+    const cols = reading.pageMode === 'double' ? 2 : Math.min(2, Math.max(1, reading.columns));
+    return cols > 1 || reading.pageMode !== 'scroll';
+  }
+
+  function sendPageTurn(kind: 'up' | 'down' | 'top' | 'bottom'): void {
+    pageTurnSeq += 1;
+    pageTurnSignal = { seq: pageTurnSeq, kind };
+  }
+
   function scrollPages(step: number): void {
+      if (readerSplitMode()) {
+        sendPageTurn(step > 0 ? 'down' : 'up');
+        return;
+      }
     const element = readerElement();
     if (!element) return;
     const span = Math.max(120, element.clientHeight - 96);
@@ -417,6 +437,10 @@
 
   /** 跳到开头 / 结尾（阅读态） */
   function scrollToEdge(edge: 'top' | 'bottom'): void {
+      if (readerSplitMode()) {
+        sendPageTurn(edge);
+        return;
+      }
     const element = readerElement();
     if (!element) return;
     element.scrollTop = edge === 'top' ? 0 : element.scrollHeight;
@@ -1457,6 +1481,7 @@ onMount(() => {
         displaySettings={appSettings?.display ?? null}
         editCaretRow={caretInfo ? caretInfo.row - 1 : null}
         readingSettings={readerSettings?.reading ?? null}
+        pageTurn={pageTurnSignal}
         onUserScroll={handleUserScroll}
         layoutKey={typographyKey}
       />

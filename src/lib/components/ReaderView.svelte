@@ -63,6 +63,8 @@
   cleanupSettings?: CleanupSettings | null;
     /** 状态栏：顶部可视行回报（1 基；P2-1） */
     onTopRow?: (row: number) => void;
+    /** 翻页信号（App 快捷键；分屏路径消费） */
+    pageTurn?: { seq: number; kind: 'up' | 'down' | 'top' | 'bottom' } | null;
     /** 状态栏：选区统计透传（编辑层；P2-1） */
     onSelectionStats?: (stats: TextStats | null) => void;
     /** 状态栏：光标行列透传（编辑层；P2-1） */
@@ -72,7 +74,8 @@
     /** 编辑态光标所在显示行（0 基；当前行高亮/相对行号参照；阅读态忽略） */
     editCaretRow?: number | null;
   }
-  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, readingSettings, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll }: Props = $props();
+  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, readingSettings,
+    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -550,6 +553,7 @@
       if (page instanceof HTMLElement) {
         pagePadTop = Number.parseFloat(getComputedStyle(page).paddingTop) || 0;
       }
+      spreadViewport = Math.max(1, el.clientHeight);
       heights.clear();
       refreshWindow();
       version += 1;
@@ -619,7 +623,10 @@
     if (filterRows !== null) clearFilter();
     const rowCount = Math.max(1, tab.rowsTotal);
     const targetRow = Math.min(jumpStore.row, rowCount - 1);
-    if (container) {
+    if (spreadMode) {
+      spreadOffset = spreadStartOf(heights.offsetOf(targetRow, rowCount));
+      reportSpreadTop();
+    } else if (container) {
       applyInitialScroll(targetRow, rowCount);
     }
   });
@@ -676,16 +683,17 @@
         scrollMemory.get(currentTabId) ?? 0,
         Math.max(0, rowsTotal - 1),
       );
-      if (container) {
+      if (spreadMode) {
+        spreadOffset = spreadStartOf(heights.offsetOf(restoredRow, Math.max(1, rowsTotal)));
+        reportSpreadTop();
+      } else if (container) {
         applyInitialScroll(restoredRow, rowsTotal);
       }
     });
     return () => {
       if (readingSettings?.progressMemory ?? true) {
-        scrollMemory.set(
-          currentTabId,
-          heights.rowAtOffset(contentScrollTop(), Math.max(1, rowsTotal)),
-        );
+        const offset = untrack(() => (spreadMode ? spreadOffset : contentScrollTop()));
+        scrollMemory.set(currentTabId, heights.rowAtOffset(offset, Math.max(1, rowsTotal)));
       }
     };
   });
@@ -696,9 +704,185 @@
     if (filterRows !== null) clearFilter();
     filterOpen = false;
   });
+
+  // ---------- 分屏渲染路径（P2-4d：R-02 分栏 / R-10 翻页方式） ----------
+  /** 翻页方式（scroll / paged / double） */
+  function pageModeSetting(): 'scroll' | 'paged' | 'double' {
+    const mode = readingSettings?.pageMode ?? 'scroll';
+    return mode === 'paged' || mode === 'double' ? mode : 'scroll';
+  }
+  /** 每屏列数（双页恒 2；分栏取设置 1–2） */
+  const spreadColumns = $derived(
+    pageModeSetting() === 'double' ? 2 : Math.min(2, Math.max(1, readingSettings?.columns ?? 1)),
+  );
+  /** 是否分页（翻页动画；分栏滚动模式为瞬时整屏切换） */
+  const pagedSpread = $derived(pageModeSetting() !== 'scroll');
+  /** 是否走分屏渲染路径（编辑态恒走滚动路径） */
+  const spreadMode = $derived(!tab.editing && (spreadColumns > 1 || pagedSpread));
+  let spreadOffset = $state(0);
+  let spreadViewport = $state(0);
+  let spreadTween: number | undefined;
+  let wheelAcc = 0;
+  let handledTurnSeq = 0;
+
+  /** 每屏内容跨度 = 视口内容高 × 列数 */
+  function spreadSpan(): number {
+    return Math.max(1, spreadViewport) * spreadColumns;
+  }
+  function spreadStartOf(offset: number): number {
+    const span = spreadSpan();
+    return Math.max(0, Math.round(offset / span) * span);
+  }
+  /** 当前顶部行的文件行号（含过滤映射；1 基由调用方加） */
+  function topRowFromOffset(offset: number): number | null {
+    const total = Math.max(1, viewRowsTotal());
+    const display = heights.rowAtOffset(offset, total);
+    return filterRows ? (filterRows[display] ?? null) : display;
+  }
+  const spreadCols = $derived.by(() => {
+    void version;
+    void spreadOffset;
+    void spreadColumns;
+    void spreadViewport;
+    if (!spreadMode) return [];
+    const total = Math.max(1, viewRowsTotal());
+    const height = Math.max(1, spreadViewport);
+    const cols: { start: number; rows: { row: number; top: number; text: string }[] }[] = [];
+    for (let index = 0; index < spreadColumns; index += 1) {
+      const start = spreadOffset + index * height;
+      const rows: { row: number; top: number; text: string }[] = [];
+      if (start < heights.totalHeight(total)) {
+        let row = heights.rowAtOffset(start, total);
+        while (row < total) {
+          const top = heights.offsetOf(row, total) - start;
+          if (top >= height) break;
+          rows.push({ row, top, text: cache.get(row)?.text ?? '' });
+          row += 1;
+        }
+      }
+      cols.push({ start, rows });
+    }
+    return cols;
+  });
+
+  /** 分屏路径：取数 + 逐帧测量（测量即写高度模型，version 驱动重排） */
+  $effect(() => {
+    if (!spreadMode) return;
+    const cols = spreadCols;
+    let min = Number.POSITIVE_INFINITY;
+    let max = -1;
+    for (const col of cols) {
+      for (const item of col.rows) {
+        if (item.row < min) min = item.row;
+        if (item.row > max) max = item.row;
+      }
+    }
+    if (max >= 0) ensureRows(min, max + 1);
+    requestAnimationFrame(() => measureSpread());
+  });
+
+  function measureSpread(): void {
+    if (!container || !spreadMode) return;
+    let changed = false;
+    for (const el of container.querySelectorAll<HTMLElement>('.row[data-row]')) {
+      const row = Number(el.dataset.row);
+      const height = el.getBoundingClientRect().height;
+      if (height > 0 && Math.abs(heights.heightOf(row) - height) > 0.5) {
+        heights.measure(row, height);
+        changed = true;
+      }
+    }
+    if (changed) version += 1;
+  }
+
+  /** 报告分屏当前顶部行与百分比（状态栏） */
+  function reportSpreadTop(): void {
+    const total = Math.max(1, viewRowsTotal());
+    const fileRow = topRowFromOffset(spreadOffset);
+    if (fileRow !== null) onTopRow?.(fileRow + 1);
+    const totalHeight = heights.totalHeight(total);
+    const percent = totalHeight > 0 ? (spreadOffset / totalHeight) * 100 : 0;
+    const rounded = Math.round(percent);
+    if (rounded !== lastPercent) {
+      lastPercent = rounded;
+      onPercent(percent);
+    }
+  }
+
+  /** 翻屏（到边界不动作） */
+  function turnSpread(dir: 1 | -1): void {
+    if (!spreadMode || spreadTween !== undefined) return;
+    const span = spreadSpan();
+    const total = Math.max(1, viewRowsTotal());
+    const maxOffset = Math.max(0, Math.ceil(heights.totalHeight(total) / span) * span - span);
+    const target = Math.min(maxOffset, Math.max(0, spreadOffset + dir * span));
+    animateSpreadTo(target);
+  }
+
+  /** 滚轮翻屏（阈值累积防误触；双栏滚动模式瞬时） */
+  function handleSpreadWheel(event: WheelEvent): void {
+    if (!spreadMode) return;
+    event.preventDefault();
+    if (spreadTween !== undefined) return;
+    wheelAcc += event.deltaY;
+    if (Math.abs(wheelAcc) >= 40) {
+      turnSpread(wheelAcc > 0 ? 1 : -1);
+      wheelAcc = 0;
+    }
+  }
+
+  function animateSpreadTo(target: number): void {
+    if (spreadTween !== undefined) cancelAnimationFrame(spreadTween);
+    const from = spreadOffset;
+    const ms = pagedSpread ? Math.max(0, readingSettings?.pageAnimMs ?? 320) : 0;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (ms === 0 || reduce) {
+      spreadOffset = target;
+      reportSpreadTop();
+      return;
+    }
+    const start = performance.now();
+    const step = (now: number): void => {
+      const k = Math.min(1, (now - start) / ms);
+      const eased = 1 - (1 - k) ** 3;
+      spreadOffset = Math.round(from + (target - from) * eased);
+      if (k < 1) {
+        spreadTween = requestAnimationFrame(step);
+      } else {
+        spreadTween = undefined;
+        reportSpreadTop();
+      }
+    };
+    spreadTween = requestAnimationFrame(step);
+  }
+
+  /** App 翻页信号（PgUp/PgDn/Home/End 在分屏路径的一致行为） */
+  $effect(() => {
+    const signal = pageTurn;
+    if (!signal || signal.seq === handledTurnSeq) return;
+    handledTurnSeq = signal.seq;
+    if (!spreadMode) return;
+    if (signal.kind === 'top') {
+      spreadOffset = 0;
+      reportSpreadTop();
+    } else if (signal.kind === 'bottom') {
+      const span = spreadSpan();
+      const total = Math.max(1, viewRowsTotal());
+      spreadOffset = Math.max(0, Math.ceil(heights.totalHeight(total) / span) * span - span);
+      reportSpreadTop();
+    } else {
+      turnSpread(signal.kind === 'down' ? 1 : -1);
+    }
+  });
 </script>
 
-<div class="reader" bind:this={container} onscroll={handleScroll}>
+{#snippet rowMarkup(item: { row: number; text: string }, absolute: boolean, top: number)}
+  {@const marked = markRow(item.text)}
+  {@const ann = rowAnn(item.row)}
+  <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow} style={absolute ? `top: ${top}px` : undefined}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.hl}<span class="hl" style={seg.color ? `--hl-color: ${seg.color}` : undefined}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
+{/snippet}
+
+<div class="reader" class:spread={spreadMode} bind:this={container} onscroll={handleScroll} onwheel={handleSpreadWheel}>
   {#if !tab.editing && tab.rowsTotal > 0}
     <div class="filter-host">
       {#if filterActive && filterRows}
@@ -765,6 +949,21 @@
       {/if}
     </div>
   {/if}
+  {#if spreadMode}
+    <div class="spread" data-spread>
+      {#if filterActive && filterRows?.length === 0}
+        <p class="empty-file" data-filter-no-match>{t('filter.noMatch')}</p>
+      {:else if tab.rowsTotal === 0}
+        <p class="empty-file">{t('reader.emptyFile')}</p>
+      {:else}
+        {#each spreadCols as col, ci (ci)}
+          <div class="spread-col" data-spread-col={ci}>
+            {#each col.rows as item (item.row)}{@render rowMarkup(item, true, item.top)}{/each}
+          </div>
+        {/each}
+      {/if}
+    </div>
+  {:else}
   <div class="page" class:nowrap class:editing={tab.editing}>
     {#if rulerOn}
       <!-- 标尺（P2-2 V-05）：位置相对正文列左缘（px），仅视觉参考 -->
@@ -816,6 +1015,7 @@
       />
     {/if}
   </div>
+  {/if}
 </div>
 
 <style>
@@ -832,6 +1032,39 @@
      * 两者叠加会在「程序化远跳 + 窗口重建」时被浏览器二次调整（实测 100MB 文件
      * 首次跳转被放大数倍并形成反馈循环）；由自带补偿独立负责位置稳定。 */
     overflow-anchor: none;
+  }
+
+  /* 分屏路径（P2-4d：分页/双页/双栏）：列内行绝对定位，滚轮整屏切换 */
+  .reader.spread {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .spread {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    gap: var(--reading-col-gap, 48px);
+    padding: 0 var(--reading-pad-right) 0 var(--reading-pad-left);
+    font-family: var(--font-reading);
+    font-size: var(--reading-size);
+    line-height: var(--reading-line-height);
+    color: var(--ink);
+  }
+
+  .spread-col {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .spread-col .row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
   }
 
   .page {
