@@ -126,7 +126,7 @@ async function main() {
           const node = document.querySelector('.row[data-row="${row}"]');
           if (!node) return null;
           const rect = node.getBoundingClientRect();
-          const text = node.firstChild;
+          const text = (node.querySelector('.txt') ?? node).firstChild;
           if (!(text instanceof Text)) return { x: rect.left + 2, y: rect.top + rect.height / 2 };
           const offset = Math.min(${utf16}, text.length);
           const range = document.createRange();
