@@ -398,3 +398,10 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - S1：defaults.rs 全部 24 个范围常量放宽（字号 6–512 / 行高 0.5–5.0 / 限宽 160–20000 / 边距 0–2000 / 段间距 0–2000 / 首行缩进 0–200 / 标尺 0–100000 / Tab 1–128 / 缩进宽 1–128 / 标签 1–2000 / 只读阈值 1–65536 / 硬上限 100–1048576 / 历史 100–10000000 与 1–365000 / 剪贴板 0–200000 / 查找历史 0–100000 / 并发 1–128 / 正则超时 10–600000 / 主题动画 0–10000 / 模糊 0–500 / 亮度 -100–200 / 多光标 2–100000）；store 两个钳制测试同步新边界；i18n 中英 20 条描述；configuration.md 22 行范围 + 修正三处陈旧（reader/shortcuts schemaVersion 固定 7→11、移除残留 statusBar 四行、bundle 示例 schemaVersion 2→11）。
 - 待续：S2 字体/颜色自由输入；S3 自定义主题编辑器+智能配色+AI 占位；S4 边距四向×两套（schema v12）；S5 回归+物理验证。
 - 备注：用户曾因电脑卡顿要求冻结并先测试——基线 vitest 96/96 通过后继续；后续重任务单发串行。
+
+### 设置自定义化（第二批·S2 字体/颜色自由输入，完成）
+- 字体：FontFamilyRow 由 select 改自由文本输入 + datalist 候选（输入任意字体名/选择/导入；空值回退默认字体）；smoke-settings S15 选择器同步改造（input.list.options）。
+- 颜色：store::is_valid_color 扩展为 hex/rgb()/rgba()/hsl()/hsla() 并加注入字符防线；theme.rs 委托同一校验（主题令牌与查找高亮色一致），主题文档注释同步；i18n 描述更新（中英）。
+- 验证：cargo **386**（380 lib+15+2+6+5，含新颜色测试）；svelte-check 0/0；vitest 96；smoke-settings 复验 **48/48**（首次 41/48 为重建后首启偶发，二次全绿）。
+- 提交：feat（本批）+ docs（本台账/变更日志）。
+- 待续：S3 自定义主题编辑器+智能配色+AI 占位；S4 边距四向独立×编辑/阅读两套（schema v12）；S5 回归+物理验证。
