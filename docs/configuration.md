@@ -199,7 +199,7 @@
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v14）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键；v12→v13 新增 `reading` 节；v13→v14 新增显示折叠/大纲/面包屑字段）：
+**schema 版本（当前 v15）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键；v12→v13 新增 `reading` 节；v13→v14 新增显示折叠/大纲/面包屑字段；v14→v15 新增 `file` 节与快照设置）：
 
 | 情况 | 行为 |
 |---|---|

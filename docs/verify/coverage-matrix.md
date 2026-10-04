@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 435（399 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 115；E2E 35 套 ≈571 项；verify-all 45 步。
+- 计数口径：Rust 435（407 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 115；E2E 36 套 ≈571 项；verify-all 45 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
