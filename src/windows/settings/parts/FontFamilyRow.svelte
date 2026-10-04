@@ -1,6 +1,6 @@
 <!--
   FontFamilyRow — 正文字体行（注册表驱动的排版分组内使用）。
-  含：字体下拉（系统候选 + 自定义字体）、导入按钮、已导入字体清单（删除）。
+  字体名支持自由输入（随便填任意系统字体名），也可从列表选择；含导入字体按钮与已导入清单（删除）。
   导入后自动切换使用；删除正在使用的字体时回退默认字体。
 -->
 <script lang="ts">
@@ -141,16 +141,28 @@
         </svg>
       </button>
     {/if}
-    <select
+    <input
+      class="font-text"
+      type="text"
+      list={`font-options-${setting}`}
       data-setting={setting}
       aria-labelledby={`lbl-${setting}`}
+      spellcheck="false"
+      placeholder={t('settings.fontManager.placeholder')}
       {value}
-      onchange={(event) => onCommit((event.currentTarget as HTMLSelectElement).value)}
-    >
+      onchange={(event) => {
+        const next = (event.currentTarget as HTMLInputElement).value.trim();
+        onCommit(next || DEFAULT_FONT);
+      }}
+      onkeydown={(event) => {
+        if (event.key === 'Enter') (event.currentTarget as HTMLInputElement).blur();
+      }}
+    />
+    <datalist id={`font-options-${setting}`}>
       {#each options as item (item.value)}
         <option value={item.value}>{item.label}</option>
       {/each}
-    </select>
+    </datalist>
     <button class="btn" type="button" data-setting="importFont" onclick={() => void importFont()}>
       {t('settings.fontManager.import')}
     </button>
@@ -179,3 +191,21 @@
     <span class="control"></span>
   </div>
 {/if}
+
+<style>
+  .font-text {
+    width: 220px;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--base);
+    color: var(--ink);
+    font: inherit;
+    outline: none;
+  }
+
+  .font-text:focus {
+    border-color: var(--accent);
+  }
+</style>

@@ -11,7 +11,8 @@
 //! - `id`：小写字母/数字/连字符，1–32 字符，不得为 `system`，文件内 id 必须与文件名一致；
 //! - `name` / `nameEn`：非空且 ≤32 字符；
 //! - `base`：`light` / `dark`；
-//! - `tokens`：13 个必需键齐全、无未知键、颜色为 `#RGB` / `#RRGGBB` / `#RRGGBBAA`。
+//! - `tokens`：13 个必需键齐全、无未知键、颜色支持 `#RGB` / `#RRGGBB` / `#RRGGBBAA` /
+//!   `rgb()` / `rgba()` / `hsl()` / `hsla()`（与查找高亮色等共用同一校验）。
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -171,12 +172,9 @@ pub fn is_valid_theme_id(id: &str) -> bool {
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// 颜色是否合法（`#RGB` / `#RRGGBB` / `#RRGGBBAA`）
+/// 颜色是否合法（与查找高亮色等共用同一校验：hex / rgb() / rgba() / hsl() / hsla()）。
 pub fn is_valid_color(value: &str) -> bool {
-    let Some(hex) = value.strip_prefix('#') else {
-        return false;
-    };
-    matches!(hex.len(), 3 | 6 | 8) && hex.chars().all(|c| c.is_ascii_hexdigit())
+    crate::settings::store::is_valid_color(value)
 }
 
 /// 校验清单（未知键/缺键/非法值一律拒绝并给出具体原因）
@@ -433,6 +431,23 @@ mod tests {
             validate_manifest(&manifest).unwrap_or_else(|e| panic!("{id} 校验失败：{e}"));
             assert_eq!(manifest.id, *id);
         }
+    }
+
+    /// 颜色校验：hex 与 CSS 函数式写法（rgb/rgba/hsl/hsla）均可用；注入字符被拒。
+    #[test]
+    fn color_validation_supports_css_functions() {
+        assert!(is_valid_color("#abc"));
+        assert!(is_valid_color("#AABBCC"));
+        assert!(is_valid_color("#AABBCCDD"));
+        assert!(is_valid_color("rgb(1,2,3)"));
+        assert!(is_valid_color("rgba(1, 2, 3, 0.5)"));
+        assert!(is_valid_color("hsl(200, 50%, 40%)"));
+        assert!(is_valid_color("hsla(200deg,50%,40%,0.3)"));
+        assert!(!is_valid_color("red"));
+        assert!(!is_valid_color("rgb(1,2)"));
+        assert!(!is_valid_color("#12345"));
+        assert!(!is_valid_color("rgb(1,2,3); background:url(x)"));
+        assert!(!is_valid_color("var(--x)"));
     }
 
     /// 清单校验：缺令牌 / 非法颜色 / 未知令牌 / 非法 id / 非法 base 均拒绝。

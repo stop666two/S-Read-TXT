@@ -557,21 +557,20 @@ async function main() {
     }
     const listed = await waitForValue(async () => {
       const values = await evalSet(
-        `(() => [...document.querySelectorAll('select[data-setting="reader.typography.fontFamily"] option')].map((o) => o.value))()`,
+        `(() => [...(document.querySelector('input[data-setting="reader.typography.fontFamily"]')?.list?.options ?? [])].map((o) => o.value))()`,
       );
       return Array.isArray(values) && values.some((value) => value.startsWith('custom:')) ? true : null;
     }, 8000);
     check('S15d 自定义字体出现在字体列表', listed === true);
     const customValue = await evalSet(
-      `(() => [...document.querySelectorAll('select[data-setting="reader.typography.fontFamily"] option')].map((o) => o.value).find((value) => value.startsWith('custom:')) ?? null)()`,
+      `(() => [...(document.querySelector('input[data-setting="reader.typography.fontFamily"]')?.list?.options ?? [])].map((o) => o.value).find((value) => value.startsWith('custom:')) ?? null)()`,
     );
     if (customValue) {
       await evalSet(
         `(() => {
-          const sel = document.querySelector('select[data-setting="reader.typography.fontFamily"]');
-          const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
-          setter.call(sel, ${JSON.stringify(customValue)});
-          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          const input = document.querySelector('input[data-setting="reader.typography.fontFamily"]');
+          input.value = ${JSON.stringify(customValue)};
+          input.dispatchEvent(new Event('change', { bubbles: true }));
           return true;
         })()`,
       );
@@ -599,16 +598,15 @@ async function main() {
     await waitForValue(async () => ((await waitDialog(false, 4000)) ? true : null), 6000);
     await delay(300);
     const stillThere = await evalSet(
-      `(() => [...document.querySelectorAll('select[data-setting="reader.typography.fontFamily"] option')].some((o) => o.value.startsWith('custom:')))()`,
+      `(() => [...(document.querySelector('input[data-setting="reader.typography.fontFamily"]')?.list?.options ?? [])].some((o) => o.value.startsWith('custom:')))()`,
     );
     check('S15g 取消删除后字体保留', stillThere === true);
     // 恢复默认字体，再走删除链路（确认框无法自动点「是」，此处直连命令验证）
     await evalSet(
       `(() => {
-        const sel = document.querySelector('select[data-setting="reader.typography.fontFamily"]');
-        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
-        setter.call(sel, 'Microsoft YaHei');
-        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        const input = document.querySelector('input[data-setting="reader.typography.fontFamily"]');
+        input.value = 'Microsoft YaHei';
+        input.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
       })()`,
     );

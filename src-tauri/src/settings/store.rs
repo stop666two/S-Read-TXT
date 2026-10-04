@@ -271,16 +271,27 @@ fn normalize_color(raw: &str) -> String {
     String::new()
 }
 
-/// 颜色格式校验（供归一与注册表导入校验共用）。
+/// 颜色格式校验（供归一、注册表导入校验与主题令牌共用）。
+/// 支持 CSS 常用写法：`#RGB` / `#RRGGBB` / `#RRGGBBAA` / `rgb()` / `rgba()` / `hsl()` / `hsla()`；
+/// 并拒绝可能破坏样式表的字符（引号/分号/大括号等，作为写入 CSS 变量前的防线）。
 pub(crate) fn is_valid_color(value: &str) -> bool {
-    if let Some(hex) = value.strip_prefix('#') {
+    if value
+        .chars()
+        .any(|c| !(c.is_ascii_alphanumeric() || "#(),.%+- ".contains(c)))
+    {
+        return false;
+    }
+    let lowered = value.to_ascii_lowercase();
+    if let Some(hex) = lowered.strip_prefix('#') {
         return matches!(hex.len(), 3 | 6 | 8) && hex.chars().all(|c| c.is_ascii_hexdigit());
     }
-    for (prefix, components) in [("rgb(", 3usize), ("rgba(", 4usize)] {
-        if let Some(inner) = value
-            .strip_prefix(prefix)
-            .and_then(|rest| rest.strip_suffix(')'))
-        {
+    for (prefix, components, percent_ok) in [
+        ("rgb(", 3usize, false),
+        ("rgba(", 4usize, false),
+        ("hsl(", 3usize, true),
+        ("hsla(", 4usize, true),
+    ] {
+        if let Some(inner) = lowered.strip_prefix(prefix).and_then(|rest| rest.strip_suffix(')')) {
             let parts: Vec<&str> = inner.split(',').collect();
             if parts.len() != components {
                 return false;
@@ -288,12 +299,19 @@ pub(crate) fn is_valid_color(value: &str) -> bool {
             return parts.iter().enumerate().all(|(index, part)| {
                 let part = part.trim();
                 if index == 3 {
-                    part.parse::<f64>()
+                    return part
+                        .parse::<f64>()
                         .map(|alpha| (0.0..=1.0).contains(&alpha))
-                        .unwrap_or(false)
-                } else {
-                    part.parse::<u8>().is_ok()
+                        .unwrap_or(false);
                 }
+                if percent_ok {
+                    let cleaned = part
+                        .strip_suffix('%')
+                        .or_else(|| part.strip_suffix("deg"))
+                        .unwrap_or(part);
+                    return cleaned.trim().parse::<f64>().is_ok();
+                }
+                part.parse::<u8>().is_ok()
             });
         }
     }
