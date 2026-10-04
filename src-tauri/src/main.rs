@@ -288,6 +288,8 @@ fn main() {
             commands::remove_note,
             commands::clear_annotations,
             commands::selection_stats,
+            commands::get_reading_stats,
+            commands::add_reading_seconds,
             commands::convert_eol,
         ])
         .run(tauri::generate_context!());

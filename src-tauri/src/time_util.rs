@@ -25,6 +25,14 @@ pub fn now_unix_seconds() -> i64 {
     OffsetDateTime::now_utc().unix_timestamp()
 }
 
+/// 本地日期字符串（`YYYY-MM-DD`，用于阅读时长统计日界）。
+/// 边界：无法获取本地时区时回退 UTC（不会失败）。
+pub fn local_day_string() -> String {
+    let now = time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+    let format = time::macros::format_description!("[year]-[month]-[day]");
+    now.format(format).unwrap_or_else(|_| "1970-01-01".to_string())
+}
+
 /// 当前 UNIX 毫秒（毫秒级排序用；与 `now_rfc3339` 的毫秒精度对齐）。
 pub fn now_unix_millis() -> i64 {
     let now = OffsetDateTime::now_utc();

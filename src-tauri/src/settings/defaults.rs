@@ -268,7 +268,7 @@ pub const DEFAULT_STATUS_ITEMS: &[&str] = &[
 ];
 /// 状态栏显示项可选 id（顺序即设置界面选项顺序）
 pub const STATUS_ITEM_IDS: &[&str] = &[
-    "lineCol", "counts", "words", "progress", "size", "encoding", "eol", "modified",
+"lineCol", "counts", "words", "progress", "size", "encoding", "eol", "modified", "readTime",
 ];
 /// 状态栏显示项数量上限
 pub const STATUS_ITEMS_MAX: u32 = 16;

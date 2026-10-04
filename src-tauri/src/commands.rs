@@ -1478,6 +1478,27 @@ pub fn selection_stats(
     })
 }
 
+/// 命令：读取阅读时长统计（跨天自动重置当日值）。
+#[tauri::command]
+pub fn get_reading_stats() -> Result<s_read_txt::reading_stats::ReadingStats, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let today = s_read_txt::time_util::local_day_string();
+        Ok(s_read_txt::reading_stats::load(&dir, &today))
+    })
+}
+
+/// 命令：累计阅读秒数（上限 3600/次；返回最新快照）。
+#[tauri::command]
+pub fn add_reading_seconds(seconds: u64) -> Result<s_read_txt::reading_stats::ReadingStats, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let today = s_read_txt::time_util::local_day_string();
+        s_read_txt::reading_stats::add_seconds(&dir, seconds, &today)
+            .map_err(|e| IpcError::new(CODE_IO, format!("读取时长统计写入失败：{e}")))
+    })
+}
+
 /// 命令：将标签全文换行符统一为 `lf` / `crlf` / `cr`（仅编辑态；≤32MB，单撤销步）。
 #[tauri::command]
 pub fn convert_eol(
