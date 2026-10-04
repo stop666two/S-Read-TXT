@@ -635,6 +635,64 @@ async function main() {
       (await evalSet(`!!document.querySelector('input[data-setting="app.startup.restoreWindow"]')`)) === true,
     );
 
+    // ---- S17 主题编辑器（设置自定义化 S3） ----
+    currentStep = 'S17 主题编辑器';
+    await clickTab('阅读排版');
+    await delay(250);
+    const editorExists = await evalSet(`!!document.querySelector('[data-theme-editor]')`);
+    check('S17a 主题编辑器卡片存在', editorExists === true);
+
+    await evalSet(`(() => { document.querySelector('[data-theme-editor-palette]')?.click(); return true; })()`);
+    const tokenValues = await evalSet(
+      `(() => [...document.querySelectorAll('.token-text[data-token]')].map((el) => el.value))()`,
+    );
+    check(
+      'S17b 智能配色生成全部 13 项合法颜色',
+      Array.isArray(tokenValues) &&
+        tokenValues.length === 13 &&
+        tokenValues.every((value) => /^#[0-9A-Fa-f]{6}$/.test(value)),
+      String(tokenValues?.[0] ?? ''),
+    );
+
+    const editorId = `custom-e2e-${Date.now().toString(36)}`;
+    await evalSet(
+      `(() => {
+        const setValue = (selector, value) => {
+          const input = document.querySelector(selector);
+          input.value = value;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        };
+        setValue('[data-theme-editor-name]', 'E2E 主题');
+        setValue('[data-theme-editor-name-en]', 'E2E theme');
+        setValue('[data-theme-editor-id]', ${JSON.stringify(editorId)});
+        return true;
+      })()`,
+    );
+    await evalSet(`(() => { document.querySelector('[data-theme-editor-save]')?.click(); return true; })()`);
+    const savedListed = await waitForValue(async () => {
+      const ids = await evalMain(
+        `window.__TAURI_INTERNALS__.invoke('list_themes').then((list) => list.map((t) => t.id)).catch(() => [])`,
+      );
+      return Array.isArray(ids) && ids.includes(editorId) ? true : null;
+    }, 8000);
+    check('S17c 保存后用户主题出现在清单', savedListed === true);
+
+    await evalSet(`(() => { document.querySelector('[data-theme-editor-ai]')?.click(); return true; })()`);
+    const aiToast = await waitForValue(async () => {
+      const text = await evalSet(
+        `[...document.querySelectorAll('.toast')].map((node) => node.textContent).join('|')`,
+      );
+      return typeof text === 'string' && text.includes('即将推出') ? true : null;
+    }, 4000);
+    check('S17d AI 生成占位提示', aiToast === true);
+
+    const cleanup = await evalMain(
+      `window.__TAURI_INTERNALS__.invoke('remove_theme', { id: ${JSON.stringify(editorId)} }).then(() => true).catch(() => false)`,
+    );
+    check('S17e 测试主题清理', savedListed === true ? cleanup === true : true, savedListed === true ? '' : '未保存，跳过');
+
     // 汇总
     const failed = checks.filter((item) => !item.passed);
     console.log(`\n设置窗口冒烟：${checks.length - failed.length}/${checks.length} 通过`);
