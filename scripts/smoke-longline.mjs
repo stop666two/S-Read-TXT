@@ -155,7 +155,13 @@ async function main() {
         `(() => { const rows = [...document.querySelectorAll('.row[data-row]')]; const hit = rows.find((n) => n.textContent.length === ${SEGMENT} && Number(n.dataset.row) > 100); return hit ? { row: Number(hit.dataset.row), len: hit.textContent.length } : null; })()`,
       );
       return state;
-    }, 10000);
+    }, 20000);
+    if (middle === null) {
+      const diag = await evalJs(
+        `(() => { const r = document.querySelector('.reader'); const rows = [...document.querySelectorAll('.row[data-row]')]; return JSON.stringify({ st: r ? Math.round(r.scrollTop) : null, sh: r ? r.scrollHeight : null, rows: rows.slice(0, 8).map((n) => ({ row: Number(n.dataset.row), len: n.textContent.length })) }); })()`,
+      );
+      console.log(`C3_DIAG ${diag}`);
+    }
     check('C3 滚动中部渲染正常', middle !== null, JSON.stringify(middle ?? {}));
 
     // C4：状态栏显示编码（编码文本 = UTF-8）

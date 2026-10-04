@@ -224,11 +224,22 @@ try {
     'C6 步骤：弹窗打开',
     await evalJs(`Boolean(document.querySelector('[data-setting="clipboardHistory.clear"]'))`),
   );
-  await clickBySelector('[data-setting="clipboardHistory.clear"]');
-  await delay(300);
-  const confirmButtons = await evalJs(
-    `(() => { const d = document.querySelector('[role="alertdialog"]'); return d ? [...d.querySelectorAll('button')].map((b) => b.textContent?.trim() ?? '') : null; })()`,
+  // 弹窗打开时异步刷新列表：必须等条目渲染出来再点「清空」，
+  // 否则按钮处于 disabled（空态）而点击无效（曾致 C6b/C6c/C8d 竞态级联失败）。
+  await waitForValue(
+    async () =>
+      ((await evalJs(`document.querySelectorAll('[data-clipboard-item]').length >= 2`)) ? true : null),
+    5000,
+    150,
   );
+  await clickBySelector('[data-setting="clipboardHistory.clear"]');
+  // 确认弹窗按动画/帧渲染出现：批量高压下固定 300ms 等待不稳，改为轮询（曾致 C6b/C6c/C8d 级联失败）
+  const confirmButtons = await waitForValue(async () => {
+    const buttons = await evalJs(
+      `(() => { const d = document.querySelector('[role="alertdialog"]'); return d ? [...d.querySelectorAll('button')].map((b) => b.textContent?.trim() ?? '') : null; })()`,
+    );
+    return Array.isArray(buttons) && buttons.length > 0 ? buttons : null;
+  }, 5000, 150);
   check('C6b 清空确认弹窗出现', Array.isArray(confirmButtons), JSON.stringify(confirmButtons));
   if (Array.isArray(confirmButtons)) {
     const target = confirmButtons.findIndex((text) => text.includes('清空'));
@@ -325,8 +336,15 @@ try {
 } finally {
   clearTimeout(watchdog);
   killTree();
-  await delay(500);
-  rmSync(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  // WebView2 子进程随进程树回收需要时间：轮询删除，避免批量高压下 EPERM 致套件崩溃
+  for (let attempt = 0; attempt < 40 && existsSync(workDir); attempt += 1) {
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+    } catch {
+      // 仍被占用：下轮重试
+    }
+    if (existsSync(workDir)) await delay(250);
+  }
 }
 
 console.log(`\n剪贴板历史 E2E：${passed} 通过 / ${failed} 失败`);

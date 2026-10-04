@@ -118,12 +118,16 @@
   const MAX_INFLIGHT = 4;
   /** 延迟补取定时器（有被跳过的批次时兜底重试） */
   let ensureRetryTimer: ReturnType<typeof setTimeout> | null = null;
-  function scheduleEnsureRetry(): void {
+  /** 重试退避（丢失/拥塞时逐步拉长，成功取行后复位，避免重试风暴堵塞 IPC） */
+  let retryDelayMs = 300;
+  /** 安排一次延迟重规划：被跳过批次用短延时；仅在途（可能丢失）用看门狗延时。 */
+  function scheduleEnsureRetry(delayMs: number): void {
     if (ensureRetryTimer) return;
+    retryDelayMs = Math.min(5000, Math.round(retryDelayMs * 1.5));
     ensureRetryTimer = setTimeout(() => {
       ensureRetryTimer = null;
       refreshWindow();
-    }, 250);
+    }, delayMs);
   }
   onDestroy(() => {
     if (ensureRetryTimer) clearTimeout(ensureRetryTimer);
@@ -455,16 +459,21 @@
     for (const [key, at] of inflight) {
       if (now - at > INFLIGHT_TIMEOUT_MS) inflight.delete(key);
     }
+    // 大行文件（如 100MB 无换行按 8KB 分段）自适应缩小批次与并发：
+    // 单批载荷从 ~400KB 降到 ~128KB，降低 IPC 拥塞窗口与丢失概率。
+    const avgRowBytes = tab.rowsTotal > 0 ? (tab.byteLen ?? 0) / tab.rowsTotal : 0;
+    const batchMax = avgRowBytes > 1024 ? 16 : avgRowBytes > 256 ? 64 : MAX_BATCH;
+    const maxInflight = avgRowBytes > 1024 ? 2 : MAX_INFLIGHT;
     const wanted: number[] = [];
     for (let row = start; row < end; row += 1) wanted.push(row);
     let deferred = false;
-    for (const batch of planBatches(wanted, (row) => cache.has(row), MAX_BATCH)) {
+    for (const batch of planBatches(wanted, (row) => cache.has(row), batchMax)) {
       const key = `${batch.start}:${batch.count}`;
       if (inflight.has(key)) {
         deferred = true;
         continue;
       }
-      if (inflight.size >= MAX_INFLIGHT) {
+      if (inflight.size >= maxInflight) {
         deferred = true;
         break;
       }
@@ -480,6 +489,7 @@
       void fetch.then(
         (rows) => {
           inflight.delete(key);
+          retryDelayMs = 300;
           if (tab.tabId !== tabId || viewRows !== filter) return;
           rows.forEach((row, index) => {
             const displayRow = filter ? batch.start + index : row.row;
@@ -499,8 +509,10 @@
         },
       );
     }
-    // 有批次因在途/上限被跳过：稍后重试，保证窗口最终补齐
-    if (deferred) scheduleEnsureRetry();
+    // 有批次因在途/上限被跳过：按退避延时重试；仅“已发出但在途”：
+    // 安排看门狗检查（响应偶发丢失时超时剪枝并重新取行，防永久空白）。
+    if (deferred) scheduleEnsureRetry(retryDelayMs);
+    else if (inflight.size > 0) scheduleEnsureRetry(INFLIGHT_TIMEOUT_MS + retryDelayMs);
   }
 
   /** 编辑结果回报：失效受影响行起的缓存与行高（行号平移的最小正确范围），
