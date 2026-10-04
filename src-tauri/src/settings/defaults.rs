@@ -30,27 +30,27 @@ pub const DEFAULT_LOCALE: Language = Language::ZhCn;
 /// 默认可打开文件大小上限（MB）
 pub const DEFAULT_MAX_FILE_SIZE_MB: u32 = 100;
 /// 文件大小上限允许范围（MB，闭区间）
-pub const MAX_FILE_SIZE_MB_RANGE: (u32, u32) = (1, 2048);
+pub const MAX_FILE_SIZE_MB_RANGE: (u32, u32) = (1, 65536);
 /// 默认只读阈值（MB）：超过此大小以只读模式打开（可浏览、不可编辑）
 pub const DEFAULT_READ_ONLY_THRESHOLD_MB: u32 = 100;
 /// 只读阈值允许范围（MB，闭区间）
-pub const READ_ONLY_THRESHOLD_MB_RANGE: (u32, u32) = (1, 2048);
+pub const READ_ONLY_THRESHOLD_MB_RANGE: (u32, u32) = (1, 65536);
 /// 默认硬上限（MB）：超过此大小拒绝打开（比只读阈值更宽的绝对上限）
 pub const DEFAULT_HARD_LIMIT_MB: u32 = 2048;
 /// 硬上限允许范围（MB，闭区间）
-pub const HARD_LIMIT_MB_RANGE: (u32, u32) = (100, 16384);
+pub const HARD_LIMIT_MB_RANGE: (u32, u32) = (100, 1_048_576);
 /// 默认标签数量上限
 pub const DEFAULT_MAX_TABS: u32 = 20;
 /// 标签数量上限允许范围（闭区间）
-pub const MAX_TABS_RANGE: (u32, u32) = (1, 200);
+pub const MAX_TABS_RANGE: (u32, u32) = (1, 2000);
 /// 默认历史保留条数
 pub const DEFAULT_HISTORY_MAX_ENTRIES: u32 = 10_000;
 /// 历史保留条数允许范围（闭区间）
-pub const HISTORY_MAX_ENTRIES_RANGE: (u32, u32) = (100, 1_000_000);
+pub const HISTORY_MAX_ENTRIES_RANGE: (u32, u32) = (100, 10_000_000);
 /// 默认历史保留天数
 pub const DEFAULT_HISTORY_RETENTION_DAYS: u32 = 365;
 /// 历史保留天数允许范围（闭区间）
-pub const HISTORY_RETENTION_DAYS_RANGE: (u32, u32) = (1, 36500);
+pub const HISTORY_RETENTION_DAYS_RANGE: (u32, u32) = (1, 365000);
 /// 默认首次保存是否生成 .bak 备份
 pub const DEFAULT_SAVE_BACKUP_ENABLED: bool = true;
 /// 默认是否显示首启引导
@@ -61,7 +61,7 @@ pub const DEFAULT_SHOW_ONBOARDING: bool = true;
 /// 默认剪贴板历史上限（条；0 = 禁用）
 pub const DEFAULT_CLIPBOARD_HISTORY_LIMIT: u32 = 200;
 /// 剪贴板历史上限允许范围（闭区间；0 = 禁用）
-pub const CLIPBOARD_HISTORY_LIMIT_RANGE: (u32, u32) = (0, 5000);
+pub const CLIPBOARD_HISTORY_LIMIT_RANGE: (u32, u32) = (0, 200_000);
 /// 默认是否持久化剪贴板历史到 `data/clipboard-history.json`
 pub const DEFAULT_CLIPBOARD_PERSIST: bool = true;
 
@@ -74,7 +74,7 @@ pub const DEFAULT_THEME_ANIM_ENABLED: bool = true;
 /// 默认主题过渡时长（ms）
 pub const DEFAULT_THEME_ANIM_MS: u32 = 200;
 /// 主题过渡时长允许范围（ms，闭区间）
-pub const THEME_ANIM_MS_RANGE: (u32, u32) = (0, 1000);
+pub const THEME_ANIM_MS_RANGE: (u32, u32) = (0, 10_000);
 
 // ---------- 背景图（T-04～T-08） ----------
 
@@ -89,11 +89,11 @@ pub const DEFAULT_BACKGROUND_FILL: BackgroundFill = BackgroundFill::Cover;
 /// 默认背景图模糊半径（px）
 pub const DEFAULT_BACKGROUND_BLUR: u32 = 0;
 /// 背景图模糊半径允许范围（px，闭区间）
-pub const BACKGROUND_BLUR_RANGE: (u32, u32) = (0, 40);
+pub const BACKGROUND_BLUR_RANGE: (u32, u32) = (0, 500);
 /// 默认背景图亮度调整（%）
 pub const DEFAULT_BACKGROUND_DIM: i32 = 0;
 /// 背景图亮度调整允许范围（%，闭区间；负=暗化，正=亮化）
-pub const BACKGROUND_DIM_RANGE: (i32, i32) = (-50, 50);
+pub const BACKGROUND_DIM_RANGE: (i32, i32) = (-100, 200);
 /// 背景图存储文件名最大长度（字符；注册表校验用）
 pub const BACKGROUND_FILE_MAX_CHARS: u32 = 200;
 /// 默认正文字体
@@ -101,31 +101,31 @@ pub const DEFAULT_FONT_FAMILY: &str = "Microsoft YaHei";
 /// 默认正文字号（px）
 pub const DEFAULT_FONT_SIZE: u32 = 16;
 /// 字号允许范围（px，闭区间）
-pub const FONT_SIZE_RANGE: (u32, u32) = (8, 72);
+pub const FONT_SIZE_RANGE: (u32, u32) = (6, 512);
 /// 默认行高倍数
 pub const DEFAULT_LINE_HEIGHT: f32 = 1.8;
 /// 行高倍数允许范围（闭区间）
-pub const LINE_HEIGHT_RANGE: (f32, f32) = (1.0, 3.2);
+pub const LINE_HEIGHT_RANGE: (f32, f32) = (0.5, 5.0);
 /// 默认正文限宽（px）
 pub const DEFAULT_CONTENT_WIDTH: u32 = 720;
 /// 正文限宽允许范围（px，闭区间）
-pub const CONTENT_WIDTH_RANGE: (u32, u32) = (320, 2400);
+pub const CONTENT_WIDTH_RANGE: (u32, u32) = (160, 20000);
 /// 默认阅读区左右页边距（px）
 pub const DEFAULT_PAGE_PADDING: u32 = 48;
 /// 左右页边距允许范围（px，闭区间）
-pub const PAGE_PADDING_RANGE: (u32, u32) = (0, 240);
+pub const PAGE_PADDING_RANGE: (u32, u32) = (0, 2000);
 /// 默认阅读区上下留白（px）
 pub const DEFAULT_PAGE_PADDING_Y: u32 = 48;
 /// 阅读区上下留白允许范围（px，闭区间）
-pub const PAGE_PADDING_Y_RANGE: (u32, u32) = (0, 240);
+pub const PAGE_PADDING_Y_RANGE: (u32, u32) = (0, 2000);
 /// 默认段间距（px；0 表示无额外间距）
 pub const DEFAULT_PARAGRAPH_SPACING: u32 = 0;
 /// 段间距允许范围（px，闭区间）
-pub const PARAGRAPH_SPACING_RANGE: (u32, u32) = (0, 64);
+pub const PARAGRAPH_SPACING_RANGE: (u32, u32) = (0, 2000);
 /// 默认首行缩进（字符数；0 表示不缩进）
 pub const DEFAULT_FIRST_LINE_INDENT: u32 = 0;
 /// 首行缩进允许范围（字符数，闭区间）
-pub const FIRST_LINE_INDENT_RANGE: (u32, u32) = (0, 8);
+pub const FIRST_LINE_INDENT_RANGE: (u32, u32) = (0, 200);
 /// 默认文字对齐
 pub const DEFAULT_TEXT_ALIGN: TextAlign = TextAlign::Left;
 /// 默认翻页平滑滚动
@@ -153,7 +153,7 @@ pub const DEFAULT_LINE_DEDUPE_FUZZY: bool = false;
 /// 默认缩进宽度（空格数）
 pub const DEFAULT_LINE_INDENT_WIDTH: u32 = 4;
 /// 缩进宽度允许范围（闭区间）
-pub const LINE_INDENT_WIDTH_RANGE: (u32, u32) = (1, 16);
+pub const LINE_INDENT_WIDTH_RANGE: (u32, u32) = (1, 128);
 /// 默认缩进字符（空格）
 pub const DEFAULT_LINE_INDENT_STYLE: LineIndentStyle = LineIndentStyle::Spaces;
 /// 默认大小写转换模式（小写）
@@ -173,7 +173,7 @@ pub const DEFAULT_MULTI_CURSOR_RECT_MODIFIER: RectModifier = RectModifier::Alt;
 /// 默认多光标数量上限
 pub const DEFAULT_MULTI_CURSOR_MAX_COUNT: u32 = 1000;
 /// 多光标数量上限允许范围（闭区间）
-pub const MULTI_CURSOR_MAX_COUNT_RANGE: (u32, u32) = (2, 10_000);
+pub const MULTI_CURSOR_MAX_COUNT_RANGE: (u32, u32) = (2, 100_000);
 
 /// 默认时间戳插入格式（本地日期时间，`YYYY-MM-DD HH:mm:ss`）
 pub const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = TimestampFormat::LocalDateTime;
@@ -211,19 +211,19 @@ pub const DEFAULT_FIND_SCOPE: FindScope = FindScope::Document;
 /// 默认查找历史条数（F-10）
 pub const DEFAULT_FIND_HISTORY_LIMIT: u32 = 50;
 /// 查找历史条数范围（闭区间）
-pub const FIND_HISTORY_LIMIT_RANGE: (u32, u32) = (0, 1_000);
+pub const FIND_HISTORY_LIMIT_RANGE: (u32, u32) = (0, 100_000);
 /// 默认是否启用多文件（工作区）搜索
 pub const DEFAULT_FIND_MULTIFILE_ENABLED: bool = true;
 /// 默认多文件搜索并发数（同时扫描的只读标签数）
 pub const DEFAULT_FIND_MULTIFILE_CONCURRENCY: u32 = 4;
 /// 多文件搜索并发数允许范围（闭区间）
-pub const FIND_MULTIFILE_CONCURRENCY_RANGE: (u32, u32) = (1, 16);
+pub const FIND_MULTIFILE_CONCURRENCY_RANGE: (u32, u32) = (1, 128);
 /// 默认高亮颜色（空串 = 跟随主题内置色；F-11）
 pub const DEFAULT_FIND_HIGHLIGHT_COLOR: &str = "";
 /// 默认正则超时（毫秒；F-03）
 pub const DEFAULT_REGEX_TIMEOUT_MS: u32 = 500;
 /// 正则超时范围（毫秒，闭区间）
-pub const REGEX_TIMEOUT_MS_RANGE: (u32, u32) = (50, 5_000);
+pub const REGEX_TIMEOUT_MS_RANGE: (u32, u32) = (10, 600_000);
 /// 正则库条目上限（F-14）
 pub const REGEX_LIBRARY_MAX_ITEMS: u32 = 200;
 /// 正则库单条最大字符数（F-14）
@@ -246,7 +246,7 @@ pub const DEFAULT_STATUS_COUNT_MODE: CountMode = CountMode::Grapheme;
 /// 默认 Tab 显示宽度
 pub const DEFAULT_STATUS_TAB_WIDTH: u32 = 4;
 /// Tab 显示宽度范围（闭区间）
-pub const STATUS_TAB_WIDTH_RANGE: (u32, u32) = (1, 16);
+pub const STATUS_TAB_WIDTH_RANGE: (u32, u32) = (1, 128);
 /// 默认未选择提示
 pub const DEFAULT_STATUS_EMPTY_SELECTION: &str = "未选择";
 /// 未选择提示最大字符数
@@ -267,7 +267,7 @@ pub const DEFAULT_DISPLAY_RULER: bool = false;
 /// 标尺默认位置（px，相对正文列左缘）
 pub const DEFAULT_DISPLAY_RULER_POSITION: u32 = 80;
 /// 标尺位置允许范围（px，闭区间）
-pub const DISPLAY_RULER_POSITION_RANGE: (u32, u32) = (0, 1000);
+pub const DISPLAY_RULER_POSITION_RANGE: (u32, u32) = (0, 100_000);
 /// 缩进参考线默认关
 pub const DEFAULT_DISPLAY_INDENT_GUIDES: bool = false;
 /// 不可见字符标记白名单（id 列表）

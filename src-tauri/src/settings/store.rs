@@ -504,9 +504,9 @@ mod tests {
         let dir = data_dir();
         let mut settings = AppSettings::default();
         settings.find.highlight_color = "not-a-color".to_string();
-        settings.find.history_limit = 9_999;
+        settings.find.history_limit = 999_999;
         settings.find.default_scope = crate::settings::model::FindScope::Unknown;
-        settings.regex.timeout_ms = 10;
+        settings.regex.timeout_ms = 5;
         settings.regex.library = vec![
             "  a+  ".to_string(),
             "a+".to_string(),
@@ -517,12 +517,12 @@ mod tests {
         save_app_settings(dir.path(), &settings).expect("保存失败");
         let loaded = load_app_settings(dir.path());
         assert_eq!(loaded.find.highlight_color, "");
-        assert_eq!(loaded.find.history_limit, 1_000);
+        assert_eq!(loaded.find.history_limit, 100_000);
         assert_eq!(
             loaded.find.default_scope,
             crate::settings::model::FindScope::Document
         );
-        assert_eq!(loaded.regex.timeout_ms, 50);
+        assert_eq!(loaded.regex.timeout_ms, 10);
         assert_eq!(loaded.regex.library, vec!["a+".to_string()]);
     }
 
@@ -532,16 +532,16 @@ mod tests {
         let dir = data_dir();
         std::fs::write(
             app_settings_path(dir.path()),
-            br#"{"schemaVersion":99,"logLevel":"trace","maxFileSizeMB":0,"maxTabs":9999,"history":{"maxEntries":0,"retentionDays":99999},"saveBackupEnabled":false,"showOnboarding":false}"#,
+            br#"{"schemaVersion":99,"logLevel":"trace","maxFileSizeMB":0,"maxTabs":9999,"history":{"maxEntries":0,"retentionDays":999999},"saveBackupEnabled":false,"showOnboarding":false}"#,
         )
         .expect("写配置失败");
         let loaded = load_app_settings(dir.path());
         assert_eq!(loaded.schema_version, defaults::SCHEMA_VERSION);
         assert_eq!(loaded.log_level, crate::settings::model::LogLevel::Info);
         assert_eq!(loaded.max_file_size_mb, 1);
-        assert_eq!(loaded.max_tabs, 200);
+        assert_eq!(loaded.max_tabs, 2000);
         assert_eq!(loaded.history.max_entries, 100);
-        assert_eq!(loaded.history.retention_days, 36500);
+        assert_eq!(loaded.history.retention_days, 365000);
         assert!(!loaded.save_backup_enabled);
         assert!(!loaded.show_onboarding);
         // 缺失 hardLimitMB → 默认 2048；一致性修正后仍 ≥ 只读阈值
@@ -567,7 +567,7 @@ mod tests {
         )
         .expect("写配置失败");
         let loaded = load_app_settings(dir.path());
-        assert_eq!(loaded.hard_limit_mb, 16384, "硬上限应钳制到范围上限");
+        assert_eq!(loaded.hard_limit_mb, 1_048_576, "硬上限应钳制到范围上限");
     }
 
     /// 阅读配置：未知主题 id 保留（可能为用户主题）、空值回退默认、空字体回退、数值裁剪。
@@ -576,20 +576,20 @@ mod tests {
         let dir = data_dir();
         std::fs::write(
             reader_settings_path(dir.path()),
-            br#"{"theme":"neon","themeAnimMs":9999,"typography":{"fontFamily":"   ","fontSize":100,"lineHeight":0.5,"contentWidth":10,"pagePadding":1000,"pagePaddingY":999,"paragraphSpacing":999,"firstLineIndent":99,"textAlign":"diagonal"},"statusBar":{"showSize":true,"showEncoding":false}}"#,
+            br#"{"theme":"neon","themeAnimMs":99999,"typography":{"fontFamily":"   ","fontSize":1000,"lineHeight":0.1,"contentWidth":10,"pagePadding":99999,"pagePaddingY":99999,"paragraphSpacing":99999,"firstLineIndent":999,"textAlign":"diagonal"},"statusBar":{"showSize":true,"showEncoding":false}}"#,
         )
         .expect("写配置失败");
         let loaded = load_reader_settings(dir.path());
         assert_eq!(loaded.theme_id, "neon", "未知主题 id 保留");
-        assert_eq!(loaded.theme_anim_ms, 1000);
+        assert_eq!(loaded.theme_anim_ms, 10_000);
         assert_eq!(loaded.typography.font_family, defaults::DEFAULT_FONT_FAMILY);
-        assert_eq!(loaded.typography.font_size, 72);
-        assert!((loaded.typography.line_height - 1.0).abs() < f32::EPSILON);
-        assert_eq!(loaded.typography.content_width, 320);
-        assert_eq!(loaded.typography.page_padding, 240);
-        assert_eq!(loaded.typography.page_padding_y, 240);
-        assert_eq!(loaded.typography.paragraph_spacing, 64);
-        assert_eq!(loaded.typography.first_line_indent, 8);
+        assert_eq!(loaded.typography.font_size, 512);
+        assert!((loaded.typography.line_height - 0.5).abs() < f32::EPSILON);
+        assert_eq!(loaded.typography.content_width, 160);
+        assert_eq!(loaded.typography.page_padding, 2000);
+        assert_eq!(loaded.typography.page_padding_y, 2000);
+        assert_eq!(loaded.typography.paragraph_spacing, 2000);
+        assert_eq!(loaded.typography.first_line_indent, 200);
         assert_eq!(
             loaded.typography.text_align,
             crate::settings::reader::TextAlign::Left
@@ -602,11 +602,11 @@ mod tests {
     fn editor_clipboard_normalizes_on_load() {
         let dir = data_dir();
         let mut app = AppSettings::default();
-        app.editor.clipboard.history_limit = 9999;
+        app.editor.clipboard.history_limit = 999_999;
         app.editor.clipboard.persist = false;
         save_app_settings(dir.path(), &app).expect("保存失败");
         let loaded = load_app_settings(dir.path());
-        assert_eq!(loaded.editor.clipboard.history_limit, 5000);
+        assert_eq!(loaded.editor.clipboard.history_limit, 200_000);
         assert!(!loaded.editor.clipboard.persist);
         app.editor.clipboard.history_limit = 0;
         save_app_settings(dir.path(), &app).expect("保存失败");
@@ -645,7 +645,7 @@ mod tests {
             "counts".into(),
         ];
         settings.status.count_mode = crate::settings::status::CountMode::Unknown;
-        settings.status.tab_width = 99;
+        settings.status.tab_width = 999;
         settings.status.empty_selection_text =
             "  这是一个超过十六个字符限制的选择提示文案  ".into();
         save_app_settings(dir.path(), &settings).expect("保存失败");
@@ -658,7 +658,7 @@ mod tests {
             loaded.status.count_mode,
             crate::settings::status::CountMode::Grapheme
         );
-        assert_eq!(loaded.status.tab_width, 16);
+        assert_eq!(loaded.status.tab_width, 128);
         assert!(loaded.status.empty_selection_text.chars().count() <= 16);
         assert!(!loaded.status.empty_selection_text.starts_with(' '));
         // 空列表回退默认组合
@@ -714,10 +714,10 @@ mod tests {
     #[test]
     fn display_normalizes_on_load() {
         let dir = data_dir();
-        let raw = r#"{ "schemaVersion": 11, "display": { "rulerPosition": 5000, "invisible": ["space", "space", "bogus"] } }"#;
+        let raw = r#"{ "schemaVersion": 11, "display": { "rulerPosition": 500000, "invisible": ["space", "space", "bogus"] } }"#;
         std::fs::write(app_settings_path(dir.path()), raw).expect("写入失败");
         let loaded = load_app_settings(dir.path());
-        assert_eq!(loaded.display.ruler_position, 1000);
+        assert_eq!(loaded.display.ruler_position, 100_000);
         assert_eq!(loaded.display.invisible, vec!["space".to_string()]);
         assert!(loaded.display.word_wrap);
     }

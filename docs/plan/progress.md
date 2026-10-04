@@ -392,3 +392,9 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 验证：cargo 407；vitest 96；svelte-check 0/0；smoke-display 15/15 并入 verify-all（现 41 步）；回归 multi 18/18、find 27/27、edit 12/12、status 9/9、clipboard 19/19、abuse 41/41、i18n 27/27；截图 p2-display-{on,nowrap,edit}.png。
 - 提交：feat（渲染）+ test（smoke-display/verify-all/multi 适配）+ chore（截图）+ docs（本台账）。
 - 备注：V-08 折叠/V-09 大纲/V-10 面包屑归 P2-6；V-11 滚动条标记（搜索/书签/修改标记点）在本阶段末小节实施。
+
+### 设置自定义化（第一批·S1 数值范围放宽，完成）
+- 背景：维护者新增 4 项自定义要求（颜色/数值自由输入、自定义主题+智能配色+AI 占位、边距四向独立×编辑阅读两套）。确认点：数值“大幅放宽+安全上限”；边距“四向独立+两套”；主题“编辑器+智能配色+AI 占位”。
+- S1：defaults.rs 全部 24 个范围常量放宽（字号 6–512 / 行高 0.5–5.0 / 限宽 160–20000 / 边距 0–2000 / 段间距 0–2000 / 首行缩进 0–200 / 标尺 0–100000 / Tab 1–128 / 缩进宽 1–128 / 标签 1–2000 / 只读阈值 1–65536 / 硬上限 100–1048576 / 历史 100–10000000 与 1–365000 / 剪贴板 0–200000 / 查找历史 0–100000 / 并发 1–128 / 正则超时 10–600000 / 主题动画 0–10000 / 模糊 0–500 / 亮度 -100–200 / 多光标 2–100000）；store 两个钳制测试同步新边界；i18n 中英 20 条描述；configuration.md 22 行范围 + 修正三处陈旧（reader/shortcuts schemaVersion 固定 7→11、移除残留 statusBar 四行、bundle 示例 schemaVersion 2→11）。
+- 待续：S2 字体/颜色自由输入；S3 自定义主题编辑器+智能配色+AI 占位；S4 边距四向×两套（schema v12）；S5 回归+物理验证。
+- 备注：用户曾因电脑卡顿要求冻结并先测试——基线 vitest 96/96 通过后继续；后续重任务单发串行。

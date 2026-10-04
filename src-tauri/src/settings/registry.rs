@@ -931,7 +931,7 @@ mod tests {
         assert!(validate_value(dim, &serde_json::json!(-50)).is_ok());
         assert!(validate_value(dim, &serde_json::json!(50)).is_ok());
         assert!(validate_value(dim, &serde_json::json!(0)).is_ok());
-        assert!(validate_value(dim, &serde_json::json!(-51)).is_err());
+        assert!(validate_value(dim, &serde_json::json!(-101)).is_err());
         assert!(validate_value(dim, &serde_json::json!(-12.5)).is_err());
     }
 

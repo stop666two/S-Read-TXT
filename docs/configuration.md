@@ -35,11 +35,11 @@
 | `display.invisible` | string[] | `space`/`tab`/`newline`/`trailingSpace` 子集 | `[]` | 不可见字符标记 |
 | `display.scrollbarMarkers` | boolean | `true`/`false` | `true` | 滚动条标记（搜索 / 书签 / 修改） |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
-| `maxFileSizeMB` | number | 1–2048 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
-| `hardLimitMB` | number | 100–16384 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
-| `maxTabs` | number | 1–200 整数 | `20` | 标签数量上限；超限打开被拒绝并提示 |
-| `history.maxEntries` | number | 100–1000000 整数 | `10000` | 历史保留条数上限（超出裁剪最旧） |
-| `history.retentionDays` | number | 1–36500 整数 | `365` | 历史保留天数（过期裁剪） |
+| `maxFileSizeMB` | number | 1–65536 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
+| `hardLimitMB` | number | 100–1048576 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
+| `maxTabs` | number | 1–2000 整数 | `20` | 标签数量上限；超限打开被拒绝并提示 |
+| `history.maxEntries` | number | 100–10000000 整数 | `10000` | 历史保留条数上限（超出裁剪最旧） |
+| `history.retentionDays` | number | 1–365000 整数 | `365` | 历史保留天数（过期裁剪） |
 | `saveBackupEnabled` | boolean | `true`/`false` | `true` | 首次保存前是否生成 `.bak` 备份 |
 | `showOnboarding` | boolean | `true`/`false` | `true` | 是否显示首启引导；用户选择「不再显示」后置 `false` |
 | `locale` | string | `zh-CN` / `en` | `zh-CN` | 界面语言（BCP 47 标签；未知值归一为默认；即时切换） |
@@ -47,7 +47,7 @@
 | `startup.restoreWindow` | boolean | `true`/`false` | `true` | 启动时恢复窗口位置与大小；关闭后使用默认几何（居中 1100×760） |
 | `status.items` | string[] | 白名单 id | `["lineCol","counts","progress","size","encoding","eol","modified"]` | 状态栏显示项与顺序（可选：`lineCol`/`counts`/`words`/`progress`/`size`/`encoding`/`eol`/`modified`） |
 | `status.countMode` | string | `grapheme`/`codepoint`/`byte` | `grapheme` | 字数统计口径（字素簇/码点/字节） |
-| `status.tabWidth` | number | 1–16 | `4` | Tab 字符的显示宽度 |
+| `status.tabWidth` | number | 1–128 | `4` | Tab 字符的显示宽度 |
 | `status.clickableGoto` | boolean | `true`/`false` | `true` | 行列信息可点击跳转（输入行号） |
 | `status.clickableEncoding` | boolean | `true`/`false` | `true` | 编码可点击切换 |
 | `status.clickableEol` | boolean | `true`/`false` | `true` | 换行符可点击切换（LF/CRLF/CR） |
@@ -57,7 +57,7 @@
 | `editor.lines.dedupeMode` | string | `keepFirst`/`keepLast` | `keepFirst` | 去重规则：保留首次 / 保留末次 |
 | `editor.lines.dedupeIgnoreCase` | boolean | `true`/`false` | `false` | 去重比较时忽略大小写 |
 | `editor.lines.dedupeFuzzy` | boolean | `true`/`false` | `false` | 模糊去重：NFKC 规范化 + 忽略空白后比较（提案值，已随「完全开始」生效） |
-| `editor.lines.indentWidth` | number | 1–16 整数 | `4` | 缩进宽度（空格数） |
+| `editor.lines.indentWidth` | number | 1–128 整数 | `4` | 缩进宽度（空格数） |
 | `editor.lines.indentStyle` | string | `spaces`/`tab` | `spaces` | 缩进字符 |
 | `editor.lines.caseDefault` | string | `upper`/`lower`/`title` | `lower` | 大小写转换默认模式（标题式=每词首字母大写） |
 | `editor.lines.columnDelimiter` | string | 1–16 字符 | `\t` | 列编辑/分隔符转换默认分隔符（空或超长回退默认） |
@@ -65,8 +65,8 @@
 | `editor.lines.skipEmptyLines` | boolean | `true`/`false` | `false` | 行操作是否默认跳过空行 |
 | `editor.multiCursor.enabled` | boolean | `true`/`false` | `true` | 是否启用多光标与矩形选择 |
 | `editor.multiCursor.rectModifier` | string | `alt`/`ctrlAlt` | `alt` | 矩形（列）选择修饰键 |
-| `editor.multiCursor.maxCount` | number | 2–10000 整数 | `1000` | 多光标数量上限（性能保护） |
-| `editor.clipboard.historyLimit` | number | 0–5000 整数 | `200` | 剪贴板历史上限（0 = 禁用；新条目置顶、重复去重、单条最长 10 万字符） |
+| `editor.multiCursor.maxCount` | number | 2–100000 整数 | `1000` | 多光标数量上限（性能保护） |
+| `editor.clipboard.historyLimit` | number | 0–200000 整数 | `200` | 剪贴板历史上限（0 = 禁用；新条目置顶、重复去重、单条最长 10 万字符） |
 | `editor.clipboard.persist` | boolean | `true`/`false` | `true` | 是否持久化到 `data/clipboard-history.json`（关闭时仅进程内会话内存） |
 | `editor.insert.timestampFormat` | string | `localDateTime`/`dateOnly`/`timeOnly`/`iso8601`/`rfc3339Utc` | `localDateTime` | 「插入日期时间」使用的格式（RFC 3339 为 UTC；其余为本地时间） |
 | `editor.autoPairs.enabled` | boolean | `true`/`false` | `true` | 括号匹配/自动缩进总开关（关闭后其余分项不生效） |
@@ -83,41 +83,37 @@
 | `find.matchCount` | boolean | `true`/`false` | `true` | 显示匹配计数（F-07） |
 | `find.replacePreview` | boolean | `true`/`false` | `true` | 全部替换前预览确认（F-08） |
 | `find.defaultScope` | string | `document`/`selection`/`rowRange` | `document` | 查找范围默认（F-09） |
-| `find.historyLimit` | number | 0–1000 | `50` | 查找历史条数（0=禁用；F-10） |
+| `find.historyLimit` | number | 0–100000 | `50` | 查找历史条数（0=禁用；F-10） |
 | `find.highlightColor` | string | 空 / #RGB / #RRGGBB / #RRGGBBAA / rgb() / rgba() | 空 | 匹配高亮颜色（空=跟随主题；F-11） |
 | `find.multifileEnabled` | boolean | — | `true` | 多文件（工作区）搜索开关（F-12；关闭后命令报 MULTIFILE_DISABLED） |
-| `find.multifileConcurrency` | number | 1–16 | `4` | 多文件搜索并发数（同时扫描的只读标签数；F-13） |
-| `regex.timeoutMs` | number | 50–5000 | `500` | 正则扫描超时（毫秒；超时中断并提示，F-03/F-04） |
+| `find.multifileConcurrency` | number | 1–128 | `4` | 多文件搜索并发数（同时扫描的只读标签数；F-13） |
+| `regex.timeoutMs` | number | 10–600000 | `500` | 正则扫描超时（毫秒；超时中断并提示，F-03/F-04） |
 | `regex.library` | array | 字符串数组（≤200 条、单条 ≤512 字符、逐项正则编译校验） | `[]` | 常用正则库（F-14） |
 
 ### 2.2 `reader.json`（阅读排版子配置）
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `7` | `7` | 配置格式版本（当前 v7；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `11` | `11` | 配置格式版本（当前 v11；启动自动迁移旧版，见 §2.7） |
 | `theme` | string | `system` / `light` / `dark` / `eye-green` / `paper-cream` / `high-contrast` / `minimal-gray` / 用户主题 id | `system` | 主题 id；`system` 跟随系统明暗解析；用户主题来自 `data/themes/<id>.json`（导入生成） |
 | `themeAnimEnabled` | boolean | `true`/`false` | `true` | 主题切换过渡动画（尊重系统「减少动态效果」） |
-| `themeAnimMs` | number | 0–1000 整数 | `200` | 主题过渡时长（ms；0 = 无过渡） |
+| `themeAnimMs` | number | 0–10000 整数 | `200` | 主题过渡时长（ms；0 = 无过渡） |
 | `background.enabled` | boolean | `true`/`false` | `false` | 启用背景图（阅读区/空状态图层） |
 | `background.file` | string | `data/backgrounds/` 内文件名 | 缺省（无） | 背景图文件（png/jpg/jpeg/webp，≤10MB；导入时复制入库、单文件驻留） |
 | `background.opacity` | number | 0–100 整数 | `40` | 背景图不透明度（%） |
 | `background.fill` | string | `cover`/`contain`/`stretch`/`tile` | `cover` | 填充方式（覆盖/包含/拉伸/平铺） |
-| `background.blur` | number | 0–40 整数 | `0` | 模糊半径（px） |
-| `background.dim` | number | -50–50 整数 | `0` | 亮度调整（%；负=暗化，正=亮化） |
+| `background.blur` | number | 0–500 整数 | `0` | 模糊半径（px） |
+| `background.dim` | number | -100–200 整数 | `0` | 亮度调整（%；负=暗化，正=亮化） |
 | `typography.fontFamily` | string | 系统字体名 或 `custom:<文件名>` | `Microsoft YaHei` | 正文主字体；`custom:` 前缀指向 `data/fonts/` 中导入的自定义字体 |
-| `typography.fontSize` | number | 8–72（px） | `16` | 正文字号 |
-| `typography.lineHeight` | number | 1.0–3.2 | `1.8` | 行高倍数 |
-| `typography.contentWidth` | number | 320–2400（px） | `720` | 正文限宽（约 40 汉字/行） |
-| `typography.pagePadding` | number | 0–240（px） | `48` | 阅读区左右页边距 |
-| `typography.pagePaddingY` | number | 0–240（px） | `48` | 阅读区上下留白（旧版配置缺此字段时取默认，向后兼容） |
-| `typography.paragraphSpacing` | number | 0–64（px） | `0` | 段间距（段落间额外留白） |
-| `typography.firstLineIndent` | number | 0–8（字） | `0` | 首行缩进字符数（按字号换算实际像素） |
+| `typography.fontSize` | number | 6–512（px） | `16` | 正文字号 |
+| `typography.lineHeight` | number | 0.5–5.0 | `1.8` | 行高倍数 |
+| `typography.contentWidth` | number | 160–20000（px） | `720` | 正文限宽（约 40 汉字/行） |
+| `typography.pagePadding` | number | 0–2000（px） | `48` | 阅读区左右页边距 |
+| `typography.pagePaddingY` | number | 0–2000（px） | `48` | 阅读区上下留白（旧版配置缺此字段时取默认，向后兼容） |
+| `typography.paragraphSpacing` | number | 0–2000（px） | `0` | 段间距（段落间额外留白） |
+| `typography.firstLineIndent` | number | 0–200（字） | `0` | 首行缩进字符数（按字号换算实际像素） |
 | `typography.textAlign` | string | `left`/`justify` | `left` | 文字对齐；未知值载入时归一为 `left` |
 | `typography.smoothScroll` | boolean | `true`/`false` | `true` | PgUp/PgDn 翻页平滑动画（首尾跳转始终瞬时） |
-| `statusBar.showFileName` | boolean | `true`/`false` | `true` | 状态栏显示文件名与进度 |
-| `statusBar.showPercent` | boolean | `true`/`false` | `true` | 状态栏显示阅读百分比 |
-| `statusBar.showSize` | boolean | `true`/`false` | `true` | 状态栏显示文件大小 |
-| `statusBar.showEncoding` | boolean | `true`/`false` | `true` | 状态栏显示编码切换按钮 |
 
 > 自定义字体文件存放于数据目录 `data/fonts/`（导入时复制，支持 ttf / otf / woff / woff2，单文件 ≤64MB；重名自动加序号；删除前确认）。
 
@@ -125,7 +121,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `7` | `7` | 配置格式版本（当前 v7；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `11` | `11` | 配置格式版本（当前 v11；启动自动迁移旧版，见 §2.7） |
 | `bindings` | object | 动作 id → 组合键字符串 | 见下表 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
 
 组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`）。
@@ -204,7 +200,7 @@
 ```json
 {
   "bundleVersion": 1,
-  "schemaVersion": 2,
+  "schemaVersion": 11,
   "exportedAt": "2026-10-03T00:00:00.000Z",
   "app": { "…": "settings.json 原文" },
   "reader": { "…": "reader.json 原文" },
