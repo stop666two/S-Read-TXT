@@ -1493,6 +1493,17 @@ pub fn import_theme(path: String) -> Result<ThemeSummary, IpcError> {
     })
 }
 
+/// 命令：保存用户主题（主题编辑器：新建或覆盖；强校验；内置 id 拒绝）。
+#[tauri::command]
+pub fn save_theme(manifest: theme::ThemeManifest) -> Result<theme::ThemeSummary, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let summary = theme::save_manifest(&dir, manifest).map_err(theme_ipc_error)?;
+        log::info!(target: "sread::ipc", "用户主题已保存：{}", summary.id);
+        Ok(summary)
+    })
+}
+
 /// 命令：导出主题到指定路径（内置与用户主题均可）。
 #[tauri::command]
 pub fn export_theme(id: String, path: String) -> Result<(), IpcError> {

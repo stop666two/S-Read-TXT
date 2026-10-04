@@ -600,6 +600,17 @@ export interface ThemeSummary {
   builtin: boolean;
 }
 
+/** 主题清单（与 Rust `ThemeManifest` 对应；主题编辑器保存时提交）。 */
+export interface ThemeManifest {
+  schemaVersion: number;
+  id: string;
+  name: string;
+  nameEn: string;
+  base: 'light' | 'dark';
+  builtin: boolean;
+  tokens: Record<string, string>;
+}
+
 /** 解析后的主题（与 Rust `ResolvedTheme` 对应；`tokens` 为颜色令牌，键为 camelCase）。 */
 export interface ResolvedTheme {
   id: string;
@@ -1028,6 +1039,7 @@ export const ipc = {
   importTheme: (path: string) => invoke<ThemeSummary>('import_theme', { path }),
   exportTheme: (id: string, path: string) => invoke<void>('export_theme', { id, path }),
   removeTheme: (id: string) => invoke<void>('remove_theme', { id }),
+  saveTheme: (manifest: ThemeManifest) => invoke<ThemeSummary>('save_theme', { manifest }),
   getDiskUsage: () => invoke<DiskUsageReport>('get_disk_usage'),
   clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
   setBackgroundFile: (path: string) => invoke<BackgroundEntry>('set_background_file', { path }),

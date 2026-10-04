@@ -223,6 +223,7 @@ fn main() {
             commands::list_themes,
             commands::get_theme,
             commands::import_theme,
+            commands::save_theme,
             commands::export_theme,
             commands::remove_theme,
             commands::get_default_shortcuts,

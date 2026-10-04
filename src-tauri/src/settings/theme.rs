@@ -368,11 +368,9 @@ pub fn resolve_theme(data_dir: &Path, setting_id: &str) -> Result<ResolvedTheme,
     Ok(resolved)
 }
 
-/// 导入用户主题（校验后写入 `data/themes/`；与内置同名拒绝；同名用户主题覆盖）
-pub fn import_theme(data_dir: &Path, source: &Path) -> Result<ThemeSummary, ThemeError> {
-    let raw = fs::read_to_string(source).map_err(|e| ThemeError::Io(e.to_string()))?;
-    let mut manifest: ThemeManifest = serde_json::from_str(&raw)
-        .map_err(|e| ThemeError::Invalid(format!("JSON 解析失败：{e}")))?;
+/// 保存（新建或覆盖）用户主题：强校验 + 内置 id 保护 + 同名用户主题覆盖。
+/// 与 `import_theme` 共用同一校验链；供设置界面「主题编辑器」直接调用。
+pub fn save_manifest(data_dir: &Path, mut manifest: ThemeManifest) -> Result<ThemeSummary, ThemeError> {
     manifest.builtin = false;
     validate_manifest(&manifest).map_err(ThemeError::Invalid)?;
     if builtin_manifest(&manifest.id).is_some() {
@@ -385,11 +383,18 @@ pub fn import_theme(data_dir: &Path, source: &Path) -> Result<ThemeSummary, Them
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|e| ThemeError::Io(e.to_string()))?;
     }
-    let text =
-        serde_json::to_string_pretty(&manifest).map_err(|e| ThemeError::Io(e.to_string()))?;
+    let text = serde_json::to_string_pretty(&manifest).map_err(|e| ThemeError::Io(e.to_string()))?;
     crate::storage::atomic::write_atomic_str(&target, &format!("{text}\n"))
         .map_err(|e| ThemeError::Io(e.to_string()))?;
     Ok(summary_of(&manifest))
+}
+
+/// 导入用户主题（校验后写入 `data/themes/`；与内置同名拒绝；同名用户主题覆盖）
+pub fn import_theme(data_dir: &Path, source: &Path) -> Result<ThemeSummary, ThemeError> {
+    let raw = fs::read_to_string(source).map_err(|e| ThemeError::Io(e.to_string()))?;
+    let manifest: ThemeManifest = serde_json::from_str(&raw)
+        .map_err(|e| ThemeError::Invalid(format!("JSON 解析失败：{e}")))?;
+    save_manifest(data_dir, manifest)
 }
 
 /// 导出主题清单到指定路径（内置与用户主题均可导出）
@@ -448,6 +453,37 @@ mod tests {
         assert!(!is_valid_color("#12345"));
         assert!(!is_valid_color("rgb(1,2,3); background:url(x)"));
         assert!(!is_valid_color("var(--x)"));
+    }
+
+    /// 保存用户主题：写入/覆盖/清单可见；内置 id 与非法值拒绝。
+    #[test]
+    fn save_manifest_writes_and_guards() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let mut manifest = builtin_manifest("light").expect("内置");
+        manifest.id = "custom-test".into();
+        manifest.name = "测试主题".into();
+        manifest.name_en = "Test theme".into();
+        let summary = save_manifest(dir.path(), manifest.clone()).expect("保存");
+        assert_eq!(summary.id, "custom-test");
+        assert!(user_theme_path(dir.path(), "custom-test").is_file());
+        let loaded = load_manifest(dir.path(), "custom-test").expect("载入");
+        assert_eq!(loaded.tokens.get("accent"), manifest.tokens.get("accent"));
+        // 覆盖同 id 用户主题允许
+        let mut again = manifest.clone();
+        again.name = "改名字".into();
+        save_manifest(dir.path(), again).expect("覆盖保存");
+        assert_eq!(
+            load_manifest(dir.path(), "custom-test").expect("载入").name,
+            "改名字"
+        );
+        // 内置 id 拒绝
+        let mut builtin_id = manifest.clone();
+        builtin_id.id = "light".into();
+        assert!(save_manifest(dir.path(), builtin_id).is_err());
+        // 非法颜色拒绝
+        let mut bad = manifest;
+        bad.tokens.insert("ink".into(), "red".into());
+        assert!(save_manifest(dir.path(), bad).is_err());
     }
 
     /// 清单校验：缺令牌 / 非法颜色 / 未知令牌 / 非法 id / 非法 base 均拒绝。

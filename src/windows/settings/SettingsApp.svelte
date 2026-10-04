@@ -18,6 +18,7 @@ import DataSection from './DataSection.svelte';
 import DiskSection from './DiskSection.svelte';
   import HistoryTab from './HistoryTab.svelte';
   import RegistryPage from './RegistryPage.svelte';
+  import ThemeEditor from './parts/ThemeEditor.svelte';
   import ShortcutsTab from './ShortcutsTab.svelte';
   import { settings } from './store.svelte';
 
@@ -156,6 +157,9 @@ import DiskSection from './DiskSection.svelte';
         {/if}
       {:else if tab === 'typography'}
         <RegistryPage groups={['reader.basic', 'reader.typography', 'app.status', 'app.display']} {query} />
+        {#if !query}
+          <ThemeEditor />
+        {/if}
       {:else if tab === 'editor'}
         <RegistryPage groups={['app.editor.lines', 'app.editor.multiCursor', 'app.editor.clipboard', 'app.editor.insert', 'app.editor.autoPairs', 'app.editor.cleanup', 'app.find', 'app.regex']} {query} />
       {:else if tab === 'shortcuts'}
