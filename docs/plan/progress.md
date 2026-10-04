@@ -421,6 +421,16 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 提交：feat + test + docs（见提交记录）。
 - 设置自定义化批次（S1–S4）至此全部完成；后续待办回到 P2-3（书签/高亮/批注）→ P2-4 阅读模式组 → P2-5 提醒统计 → P2-6 大纲/折叠/面包屑。
 
+### P2-4 阅读模式组（完成）
+
+- 设置 v13：`reader.reading` 十项（columns / autoScrollSpeed / focusMode / typewriter / eyeCareIntervalMin / pomodoroMin / readingStats / progressMemory / pageMode / pageAnimMs）；归一与注册表 10 项；阅读排版页新增「阅读模式」分组。
+- 行为层（P2-4b）：自动滚动（rAF、到末尾自动停止提示、用户滚动/进编辑即停）；专注模式（`.focus-reading` 隐藏四栏，Esc 退出，标题栏保留）；打字机（程序化定位居中）；进度记忆门控（实时/离开写入与恢复两处受控）。
+- 计时与统计（P2-4c）：`data/reading-stats.json`（当日/总量，跨天重置，单次上限 3600s）；状态栏新增 `readTime` 项；护眼提醒（失焦暂停）；番茄钟（查看菜单，到时提示）。
+- 分屏渲染（P2-4d）：分页/双页/双栏，列内行绝对定位复用高度模型，滚轮/快捷键整屏切换，翻页动画；与编辑态/滚动模式互不干扰；跳转/会话恢复按页起点映射。
+- **真实缺陷修复**：①自动滚动被自身滚动事件误停（用户输入标记门控）；②`.spread` 高度百分比塔陷致裁剪（相对/绝对定位重构）；③smoke-multi 探针因 `.txt` 首子节点为 Svelte 锚点注释回退行首（改用 TreeWalker）。
+- E2E `smoke-reading` **13/13**（并入 verify-all 43 步）；回归 multi 18/18、annotations 11/11、find 27/27。
+- 验证：cargo **422**（394 lib+15+2+6+5）；svelte-check 0/0；vitest 104；截图 `phase-p2-reading.png`。
+
 ### P2-3 书签/高亮/注释（完成）
 - 引擎：`src-tauri/src/annotations.rs`（三类标注 + 摘录锚点重定位 + 上限/去重/排序；9 单测）；存储 `data/annotations/<FNV1a-128(path)>.json`。
 - IPC：10 命令（list/add/remove×3/update/clear）+ `edit_display_pos`（逻辑→显示坐标映射，长行分段场景必需）。
