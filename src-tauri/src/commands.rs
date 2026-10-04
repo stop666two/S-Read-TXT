@@ -30,7 +30,7 @@ use s_read_txt::ipc_error::{
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
-use s_read_txt::outline::OutlineItem;
+use s_read_txt::outline::{FoldRegion, OutlineItem};
 use s_read_txt::resources;
 use s_read_txt::session::model::SessionState;
 use s_read_txt::session::store as session_store;
@@ -304,6 +304,29 @@ pub fn apply_line_op(
 }
 
 use s_read_txt::textfile::filter::{FilterQuery, FilterResult};
+
+/// 折叠区间（P2-6b V-08）：按显示设置中的折叠方式计算。
+#[tauri::command]
+pub fn fold_regions(
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<FoldRegion>, IpcError> {
+    with_context(LogContext::request(), || {
+        let settings = current_app_settings()?;
+        let patterns = if settings.display.outline_patterns.is_empty() {
+            s_read_txt::settings::defaults::DEFAULT_OUTLINE_PATTERNS
+                .iter()
+                .map(|pattern| (*pattern).to_string())
+                .collect()
+        } else {
+            settings.display.outline_patterns.clone()
+        };
+        let app_state = lock_state(&state)?;
+        let regions = app_state.fold_regions(tab_id, settings.display.folding, &patterns)?;
+        log::debug!(target: "sread::commands", "fold_regions: tab={tab_id} mode={:?} regions={}", settings.display.folding, regions.len());
+        Ok(regions)
+    })
+}
 
 /// 大纲提取（P2-6 V-09）：按显示设置中的可编辑正则扫描当前标签文档。
 #[tauri::command]

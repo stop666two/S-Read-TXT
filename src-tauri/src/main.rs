@@ -250,6 +250,7 @@ fn main() {
             commands::apply_line_op,
             commands::filter_rows,
         commands::outline_items,
+        commands::fold_regions,
             commands::fetch_rows_at,
             commands::list_encodings,
             commands::list_tabs,

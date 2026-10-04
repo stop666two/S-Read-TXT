@@ -42,6 +42,10 @@ pub enum OutlineError {
 
 /// 单次提取的章节数量上限。
 pub const OUTLINE_MAX_ITEMS: usize = 5_000;
+/// 折叠区间数量上限。
+pub const FOLD_MAX_REGIONS: usize = 5_000;
+/// 缩进折叠扫描的最大行数（防御性护栏）。
+pub const FOLD_SCAN_MAX_ROWS: u64 = 1_000_000;
 /// 批量取行窗口（与虚拟渲染一致的粒度）。
 const ROW_BATCH: u64 = 512;
 /// 标题截断长度（字符数）。
@@ -103,6 +107,138 @@ pub fn extract(
         start += rows.len() as u64;
     }
     Ok(items)
+}
+
+/// 折叠区间（显示行坐标，闭区间；`start_row` 为可点击的折叠标记行）。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoldRegion {
+    /// 折叠头部行
+    pub start_row: u64,
+    /// 折叠末行（含）
+    pub end_row: u64,
+}
+
+/// 计算折叠区间。
+///
+/// 模式：
+/// - `Off`：空；
+/// - `Heading`/`Regex`：由大纲条目推导（层级使用栈：子项区间从其下一同级/更高级条目行前结束）；
+/// - `Indent`：逐行扫描首行缩进（空格 1 / Tab 4 / 全角空格 2），缩进减小处闭合上一个区间。
+pub fn fold_regions(
+    source: &dyn DocumentSource,
+    mode: crate::settings::display::FoldingMode,
+    patterns: &[String],
+) -> Result<Vec<FoldRegion>, OutlineError> {
+    use crate::settings::display::FoldingMode;
+    match mode {
+        FoldingMode::Off | FoldingMode::Unknown => Ok(Vec::new()),
+        FoldingMode::Heading | FoldingMode::Regex => {
+            let items = extract(source, patterns, FOLD_MAX_REGIONS)?;
+            Ok(regions_from_items(&items, source.rows_total()))
+        }
+        FoldingMode::Indent => Ok(indent_regions(source)),
+    }
+}
+
+/// 由大纲条目推导折叠区间（层级栈；仅保留 start<end 的有效区间）。
+fn regions_from_items(items: &[OutlineItem], total_rows: u64) -> Vec<FoldRegion> {
+    let mut regions: Vec<FoldRegion> = Vec::new();
+    // 栈中每项：（层级，头部行）
+    let mut stack: Vec<(u8, u64)> = Vec::new();
+    for item in items {
+        while let Some((level, start)) = stack.last().copied() {
+            if level >= item.level {
+                stack.pop();
+                if item.row > start + 1 {
+                    regions.push(FoldRegion {
+                        start_row: start,
+                        end_row: item.row - 1,
+                    });
+                }
+            } else {
+                break;
+            }
+        }
+        stack.push((item.level, item.row));
+    }
+    if !items.is_empty() && total_rows > 0 {
+        let total = total_rows;
+        for (level, start) in stack {
+            let _ = level;
+            if total > start + 1 {
+                regions.push(FoldRegion {
+                    start_row: start,
+                    end_row: total - 1,
+                });
+            }
+        }
+    }
+    regions.sort_by_key(|region| (region.start_row, region.end_row));
+    regions
+}
+
+/// 缩进折叠：扫描全部行，按首行缩进拆分区间。
+fn indent_regions(source: &dyn DocumentSource) -> Vec<FoldRegion> {
+    let total = source.rows_total().min(FOLD_SCAN_MAX_ROWS);
+    let mut regions: Vec<FoldRegion> = Vec::new();
+    // 栈：（缩进单位，头部行）
+    let mut stack: Vec<(u32, u64)> = Vec::new();
+    let mut start = 0u64;
+    while start < total && regions.len() < FOLD_MAX_REGIONS {
+        let count = ROW_BATCH.min(total - start) as usize;
+        let rows = source.fetch_rows(start, count);
+        if rows.is_empty() {
+            break;
+        }
+        for row in &rows {
+            if row.text.trim().is_empty() {
+                continue;
+            }
+            let indent = indent_units(&row.text);
+            while let Some((top, head)) = stack.last().copied() {
+                if indent <= top {
+                    stack.pop();
+                    if row.row > head + 1 {
+                        regions.push(FoldRegion {
+                            start_row: head,
+                            end_row: row.row - 1,
+                        });
+                    }
+                } else {
+                    break;
+                }
+            }
+            stack.push((indent, row.row));
+        }
+        start += rows.len() as u64;
+    }
+    // 收尾：剩余栈按扫描范围末尾闭合
+    let last_scanned = total.saturating_sub(1);
+    for (_, head) in stack {
+        if last_scanned > head + 1 {
+            regions.push(FoldRegion {
+                start_row: head,
+                end_row: last_scanned,
+            });
+        }
+    }
+    regions.sort_by_key(|region| (region.start_row, region.end_row));
+    regions
+}
+
+/// 首行缩进单位：空格 1 / Tab 4 / 全角空格 2。
+fn indent_units(text: &str) -> u32 {
+    let mut units = 0;
+    for ch in text.chars() {
+        match ch {
+            ' ' => units += 1,
+            '\t' => units += 4,
+            '\u{3000}' => units += 2,
+            _ => break,
+        }
+    }
+    units
 }
 
 /// 标题归一：去除首尾空白（含全角空格），截断到 [`TITLE_MAX_CHARS`] 并加省略号。
@@ -200,5 +336,48 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].row, 0);
         assert_eq!(items[1].row, 1);
+    }
+
+    /// 标题折叠区间：嵌套层级 + 末尾区间闭合到文件末行。
+    #[test]
+    fn heading_fold_regions() {
+        use super::{fold_regions, FoldRegion};
+        use crate::settings::display::FoldingMode;
+        let (_dir, session) =
+            session_with("第一章\n正文\n  第一节\n正文\n第二章\n正文\n".as_bytes());
+        let regions = fold_regions(&session, FoldingMode::Heading, &patterns()).expect("失败");
+        assert_eq!(
+            regions,
+            vec![
+                FoldRegion {
+                    start_row: 0,
+                    end_row: 3,
+                },
+                FoldRegion {
+                    start_row: 2,
+                    end_row: 3,
+                },
+                FoldRegion {
+                    start_row: 4,
+                    end_row: 5,
+                },
+            ]
+        );
+    }
+
+    /// 缩进折叠区间：缩进回退处闭合。
+    #[test]
+    fn indent_fold_regions() {
+        use super::{fold_regions, FoldRegion};
+        use crate::settings::display::FoldingMode;
+        let (_dir, session) = session_with("根\n  子1\n  子2\n平级\n\t深\n".as_bytes());
+        let regions = fold_regions(&session, FoldingMode::Indent, &[]).expect("失败");
+        assert_eq!(
+            regions,
+            vec![FoldRegion {
+                start_row: 0,
+                end_row: 2,
+            }]
+        );
     }
 }

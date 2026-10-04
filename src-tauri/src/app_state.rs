@@ -95,7 +95,8 @@ pub struct WorkspaceReplaceResponse {
     pub skipped: u32,
 }
 use crate::annotations::{self, FileAnnotations};
-use crate::outline::{self as outline_mod, OutlineItem};
+use crate::outline::{self as outline_mod, FoldRegion, OutlineItem};
+use crate::settings::display::FoldingMode;
 use crate::textfile::source::DocumentSource;
 use crate::textfile::window::RowText;
 
@@ -935,6 +936,17 @@ impl AppState {
     }
 
     // ---------- 标注（P2-3：书签/高亮/注释） ----------
+
+    /// 折叠区间（P2-6b V-08）：由命令层传入折叠方式与正则（编辑与阅读一致）。
+    pub fn fold_regions(
+        &self,
+        tab_id: u64,
+        mode: FoldingMode,
+        patterns: &[String],
+    ) -> Result<Vec<FoldRegion>, AppStateError> {
+        let (_path, source) = self.annotation_context(tab_id)?;
+        outline_mod::fold_regions(source, mode, patterns).map_err(Into::into)
+    }
 
     /// 大纲提取（P2-6 V-09）：按给定正则扫描当前标签文档（编辑优先）。
     pub fn outline_items(
