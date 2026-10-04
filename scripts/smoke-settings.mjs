@@ -519,6 +519,53 @@ async function main() {
     check('S14d 平滑滚动开关可切换', (await toggleRow('reader.typography.smoothScroll', false)) === true);
     check('S14e 平滑滚动恢复默认', (await toggleRow('reader.typography.smoothScroll', true)) === true);
 
+    // S14f–S14i 页边距四向 × 阅读/编辑两套（S4）
+    currentStep = 'S14f 页边距（阅读/编辑两套）';
+    const setMargin = async (id, value) => {
+      await evalSet(
+        `(() => {
+          const input = document.querySelector('input[data-setting="${id}"]');
+          input.value = ${JSON.stringify(String(value))};
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()`,
+      );
+      await delay(250);
+    };
+    await setMargin('reader.margins.reading.top', 200);
+    await delay(600);
+    await setMargin('reader.margins.editing.top', 20);
+    await delay(600);
+    const readPad = await evalMain(
+      `(() => { const page = document.querySelector('.page'); return page ? Number.parseFloat(getComputedStyle(page).paddingTop) : -1; })()`,
+    );
+    check('S14f 阅读上边距即时生效', Math.round(readPad) === 200, String(readPad));
+    await evalMain(`(() => { document.querySelector('[aria-label="切换编辑模式"]')?.click(); return true; })()`);
+    await delay(400);
+    const editPad = await evalMain(
+      `(() => { const page = document.querySelector('.page'); return page ? Number.parseFloat(getComputedStyle(page).paddingTop) : -1; })()`,
+    );
+    check('S14g 编辑上边距独立生效', Math.round(editPad) === 20, String(editPad));
+    await evalMain(`(() => { document.querySelector('[aria-label="切换编辑模式"]')?.click(); return true; })()`);
+    await delay(300);
+    await setMargin('reader.margins.reading.top', 48);
+    await delay(600);
+    await setMargin('reader.margins.editing.top', 48);
+    await delay(600);
+    const restoredPad = await evalMain(
+      `(() => { const page = document.querySelector('.page'); return page ? Number.parseFloat(getComputedStyle(page).paddingTop) : -1; })()`,
+    );
+    const { readFileSync } = await import('node:fs');
+    const fileMargins = JSON.parse(readFileSync(join(runDataDir, 'reader.json'), 'utf8')).margins ?? {};
+    check(
+      'S14h 边距恢复生效',
+      Math.round(restoredPad) === 48,
+      `page=${restoredPad} file.reading.top=${fileMargins.reading?.top} file.editing.top=${fileMargins.editing?.top}`,
+    );
+    const marginsGroup = await evalSet(`!!document.querySelector('[data-setting="reader.margins.reading.top"]')`);
+    check('S14i 设置页存在页边距分组', marginsGroup === true);
+
     // S15 自定义字体：按钮 → 原生对话框（取消）；直接链路导入 / 应用 / 删除（确认框取消）
     currentStep = 'S15 字体导入';
     await evalSet(
