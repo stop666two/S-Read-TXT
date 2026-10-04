@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::settings::defaults;
 use crate::settings::display::DisplaySettings;
 use crate::settings::editor::EditorSettings;
+use crate::settings::file::FileSettings;
 use crate::settings::status::StatusSettings;
 
 /// 日志级别（命名对齐 RFC 5424；`Unknown` 用于向前兼容未知值）。
@@ -303,6 +304,8 @@ pub struct AppSettings {
     pub startup: StartupSettings,
     /// 编辑器默认值（行操作等）
     pub editor: EditorSettings,
+    /// 文件与快照设置（P3-1）
+    pub file: FileSettings,
     /// 查找与替换默认值
     pub find: FindSettings,
     /// 正则设置
@@ -325,6 +328,7 @@ impl Default for AppSettings {
             display: DisplaySettings::default(),
             startup: StartupSettings::default(),
             editor: EditorSettings::default(),
+            file: FileSettings::default(),
             find: FindSettings::default(),
             regex: RegexSettings::default(),
         }

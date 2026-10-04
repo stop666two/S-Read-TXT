@@ -7,6 +7,7 @@ use crate::settings::editor::{
     LineCaseMode, LineDedupeMode, LineIndentStyle, LineScopeKind, LineSortMode, RectModifier,
     TimestampFormat,
 };
+use crate::settings::file::NewEol;
 use crate::settings::model::{FindScope, Language, LogLevel};
 use crate::settings::reader::{BackgroundFill, PageMode, TextAlign};
 use crate::settings::status::CountMode;
@@ -23,7 +24,7 @@ use crate::settings::status::CountMode;
 /// v12：页边距改四向「阅读/编辑两套」（typography.pagePadding → margins，S4）。
 /// v13：新增阅读模式设置节（reading，P2-4）。
 /// v14：新增显示折叠/大纲/面包屑字段（P2-6）。
-pub const SCHEMA_VERSION: u32 = 14;
+pub const SCHEMA_VERSION: u32 = 15;
 
 // ---------- settings.json ----------
 
@@ -322,6 +323,39 @@ pub const DEFAULT_OUTLINE_PATTERNS: &[&str] = &[
     r"^\s*第[0-9零一二三四五六七八九十百千万]+[章节回卷部篇]",
     r"^\s*(?:Chapter|CHAPTER|Part|PART)\s+(?:[0-9]+|[IVXLCDM]+)\b",
 ];
+
+// ---------- settings.json / file（文件与快照；P3-1） ----------
+
+/// 新建文件默认编码（下拉取值见文档；非法回退此项）
+pub const DEFAULT_FILE_NEW_ENCODING: &str = "UTF-8";
+/// 新建文件默认换行
+pub const DEFAULT_FILE_NEW_EOL: NewEol = NewEol::Lf;
+/// 默认自动保存快照间隔（秒）
+pub const DEFAULT_FILE_AUTOSAVE_INTERVAL_SEC: u32 = 30;
+/// 自动保存间隔允许范围（秒，闭区间）
+pub const FILE_AUTOSAVE_INTERVAL_RANGE: (u32, u32) = (5, 600);
+/// 默认是否将自动保存写回用户文件（D-06：默认关闭）
+pub const DEFAULT_FILE_AUTOSAVE_WRITE_BACK: bool = false;
+/// 默认快照保留份数
+pub const DEFAULT_FILE_SNAPSHOT_KEEP: u32 = 50;
+/// 快照保留份数允许范围（闭区间）
+pub const FILE_SNAPSHOT_KEEP_RANGE: (u32, u32) = (1, 1000);
+/// 默认快照总容量上限（MB）
+pub const DEFAULT_FILE_SNAPSHOT_MAX_MB: u32 = 200;
+/// 快照总容量上限允许范围（MB，闭区间）
+pub const FILE_SNAPSHOT_MAX_MB_RANGE: (u32, u32) = (10, 4096);
+/// 默认版本历史开关
+pub const DEFAULT_FILE_VERSION_HISTORY: bool = true;
+/// 默认文件关联扩展名
+pub const DEFAULT_FILE_ASSOCIATIONS: &[&str] = &[".txt"];
+/// 文件关联扩展名条数上限
+pub const FILE_ASSOCIATIONS_MAX_ITEMS: u32 = 32;
+/// 单条扩展名长度上限（字符）
+pub const FILE_ASSOCIATION_MAX_CHARS: u32 = 16;
+/// 默认「最近打开」显示条数
+pub const DEFAULT_FILE_RECENT_LIMIT: u32 = 20;
+/// 「最近打开」显示条数允许范围（闭区间；0 = 不显示）
+pub const FILE_RECENT_LIMIT_RANGE: (u32, u32) = (0, 200);
 
 // ---------- shortcuts.json ----------
 

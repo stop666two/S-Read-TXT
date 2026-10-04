@@ -18,6 +18,7 @@ pub mod bundle;
 pub mod defaults;
 pub mod display;
 pub mod editor;
+pub mod file;
 pub mod migrate;
 pub mod model;
 pub mod reader;

@@ -158,6 +158,64 @@ fn normalize_app(settings: &mut AppSettings) {
     settings.history.retention_days = settings.history.retention_days.clamp(min_days, max_days);
     normalize_status(&mut settings.status);
     normalize_display(&mut settings.display);
+    normalize_file(&mut settings.file);
+}
+
+/// 文件与快照设置归一：编码回退、换行归一、数值钳制、扩展名清洗。
+fn normalize_file(file: &mut crate::settings::file::FileSettings) {
+    const KNOWN_ENCODINGS: [&str; 8] = [
+        "UTF-8",
+        "GB18030",
+        "UTF-16LE",
+        "UTF-16BE",
+        "Big5",
+        "Shift_JIS",
+        "EUC-KR",
+        "windows-1252",
+    ];
+    let encoding = file.new_encoding.trim();
+    file.new_encoding = if KNOWN_ENCODINGS.contains(&encoding) {
+        encoding.to_string()
+    } else {
+        log::warn!("未知的新建文件编码，已回退默认：{encoding}");
+        defaults::DEFAULT_FILE_NEW_ENCODING.to_string()
+    };
+    file.new_eol = file.new_eol.normalized();
+    let (min_interval, max_interval) = defaults::FILE_AUTOSAVE_INTERVAL_RANGE;
+    file.autosave_interval_sec = file.autosave_interval_sec.clamp(min_interval, max_interval);
+    let (min_keep, max_keep) = defaults::FILE_SNAPSHOT_KEEP_RANGE;
+    file.snapshot_keep = file.snapshot_keep.clamp(min_keep, max_keep);
+    let (min_mb, max_mb) = defaults::FILE_SNAPSHOT_MAX_MB_RANGE;
+    file.snapshot_max_mb = file.snapshot_max_mb.clamp(min_mb, max_mb);
+    let (min_recent, max_recent) = defaults::FILE_RECENT_LIMIT_RANGE;
+    file.recent_limit = file.recent_limit.clamp(min_recent, max_recent);
+    let mut seen = std::collections::BTreeSet::new();
+    let mut cleaned: Vec<String> = Vec::new();
+    for raw in std::mem::take(&mut file.associations) {
+        let mut ext = raw.trim().to_ascii_lowercase();
+        if !ext.starts_with('.') {
+            ext.insert(0, '.');
+        }
+        let body_ok = ext.len() > 1
+            && ext.len() <= defaults::FILE_ASSOCIATION_MAX_CHARS as usize
+            && ext[1..]
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '+' || ch == '-' || ch == '.');
+        if !body_ok || !seen.insert(ext.clone()) {
+            continue;
+        }
+        cleaned.push(ext);
+        if cleaned.len() >= defaults::FILE_ASSOCIATIONS_MAX_ITEMS as usize {
+            break;
+        }
+    }
+    if cleaned.is_empty() {
+        cleaned = defaults::DEFAULT_FILE_ASSOCIATIONS
+            .iter()
+            .map(|ext| (*ext).to_string())
+            .collect();
+    }
+    file.associations = cleaned;
 }
 
 /// 显示选项归一：标尺位置钳制、不可见标记白名单/去重。
@@ -484,6 +542,32 @@ mod tests {
 
     fn data_dir() -> tempfile::TempDir {
         tempfile::tempdir().expect("创建临时目录失败")
+    }
+
+    /// file 节归一：编码回退、换行归一、钳制、扩展名清洗。
+    #[test]
+    fn file_settings_normalize_on_load() {
+        let dir = data_dir();
+        let mut settings = AppSettings::default();
+        settings.file.new_encoding = " utf-8 ".to_string();
+        settings.file.new_eol = crate::settings::file::NewEol::Unknown;
+        settings.file.autosave_interval_sec = 1;
+        settings.file.snapshot_keep = 0;
+        settings.file.snapshot_max_mb = 5;
+        settings.file.recent_limit = 999;
+        settings.file.associations = vec!["TXT".into(), "md".into(), ".md".into(), "bad/x".into()];
+        save_app_settings(dir.path(), &settings).expect("保存失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded.file.new_encoding, "UTF-8");
+        assert_eq!(loaded.file.new_eol, crate::settings::file::NewEol::Lf);
+        assert_eq!(loaded.file.autosave_interval_sec, 5);
+        assert_eq!(loaded.file.snapshot_keep, 1);
+        assert_eq!(loaded.file.snapshot_max_mb, 10);
+        assert_eq!(loaded.file.recent_limit, 200);
+        assert_eq!(
+            loaded.file.associations,
+            vec![".txt".to_string(), ".md".to_string()]
+        );
     }
 
     /// 主配置往返一致（保存会写入当前 schemaVersion）。

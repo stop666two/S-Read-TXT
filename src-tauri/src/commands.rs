@@ -26,7 +26,7 @@ use s_read_txt::ipc_error::{
     IpcError, CODE_BACKGROUND_INVALID, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING,
     CODE_INVALID_EOL, CODE_INVALID_POSITION, CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED,
     CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET,
-    CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
+    CODE_SNAPSHOT_INVALID, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -39,6 +39,7 @@ use s_read_txt::settings::reset::{self as settings_reset, ResetScope};
 use s_read_txt::settings::store as settings_store;
 use s_read_txt::settings::theme::{self, ResolvedTheme, ThemeSummary};
 use s_read_txt::settings::{bundle, shortcut_io, SettingsSaveRequest, SettingsSnapshot};
+use s_read_txt::snapshots::SnapshotInfo;
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::migrate_dir::{self as migrate_dir, MigrationReport};
 use s_read_txt::storage::paths::{self, DataDirOrigin};
@@ -349,6 +350,84 @@ pub fn outline_items(
         log::debug!(target: "sread::commands", "outline_items: tab={tab_id} items={}", items.len());
         Ok(items)
     })
+}
+
+/// 命令：列举快照（P3-1 版本历史；新→旧）。
+#[tauri::command]
+pub fn list_snapshots(
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<SnapshotInfo>, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let app_state = lock_state(&state)?;
+        Ok(app_state.list_snapshots(tab_id, &dir)?)
+    })
+}
+
+/// 命令：创建快照（手动与定时器共用；版本历史关闭时拒绝）。
+#[tauri::command]
+pub fn create_snapshot(
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Option<SnapshotInfo>, IpcError> {
+    with_context(LogContext::request(), || {
+        let settings = current_app_settings();
+        if !settings.file.version_history {
+            return Err(IpcError::new(CODE_SNAPSHOT_INVALID, "版本历史已关闭"));
+        }
+        let (dir, _origin) = paths::resolve_data_dir();
+        let mut app_state = lock_state(&state)?;
+        Ok(app_state.create_snapshot(
+            tab_id,
+            &dir,
+            settings.file.snapshot_keep,
+            settings.file.snapshot_max_mb,
+        )?)
+    })
+}
+
+/// 命令：恢复快照（编辑态；单撤销步）。
+#[tauri::command]
+pub fn restore_snapshot(
+    tab_id: u64,
+    name: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<EditApplied, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let mut app_state = lock_state(&state)?;
+        Ok(app_state.restore_snapshot(tab_id, &dir, &name)?)
+    })
+}
+
+/// 命令：删除快照（幂等）。
+#[tauri::command]
+pub fn delete_snapshot(
+    tab_id: u64,
+    name: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<bool, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let mut app_state = lock_state(&state)?;
+        Ok(app_state.delete_snapshot(tab_id, &dir, &name)?)
+    })
+}
+
+/// 命令：写入「干净退出」标记（退出路径调用）。
+#[tauri::command]
+pub fn mark_clean_exit() -> Result<(), IpcError> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    s_read_txt::snapshots::mark_clean_exit(&dir)
+        .map_err(|err| IpcError::new(CODE_IO, format!("写入退出标记失败：{err}")))
+}
+
+/// 命令：消费「干净退出」标记；返回 `true` 表示上次异常退出（P3-1 崩溃恢复提示用）。
+#[tauri::command]
+pub fn take_crash_flag() -> bool {
+    let (dir, _origin) = paths::resolve_data_dir();
+    !s_read_txt::snapshots::take_clean_exit(&dir)
 }
 
 /// 命令：过滤扫描（P1-4，只读会话；返回命中显示行号供阅读态虚拟化）。

@@ -31,6 +31,7 @@ pub mod reading_stats;
 pub mod resources;
 pub mod session;
 pub mod settings;
+pub mod snapshots;
 pub mod stats;
 pub mod storage;
 pub mod textfile;

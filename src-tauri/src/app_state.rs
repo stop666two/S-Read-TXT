@@ -97,6 +97,7 @@ pub struct WorkspaceReplaceResponse {
 use crate::annotations::{self, FileAnnotations};
 use crate::outline::{self as outline_mod, FoldRegion, OutlineItem};
 use crate::settings::display::FoldingMode;
+use crate::snapshots::{self as snapshot_store, SnapshotInfo};
 use crate::textfile::source::DocumentSource;
 use crate::textfile::window::RowText;
 
@@ -127,6 +128,9 @@ pub enum AppStateError {
     /// 大纲提取错误（透传）
     #[error(transparent)]
     Outline(#[from] crate::outline::OutlineError),
+    /// 快照与版本历史错误（透传）
+    #[error(transparent)]
+    Snapshot(#[from] crate::snapshots::SnapshotError),
     /// 过滤视图错误（透传）
     #[error(transparent)]
     Filter(#[from] FilterError),
@@ -956,6 +960,63 @@ impl AppState {
     ) -> Result<Vec<OutlineItem>, AppStateError> {
         let (_path, source) = self.annotation_context(tab_id)?;
         outline_mod::extract(source, patterns, outline_mod::OUTLINE_MAX_ITEMS).map_err(Into::into)
+    }
+
+    // ---------- 快照与版本历史（P3-1） ----------
+
+    /// 列举某标签的快照（新→旧；只读会话也可查看历史）。
+    pub fn list_snapshots(
+        &self,
+        tab_id: u64,
+        data_dir: &std::path::Path,
+    ) -> Result<Vec<SnapshotInfo>, AppStateError> {
+        let (path, _source) = self.annotation_context(tab_id)?;
+        Ok(snapshot_store::list(data_dir, &path))
+    }
+
+    /// 创建快照（仅编辑态；内容未变时返回 `None`）。
+    pub fn create_snapshot(
+        &mut self,
+        tab_id: u64,
+        data_dir: &std::path::Path,
+        keep: u32,
+        max_mb: u32,
+    ) -> Result<Option<SnapshotInfo>, AppStateError> {
+        let tab = self
+            .tabs
+            .get(&tab_id)
+            .ok_or(AppStateError::TabNotFound(tab_id))?;
+        let doc = tab.edit.as_ref().ok_or(AppStateError::NotEditing(tab_id))?;
+        let path = doc.path().to_string_lossy().into_owned();
+        snapshot_store::create(data_dir, &path, doc, keep, max_mb).map_err(Into::into)
+    }
+
+    /// 从快照恢复（仅编辑态；单撤销步）。
+    pub fn restore_snapshot(
+        &mut self,
+        tab_id: u64,
+        data_dir: &std::path::Path,
+        name: &str,
+    ) -> Result<EditApplied, AppStateError> {
+        let (path, _source) = self.annotation_context(tab_id)?;
+        let bytes = snapshot_store::read(data_dir, &path, name)?;
+        let tab = self
+            .tabs
+            .get_mut(&tab_id)
+            .ok_or(AppStateError::TabNotFound(tab_id))?;
+        let doc = tab.edit.as_mut().ok_or(AppStateError::NotEditing(tab_id))?;
+        doc.restore_from_snapshot_bytes(&bytes).map_err(Into::into)
+    }
+
+    /// 删除快照（幂等）。
+    pub fn delete_snapshot(
+        &mut self,
+        tab_id: u64,
+        data_dir: &std::path::Path,
+        name: &str,
+    ) -> Result<bool, AppStateError> {
+        let (path, _source) = self.annotation_context(tab_id)?;
+        snapshot_store::delete(data_dir, &path, name).map_err(Into::into)
     }
 
     /// 当前标签的标注数据源：返回（源文件路径，文档来源；编辑优先）。

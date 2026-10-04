@@ -155,12 +155,31 @@ pub fn save_doc(
     })
 }
 
+/// 生成完整文档字节（BOM + 片段流；供应商应急快照与测试复用）。
+pub fn document_bytes(doc: &EditDoc, target: FileEncoding) -> Result<Vec<u8>, SaveError> {
+    let mut buffer: Vec<u8> = Vec::new();
+    encode_into(doc, &mut buffer, target)?;
+    Ok(buffer)
+}
+
 /// 写出完整内容（BOM + 片段流）；返回写入字节数。
 fn write_content(doc: &EditDoc, path: &Path, target: FileEncoding) -> Result<u64, SaveError> {
     let mut file = File::create(path)?;
+    let written = encode_into(doc, &mut file, target)?;
+    file.flush()?;
+    file.sync_all()?;
+    Ok(written)
+}
+
+/// 将完整文档编码写入任意写入器（BOM + 片段流）。
+fn encode_into<W: std::io::Write>(
+    doc: &EditDoc,
+    writer: &mut W,
+    target: FileEncoding,
+) -> Result<u64, SaveError> {
     let mut written = 0u64;
     if let Some(bom) = bom_for(doc, target) {
-        file.write_all(bom)?;
+        writer.write_all(bom)?;
         written += bom.len() as u64;
     }
     let original = doc.original_bytes();
@@ -172,7 +191,7 @@ fn write_content(doc: &EditDoc, path: &Path, target: FileEncoding) -> Result<u64
                 let bytes = &original[from..to];
                 if target == doc.encoding() {
                     // 编码不变：原文片段字节直拷
-                    file.write_all(bytes)?;
+                    writer.write_all(bytes)?;
                     written += piece.len;
                 } else {
                     let text = doc
@@ -180,23 +199,21 @@ fn write_content(doc: &EditDoc, path: &Path, target: FileEncoding) -> Result<u64
                         .encoding()
                         .decode_without_bom_handling(bytes)
                         .0;
-                    written += write_encoded(&mut file, &text, target)?;
+                    written += write_encoded(writer, &text, target)?;
                 }
             }
             PieceSource::Added => {
                 let utf8 = &doc.added()[from..to];
                 if target == FileEncoding::Utf8 {
-                    file.write_all(utf8)?;
+                    writer.write_all(utf8)?;
                     written += piece.len;
                 } else {
                     let text = String::from_utf8_lossy(utf8);
-                    written += write_encoded(&mut file, &text, target)?;
+                    written += write_encoded(writer, &text, target)?;
                 }
             }
         }
     }
-    file.flush()?;
-    file.sync_all()?;
     Ok(written)
 }
 
@@ -213,10 +230,14 @@ fn bom_for(doc: &EditDoc, target: FileEncoding) -> Option<&'static [u8]> {
 }
 
 /// 将字符串按目标编码流式写出；无法表示时返回 [`SaveError::Unrepresentable`]。
-fn write_encoded(file: &mut File, text: &str, target: FileEncoding) -> Result<u64, SaveError> {
+fn write_encoded<W: std::io::Write>(
+    writer: &mut W,
+    text: &str,
+    target: FileEncoding,
+) -> Result<u64, SaveError> {
     match target {
         FileEncoding::Utf8 => {
-            file.write_all(text.as_bytes())?;
+            writer.write_all(text.as_bytes())?;
             Ok(text.len() as u64)
         }
         FileEncoding::Utf16Le | FileEncoding::Utf16Be => {
@@ -232,7 +253,7 @@ fn write_encoded(file: &mut File, text: &str, target: FileEncoding) -> Result<u6
                     unit.to_be_bytes()
                 };
                 buffer.copy_from_slice(&pair);
-                file.write_all(&buffer)?;
+                writer.write_all(&buffer)?;
                 written += 2;
             }
             Ok(written)
@@ -247,7 +268,7 @@ fn write_encoded(file: &mut File, text: &str, target: FileEncoding) -> Result<u6
                 // （普通 encode_from_utf8 会替换为数字字符引用，不符合文本保存语义）
                 let (result, read, produced) =
                     encoder.encode_from_utf8_without_replacement(input, &mut buffer, true);
-                file.write_all(&buffer[..produced])?;
+                writer.write_all(&buffer[..produced])?;
                 written += produced as u64;
                 input = &input[read..];
                 match result {

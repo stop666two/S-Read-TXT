@@ -77,6 +77,8 @@ pub const CODE_INVALID_EOL: &str = "INVALID_EOL";
 pub const CODE_MULTIFILE_DISABLED: &str = "MULTIFILE_DISABLED";
 /// 大纲正则非法
 pub const CODE_OUTLINE_INVALID: &str = "OUTLINE_INVALID";
+/// 快照/版本历史操作失败
+pub const CODE_SNAPSHOT_INVALID: &str = "SNAPSHOT_INVALID";
 /// 字体格式不支持
 pub const CODE_FONT_UNSUPPORTED: &str = "FONT_UNSUPPORTED";
 /// 字体文件过大
@@ -216,6 +218,12 @@ impl From<SaveError> for IpcError {
     }
 }
 
+impl From<crate::snapshots::SnapshotError> for IpcError {
+    fn from(err: crate::snapshots::SnapshotError) -> Self {
+        Self::new(CODE_SNAPSHOT_INVALID, err.to_string())
+    }
+}
+
 impl From<crate::outline::OutlineError> for IpcError {
     fn from(err: crate::outline::OutlineError) -> Self {
         Self::new(CODE_OUTLINE_INVALID, err.to_string())
@@ -236,6 +244,7 @@ impl From<AppStateError> for IpcError {
             AppStateError::Edit(err) => err.into(),
             AppStateError::Batch(err) => err.into(),
             AppStateError::Outline(err) => err.into(),
+            AppStateError::Snapshot(err) => err.into(),
             AppStateError::Filter(err) => err.into(),
             AppStateError::LineOp(err) => err.into(),
             AppStateError::Save(err) => err.into(),

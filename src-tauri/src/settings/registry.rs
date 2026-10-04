@@ -799,6 +799,85 @@ pub const SPECS: &[SettingSpec] = &[
             allowed: None,
         },
     },
+    // ---------- settings.json / file（P3-1） ----------
+    SettingSpec {
+        id: "app.file.newEncoding",
+        group: "app.file",
+        kind: SettingKind::Enum {
+            values: &[
+                "UTF-8",
+                "GB18030",
+                "UTF-16LE",
+                "UTF-16BE",
+                "Big5",
+                "Shift_JIS",
+                "EUC-KR",
+                "windows-1252",
+            ],
+        },
+    },
+    SettingSpec {
+        id: "app.file.newEol",
+        group: "app.file",
+        kind: SettingKind::Enum {
+            values: &["lf", "crlf", "cr"],
+        },
+    },
+    SettingSpec {
+        id: "app.file.autosaveIntervalSec",
+        group: "app.file",
+        kind: SettingKind::Number {
+            min: defaults::FILE_AUTOSAVE_INTERVAL_RANGE.0 as f64,
+            max: defaults::FILE_AUTOSAVE_INTERVAL_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.file.autosaveWriteBack",
+        group: "app.file",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.file.snapshotKeep",
+        group: "app.file",
+        kind: SettingKind::Number {
+            min: defaults::FILE_SNAPSHOT_KEEP_RANGE.0 as f64,
+            max: defaults::FILE_SNAPSHOT_KEEP_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.file.snapshotMaxMB",
+        group: "app.file",
+        kind: SettingKind::Number {
+            min: defaults::FILE_SNAPSHOT_MAX_MB_RANGE.0 as f64,
+            max: defaults::FILE_SNAPSHOT_MAX_MB_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.file.versionHistory",
+        group: "app.file",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.file.associations",
+        group: "app.file",
+        kind: SettingKind::StringList {
+            max_items: defaults::FILE_ASSOCIATIONS_MAX_ITEMS,
+            max_chars: defaults::FILE_ASSOCIATION_MAX_CHARS,
+            allowed: None,
+        },
+    },
+    SettingSpec {
+        id: "app.file.recentLimit",
+        group: "app.file",
+        kind: SettingKind::Number {
+            min: defaults::FILE_RECENT_LIMIT_RANGE.0 as f64,
+            max: defaults::FILE_RECENT_LIMIT_RANGE.1 as f64,
+            integer: true,
+        },
+    },
     // ---------- shortcuts.json ----------
     SettingSpec {
         id: "shortcuts.bindings",

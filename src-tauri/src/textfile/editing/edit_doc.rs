@@ -410,24 +410,39 @@ impl EditDoc {
             });
         }
         let replacements = unified.matches('\n').count() as u64;
-        // 不走 EditOp 坐标层：全文档「含末尾换行」的替换在行坐标模型中不可表达
-        // （末尾换行单元不属于任何行范围；line_ops 在同类边界采用回退策略）。
-        // 直接重建为单一新增片段，并手工登记一个撤销步骤（预算与裁剪同 apply 路径）。
+        let applied = self.replace_all_content_utf8(converted, 0);
+        Ok(EolConvertOutcome {
+            replacements,
+            applied: Some(applied),
+        })
+    }
+
+    /// 以 UTF-8 文本整体替换文档内容（单撤销步）。
+    ///
+    /// 共用路径（换行转换 / 快照恢复）：不走 EditOp 坐标层——全文档
+    /// 「含末尾换行」的替换在行坐标模型中不可表达（末尾换行单元不属于
+    /// 任何行范围；line_ops 在同类边界采用回退策略）。直接重建为单一新增
+    /// 片段，并手工登记一个撤销步骤（预算与裁剪同 `apply_edits` 路径）。
+    pub(crate) fn replace_all_content_utf8(
+        &mut self,
+        text: String,
+        touched_row: u64,
+    ) -> EditApplied {
         let old_len = self.byte_len();
         let old_pieces = self.pieces.len() as u64;
-        let snapshot = self.take_snapshot(0);
+        let snapshot = self.take_snapshot(touched_row);
         let added_start = self.added.len() as u64;
-        self.added.extend_from_slice(converted.as_bytes());
+        self.added.extend_from_slice(text.as_bytes());
         self.pieces = vec![Piece {
             source: PieceSource::Added,
             off: added_start,
-            len: converted.len() as u64,
+            len: text.len() as u64,
         }];
         self.metas = vec![count_units(
             &self.added,
             FileEncoding::Utf8,
             added_start,
-            added_start + converted.len() as u64,
+            added_start + text.len() as u64,
             false,
         )];
         self.redo_stack.clear();
@@ -436,22 +451,24 @@ impl EditDoc {
         self.rebuild_long_rows_initial();
         self.state_id = self.next_state_id;
         self.next_state_id += 1;
-        self.eol = match target {
-            crate::textfile::eol::EolTarget::Lf => crate::textfile::eol::EolStyle::Lf,
-            crate::textfile::eol::EolTarget::CrLf => crate::textfile::eol::EolStyle::CrLf,
-            crate::textfile::eol::EolTarget::Cr => crate::textfile::eol::EolStyle::Cr,
-        };
+        self.recompute_eol();
         let mut step = snapshot;
         step.cost_bytes = old_len
-            .saturating_add(converted.len() as u64)
+            .saturating_add(text.len() as u64)
             .saturating_add(16 * (old_pieces + 1));
         self.undo_cost += step.cost_bytes;
         self.undo_stack.push(step);
         self.trim_undo();
-        Ok(EolConvertOutcome {
-            replacements,
-            applied: Some(self.applied(0, (0, 0))),
-        })
+        self.applied(touched_row, (0, 0))
+    }
+
+    /// 快照恢复：以快照字节整体替换内容（单撤销步）。
+    ///
+    /// 快照由 `save::document_bytes` 以「当时的文档编码」生成；脏文档不允许
+    /// 切换编码（`set_encoding` 在脏态被拒），因此按当前编码解码是安全的。
+    pub fn restore_from_snapshot_bytes(&mut self, bytes: &[u8]) -> Result<EditApplied, EditError> {
+        let (text, _, _) = self.encoding().encoding().decode(bytes);
+        Ok(self.replace_all_content_utf8(text.into_owned(), 0))
     }
 
     /// 依当前片段构成重算 `eol`（撤销/重做后调用）：
