@@ -258,6 +258,13 @@ export const zhCN = {
   'menu.view.focusMode': '专注模式',
   'menu.view.typewriter': '打字机模式',
   'reading.autoScrollEnd': '已滚动到文件末尾，自动滚动已停止',
+  'reading.eyeCareToast': '该休息一下眼睛了：眺望远处或闭目片刻。',
+  'reading.pomodoroStart': '番茄钟已开始（{min} 分钟）',
+  'reading.pomodoroDone': '番茄钟结束：休息一下吧。',
+  'menu.view.pomodoroStart': '开始番茄钟',
+  'menu.view.pomodoroStop': '停止番茄钟',
+  'setting.enum.status.items.readTime': '阅读时长',
+  'status.readTime': '已读 {h}h{m}m',
   'menu.help.shortcuts': '快捷键…',
   'menu.help.about': '关于 S-Read-TXT',
 

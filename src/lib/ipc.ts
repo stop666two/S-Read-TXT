@@ -611,6 +611,13 @@ export interface ReaderSettings {
   background: BackgroundSettings;
 }
 
+/** 阅读时长统计（与 Rust `ReadingStats` 对应）。 */
+export interface ReadingStats {
+  day: string;
+  todaySeconds: number;
+  totalSeconds: number;
+}
+
 /** 主题清单摘要（与 Rust `ThemeSummary` 对应；名称按当前语言取 `name`/`nameEn`）。 */
 export interface ThemeSummary {
   id: string;
@@ -1138,6 +1145,8 @@ export const ipc = {
   clearAnnotations: (tabId: number) => invoke<FileAnnotations>('clear_annotations', { tabId }),
   editDisplayPos: (tabId: number, row: number, utf16: number) =>
     invoke<[number, number]>('edit_display_pos', { tabId, row, utf16 }),
+  getReadingStats: () => invoke<ReadingStats>('get_reading_stats'),
+  addReadingSeconds: (seconds: number) => invoke<ReadingStats>('add_reading_seconds', { seconds }),
   getDiskUsage: () => invoke<DiskUsageReport>('get_disk_usage'),
   clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
   setBackgroundFile: (path: string) => invoke<BackgroundEntry>('set_background_file', { path }),

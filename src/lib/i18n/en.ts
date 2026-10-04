@@ -266,6 +266,13 @@ export const en: Record<MessageKey, string> = {
   'menu.view.focusMode': 'Focus mode',
   'menu.view.typewriter': 'Typewriter mode',
   'reading.autoScrollEnd': 'Reached the end of file; auto scroll stopped',
+  'reading.eyeCareToast': 'Time for an eye break: look into the distance or close your eyes briefly.',
+  'reading.pomodoroStart': 'Pomodoro started ({min} min)',
+  'reading.pomodoroDone': 'Pomodoro finished: take a break.',
+  'menu.view.pomodoroStart': 'Start pomodoro',
+  'menu.view.pomodoroStop': 'Stop pomodoro',
+  'setting.enum.status.items.readTime': 'Reading time',
+  'status.readTime': 'Read {h}h{m}m',
   'menu.help.shortcuts': 'Shortcuts…',
   'menu.help.about': 'About S-Read-TXT',
 

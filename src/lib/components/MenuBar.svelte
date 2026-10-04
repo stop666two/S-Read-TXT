@@ -51,6 +51,10 @@
   typewriter?: boolean;
   /** 切换打字机模式 */
   onToggleTypewriter?: () => void;
+  /** 番茄钟进行中（影响菜单项文案） */
+  pomodoroOn?: boolean;
+  /** 开始/停止番茄钟 */
+  onTogglePomodoro?: () => void;
     /** 字号增大（查看菜单；步进由 App 归一后保存） */
     onFontIncrease?: () => void;
     /** 字号减小（查看菜单） */
@@ -96,6 +100,8 @@
   onToggleFocusMode,
   typewriter,
   onToggleTypewriter,
+  pomodoroOn,
+  onTogglePomodoro,
     onFontIncrease,
     onFontDecrease,
     onFontReset,
@@ -406,6 +412,11 @@
       <button class="item" onclick={() => run(() => onToggleAutoScroll?.())}><span>{t('menu.view.autoScroll')}</span><span class="hint">{autoScroll ? '✓' : ''}</span></button>
       <button class="item" onclick={() => run(() => onToggleFocusMode?.())}><span>{t('menu.view.focusMode')}</span><span class="hint">{focusMode ? '✓' : ''}</span></button>
       <button class="item" onclick={() => run(() => onToggleTypewriter?.())}><span>{t('menu.view.typewriter')}</span><span class="hint">{typewriter ? '✓' : ''}</span></button>
+        <button class="item" onclick={() => run(onTogglePomodoro)}
+          ><span>{pomodoroOn ? t('menu.view.pomodoroStop') : t('menu.view.pomodoroStart')}</span><span
+            class="hint">{pomodoroOn ? '✓' : ''}</span
+          ></button
+        >
       <button class="item" onclick={() => run(onToggleFullscreen)}><span>{t('menu.view.fullscreen')}</span><span class="hint">F11</span></button>
     </div>
   {:else if openMenu === 'help'}

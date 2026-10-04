@@ -1126,6 +1126,86 @@
     }
   });
 
+  /** 阅读时长 / 护眼提醒 / 番茄钟（P2-4c） */
+  let readingSeconds = $state<number | null>(null);
+  let pomodoroOn = $state(false);
+  let windowFocused = $state(true);
+  let readingPendingSeconds = 0;
+  let lastStatsTick = Date.now();
+  let statsTimer: ReturnType<typeof setInterval> | undefined;
+  let eyeCareTimer: ReturnType<typeof setInterval> | undefined;
+  let pomodoroTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** 当前是否计入阅读时长（窗口聚焦 + 阅读态 + 开关开启） */
+  function readingCounts(): boolean {
+    return (
+      windowFocused && !!active && !active.editing && (readerSettings?.reading.readingStats ?? true)
+    );
+  }
+
+  /** 每 10 秒累计阅读时长；满 60 秒上报并刷新显示 */
+  function tickReading(): void {
+    const now = Date.now();
+    const delta = Math.min(60, Math.max(0, Math.round((now - lastStatsTick) / 1000)));
+    lastStatsTick = now;
+    if (!readingCounts() || delta === 0) return;
+    readingPendingSeconds += delta;
+    if (readingPendingSeconds >= 60) void flushReadingSeconds();
+  }
+
+  /** 上报待记秒数（退出/满一分钟）；失败静默（统计非关键路径） */
+  async function flushReadingSeconds(): Promise<void> {
+    const seconds = Math.min(3600, readingPendingSeconds);
+    readingPendingSeconds = 0;
+    if (seconds <= 0) return;
+    try {
+      const stats = await ipc.addReadingSeconds(seconds);
+      readingSeconds = stats.todaySeconds;
+    } catch {
+      // 统计失败不影响使用
+    }
+  }
+
+  /** 重建护眼提醒定时器（间隔 0 = 关闭；失焦不提醒） */
+  function restartEyeCare(): void {
+    if (eyeCareTimer) clearInterval(eyeCareTimer);
+    eyeCareTimer = undefined;
+    const minutes = readerSettings?.reading.eyeCareIntervalMin ?? 0;
+    if (minutes <= 0) return;
+    eyeCareTimer = setInterval(
+      () => {
+        if (windowFocused) toasts.show(t('reading.eyeCareToast'));
+      },
+      minutes * 60_000,
+    );
+  }
+
+  /** 番茄钟开始/停止（时长取设置；到时提示） */
+  function togglePomodoro(): void {
+    if (pomodoroTimer) clearTimeout(pomodoroTimer);
+    if (pomodoroOn) {
+      pomodoroOn = false;
+      return;
+    }
+    const minutes = readerSettings?.reading.pomodoroMin ?? 25;
+    pomodoroOn = true;
+    toasts.show(t('reading.pomodoroStart', { min: minutes }));
+    pomodoroTimer = setTimeout(
+      () => {
+        pomodoroOn = false;
+        toasts.show(t('reading.pomodoroDone'));
+      },
+      minutes * 60_000,
+    );
+  }
+
+  // 护眼间隔/聚焦状态变化时重建提醒定时器
+  $effect(() => {
+    void readerSettings?.reading.eyeCareIntervalMin;
+    void windowFocused;
+    restartEyeCare();
+  });
+
   
 onMount(() => {
     // 启动显示策略（维护者确认）：窗口由 Rust 侧在启动时立即显示
@@ -1216,6 +1296,12 @@ onMount(() => {
 
     // 配置：启动加载 + 设置窗口变更事件刷新 + 窗口聚焦兜底刷新
     void initSettings();
+    void ipc
+      .getReadingStats()
+      .then((stats) => (readingSeconds = stats.todaySeconds))
+      .catch(() => undefined);
+    lastStatsTick = Date.now();
+    statsTimer = setInterval(tickReading, 10_000);
     let unlistenSettings: (() => void) | undefined;
     void listen('srt://settings-changed', () => void reloadSettings()).then((stop) => {
       unlistenSettings = stop;
@@ -1223,6 +1309,7 @@ onMount(() => {
     let unlistenFocus: (() => void) | undefined;
     void getCurrentWindow()
       .onFocusChanged(({ payload: focused }) => {
+        windowFocused = focused;
         if (focused) void reloadSettings();
       })
       .then((stop) => {
@@ -1257,6 +1344,10 @@ onMount(() => {
 
     return () => {
       stopAutoScroll();
+      if (statsTimer) clearInterval(statsTimer);
+      if (eyeCareTimer) clearInterval(eyeCareTimer);
+      if (pomodoroTimer) clearTimeout(pomodoroTimer);
+      void flushReadingSeconds();
       unlisten?.();
       unlistenClose?.();
       unlistenSettings?.();
@@ -1299,6 +1390,8 @@ onMount(() => {
     onToggleFocusMode={toggleFocusMode}
     typewriter={readerSettings?.reading.typewriter ?? false}
     onToggleTypewriter={toggleTypewriter}
+    pomodoroOn={pomodoroOn}
+    onTogglePomodoro={togglePomodoro}
     onFontIncrease={() => adjustFontSize(1)}
     onFontDecrease={() => adjustFontSize(-1)}
     onFontReset={resetFontSize}
@@ -1396,6 +1489,7 @@ onMount(() => {
     dirty={active?.dirty ?? false}
     onGotoLine={handleGotoLine}
     readOnly={active?.readOnly ?? false}
+    readingSeconds={readingSeconds}
   />
   <Toast />
 {#if onboardingOpen}

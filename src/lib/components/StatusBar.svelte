@@ -49,6 +49,8 @@
     topRow?: number | null;
     /** 是否有未保存修改 */
     dirty?: boolean;
+    /** 今日阅读秒数（P2-4c；null = 未就绪） */
+    readingSeconds?: number | null;
     /** 跳转到行回调（点击行列时触发；1 基行号） */
     onGotoLine?: (row1: number) => void;
   }
@@ -71,6 +73,7 @@
     lineCol = null,
     topRow = null,
     dirty = false,
+    readingSeconds = null,
     onGotoLine,
   }: Props = $props();
 
@@ -252,6 +255,15 @@
         {:else if item === 'modified'}
           {#if dirty}
             <span class="modified" title={t('status.modified')}>●</span>
+          {/if}
+        {:else if item === 'readTime'}
+          {#if readingSeconds !== null}
+            <span class="item"
+              >{t('status.readTime', {
+                h: Math.floor(readingSeconds / 3600),
+                m: Math.floor((readingSeconds % 3600) / 60),
+              })}</span
+            >
           {/if}
         {/if}
       {/each}
