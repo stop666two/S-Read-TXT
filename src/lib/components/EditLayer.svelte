@@ -375,6 +375,22 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     return page instanceof HTMLElement ? page : null;
   }
 
+  /** `.txt` 内的文本节点定位（空格/制表标记为 1:1 替换，DOM 索引与逻辑
+   *  UTF-16 偏移一致；行尾空白可能是独立文本节点，需跨节点换算）。 */
+  function textAt(node: Element, offset: number): { node: Text; local: number } | null {
+    const root = node.querySelector('.txt') ?? node;
+    let remaining = offset;
+    for (const child of root.childNodes) {
+      if (child instanceof Text) {
+        if (remaining <= child.length) return { node: child, local: remaining };
+        remaining -= child.length;
+      }
+    }
+    let last: Text | null = null;
+    for (const child of root.childNodes) if (child instanceof Text) last = child;
+    return last ? { node: last, local: last.length } : null;
+  }
+
   /** 指定位置的光标盒（相对 .page）；结点缺失或空文档时为 null。 */
   function caretRectAt(pos: CaretPos, pageRect: DOMRect): Box | null {
     const node = rowNode(pos.row);
@@ -382,9 +398,9 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     const text = rowText(pos.row);
     const offset = text === undefined ? 0 : Math.min(Math.max(0, pos.utf16), text.length);
     const range = document.createRange();
-    const textNode = node.firstChild;
-    if (textNode instanceof Text) {
-      range.setStart(textNode, Math.min(offset, textNode.length));
+    const anchor = textAt(node, offset);
+    if (anchor) {
+      range.setStart(anchor.node, anchor.local);
       range.collapse(true);
     } else {
       range.selectNodeContents(node);
@@ -403,14 +419,15 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     const node = rowNode(row);
     const text = rowText(row);
     if (!node || text === undefined) return [];
-    const textNode = node.firstChild;
-    if (!(textNode instanceof Text)) return [];
     const start = Math.min(from, text.length);
     const end = Math.min(to, text.length);
     if (end <= start) return [];
+    const startAnchor = textAt(node, start);
+    const endAnchor = textAt(node, end);
+    if (!startAnchor || !endAnchor) return [];
     const range = document.createRange();
-    range.setStart(textNode, start);
-    range.setEnd(textNode, end);
+    range.setStart(startAnchor.node, startAnchor.local);
+    range.setEnd(endAnchor.node, endAnchor.local);
     const boxes: Box[] = [];
     for (const rect of range.getClientRects()) {
       if (rect.width > 0 || rect.height > 0) {
@@ -1213,13 +1230,16 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
         for (let row = hit.startRow; row <= lastRow; row += 1) {
           const node = rowNode(row);
           const text = rowText(row);
-          if (!node || text === undefined || !(node.firstChild instanceof Text)) continue;
+          if (!node || text === undefined) continue;
           const from = row === hit.startRow ? Math.min(hit.startUtf16, text.length) : 0;
           const to = row === hit.endRow ? Math.min(hit.endUtf16, text.length) : text.length;
           if (to <= from) continue;
+          const startAnchor = textAt(node, from);
+          const endAnchor = textAt(node, to);
+          if (!startAnchor || !endAnchor) continue;
           const range = document.createRange();
-          range.setStart(node.firstChild, from);
-          range.setEnd(node.firstChild, to);
+          range.setStart(startAnchor.node, startAnchor.local);
+          range.setEnd(endAnchor.node, endAnchor.local);
           for (const rect of range.getClientRects()) {
             if (rect.width > 0 || rect.height > 0) {
               boxes.push({
@@ -2036,23 +2056,24 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       const row = Number(best.dataset.row ?? -1);
       if (!Number.isFinite(row) || row < 0 || row >= rowsTotal) return null;
       const rect = best.getBoundingClientRect();
-      const text = rowText(row) ?? best.textContent ?? '';
+      const text = rowText(row) ?? best.querySelector('.txt')?.textContent ?? '';
       const offset = clientX <= rect.left ? 0 : clientX >= rect.right ? text.length : 0;
       return { row, utf16: Math.min(offset, text.length) };
     }
     const row = Number(rowEl.dataset.row ?? -1);
     if (!Number.isFinite(row) || row < 0 || row >= rowsTotal) return null;
-    const text = rowText(row) ?? rowEl.textContent ?? '';
-    const textNode = rowEl.firstChild;
-    if (!(textNode instanceof Text)) return { row, utf16: 0 };
+    const text = rowText(row) ?? rowEl.querySelector('.txt')?.textContent ?? '';
     const range = document.createRange();
     const charRect = (index: number): DOMRect => {
-      range.setStart(textNode, index);
-      range.setEnd(textNode, Math.min(index + 1, textNode.length));
+      const a = textAt(rowEl, index);
+      const b = textAt(rowEl, Math.min(index + 1, text.length));
+      if (!a || !b) return new DOMRect();
+      range.setStart(a.node, a.local);
+      range.setEnd(b.node, b.local);
       return range.getBoundingClientRect();
     };
     let lo = 0;
-    let hi = textNode.length;
+    let hi = text.length;
     while (lo < hi) {
       const mid = Math.floor((lo + hi) / 2);
       const rect = charRect(mid);
@@ -2065,16 +2086,16 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       }
     }
     let offset = lo;
-    if (offset > 0 && offset <= textNode.length) {
+    if (offset > 0 && offset <= text.length) {
       const prev = charRect(offset - 1);
       if (prev.width > 0 && clientX < prev.left + prev.width / 2) {
         offset -= 1;
       }
     }
     // 代理对中点吸附（避免落在低代理码元上）
-    if (offset > 0 && offset < textNode.length) {
-      const prevCode = textNode.data.charCodeAt(offset - 1);
-      const code = textNode.data.charCodeAt(offset);
+    if (offset > 0 && offset < text.length) {
+      const prevCode = text.charCodeAt(offset - 1);
+      const code = text.charCodeAt(offset);
       if (prevCode >= 0xd800 && prevCode <= 0xdbff && code >= 0xdc00 && code <= 0xdfff) {
         offset -= 1;
       }

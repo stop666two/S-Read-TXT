@@ -920,7 +920,11 @@
   });
 
   /** 排版变更键（传给 ReaderView 触发行高失效重排；值变化即重排） */
-  const typographyKey = $derived(readerSettings ? JSON.stringify(readerSettings.typography) : '');
+  const typographyKey = $derived(
+    readerSettings
+      ? JSON.stringify(readerSettings.typography) + `:wrap=${appSettings?.display?.wordWrap ?? true}`
+      : '',
+  );
 
   // 排版令牌写入 CSS 变量：阅读区实时生效
   // （字号/行高/字体/限宽/边距/段间距/首行缩进/对齐；自定义字体按需动态加载）
@@ -1213,6 +1217,8 @@
         onTopRow={(row) => (topRow = row)}
         onSelectionStats={(stats) => (selectionStats = stats)}
         onCaretInfo={(info) => (caretInfo = info)}
+        displaySettings={appSettings?.display ?? null}
+        editCaretRow={caretInfo ? caretInfo.row - 1 : null}
         layoutKey={typographyKey}
       />
     {:else}

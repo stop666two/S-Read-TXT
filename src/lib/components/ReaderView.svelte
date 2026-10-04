@@ -24,6 +24,7 @@
   import type {
     AutoPairsSettings,
     CleanupSettings,
+    DisplaySettings,
     EditorLinesSettings,
     FindSettings,
     InsertSettings,
@@ -60,8 +61,12 @@
     onSelectionStats?: (stats: TextStats | null) => void;
     /** 状态栏：光标行列透传（编辑层；P2-1） */
     onCaretInfo?: (info: { row: number; column: number }) => void;
+    /** 显示选项（P2-2；未就绪为 null = 全部默认行为） */
+    displaySettings?: DisplaySettings | null;
+    /** 编辑态光标所在显示行（0 基；当前行高亮/相对行号参照；阅读态忽略） */
+    editCaretRow?: number | null;
   }
-  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo }: Props = $props();
+  let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -93,6 +98,75 @@
   /** 程序化滚动标记（锚定补偿时避免重入滚动处理） */
   let programmatic = false;
   let lastPercent = -1;
+  /** 当前渲染窗口首行（阅读态当前行高亮/相对行号参照） */
+  let windowStartRow = $state(0);
+
+  // ---------- 显示选项（P2-2 V 组；null 时保持既有默认行为） ----------
+  const disp = $derived(displaySettings ?? null);
+  const showLn = $derived(disp?.lineNumbers ?? false);
+  const relLn = $derived(disp?.relativeLineNumbers ?? false);
+  const hlCurrent = $derived(disp?.highlightCurrentLine ?? false);
+  const rulerOn = $derived(disp?.ruler ?? false);
+  const guidesOn = $derived(disp?.indentGuides ?? false);
+  const nlMark = $derived(disp?.invisible.includes('newline') ?? false);
+  const markSpace = $derived(disp?.invisible.includes('space') ?? false);
+  const markTab = $derived(disp?.invisible.includes('tab') ?? false);
+  const markTrailing = $derived(disp?.invisible.includes('trailingSpace') ?? false);
+  const invisibleOn = $derived(markSpace || markTab || markTrailing);
+  const nowrap = $derived(!(disp?.wordWrap ?? true));
+  const indentWidth = $derived(Math.max(1, lineDefaults?.indentWidth ?? 4));
+  /** 行号列宽（按总行数位数近似；ch 单位） */
+  const lnDigits = $derived(Math.max(2, String(Math.max(1, viewRowsTotal())).length));
+  /** 当前行：编辑态 = 光标行；阅读态 = 窗口首行 */
+  const currentRow = $derived(tab.editing ? (editCaretRow ?? -1) : windowStartRow);
+  /** 不可见标记的逐行长度守卫（超长行跳过标记，保持流畅） */
+  const MARK_LIMIT = 4000;
+
+  /** 行号标签（相对模式：参照行显示绝对行号，其余显示距离）。 */
+  function lnLabel(row: number): string {
+    if (!relLn) return String(row + 1);
+    const ref = currentRow;
+    if (ref < 0 || row === ref) return String(row + 1);
+    return String(Math.abs(row - ref));
+  }
+
+  /** 不可见字符标记（空格·/制表→/行尾空白切片；均为 1:1 替换，
+   *  保证 DOM 索引与逻辑 UTF-16 偏移一致；¶ 在 .txt 之外追加不影响映射）。 */
+  function markRow(text: string): { main: string; trailing: string } {
+    if (!invisibleOn || text.length > MARK_LIMIT) return { main: text, trailing: '' };
+    let body = text;
+    let trailing = '';
+    if (markTrailing) {
+      const match = /[ \t]+$/u.exec(body);
+      if (match) {
+        trailing = match[0];
+        body = body.slice(0, body.length - trailing.length);
+      }
+    }
+    const apply = (value: string, isTrailing: boolean): string => {
+      let out = value;
+      if (markTab) out = out.replace(/\t/g, '→');
+      if (markSpace) out = out.replace(/ /g, '·');
+      else if (isTrailing && markTrailing) out = out.replace(/ /g, '␣');
+      return out;
+    };
+    return { main: apply(body, false), trailing: apply(trailing, true) };
+  }
+
+  /** 缩进参考线位置（ch 单位；每 indentWidth 列一条，前列空白超出即止）。 */
+  function guidePositions(text: string): number[] {
+    if (!guidesOn) return [];
+    let columns = 0;
+    for (let i = 0; i < text.length && columns < 400; i += 1) {
+      const ch = text[i];
+      if (ch === ' ') columns += 1;
+      else if (ch === '\t') columns += indentWidth - (columns % indentWidth);
+      else break;
+    }
+    const positions: number[] = [];
+    for (let col = indentWidth; col <= columns; col += indentWidth) positions.push(col);
+    return positions;
+  }
   let scrollScheduled = false;
   /** 位置恢复代次：用户主动交互（滚轮/指针/触摸/按键）自增，用于中止进行中的恢复重试 */
   let scrollEpoch = 0;
@@ -299,6 +373,7 @@
     );
     startRow = start;
     endRow = end;
+    windowStartRow = start;
     spacerTop = heights.offsetOf(start, rowsTotal);
     spacerBottom = Math.max(0, heights.totalHeight(rowsTotal) - heights.offsetOf(end, rowsTotal));
     ensureRows(start, end);
@@ -632,7 +707,16 @@
       {/if}
     </div>
   {/if}
-  <div class="page">
+  <div class="page" class:nowrap>
+    {#if rulerOn}
+      <!-- 标尺（P2-2 V-05）：位置相对正文列左缘（px），仅视觉参考 -->
+      <div
+        class="ruler"
+        data-ruler
+        aria-hidden="true"
+        style="left: calc(var(--reading-pad-x) + {disp?.rulerPosition ?? 0}px)"
+      ></div>
+    {/if}
     {#if filterActive && filterRows?.length === 0}
       <p class="empty-file" data-filter-no-match>{t('filter.noMatch')}</p>
     {:else if tab.rowsTotal === 0}
@@ -640,7 +724,8 @@
     {:else}
       <div class="spacer" style="height: {spacerTop}px"></div>
       {#each renderedRows as item (item.row)}
-        <div class="row" data-row={item.row}>{item.text}</div>
+        {@const marked = markRow(item.text)}
+        <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow}>{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}<span class="txt">{marked.main}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
       {/each}
       <div class="spacer" style="height: {spacerBottom}px"></div>
     {/if}
@@ -697,7 +782,19 @@
     color: var(--ink);
   }
 
+  /* 自动换行关闭（P2-2 V-04）：单行不折行，容器横向滚动 */
+  .page.nowrap {
+    max-width: none;
+    width: max-content;
+    min-width: 100%;
+    margin: 0;
+  }
+  .page.nowrap .row {
+    white-space: pre;
+  }
+
   .row {
+    position: relative;
     white-space: pre-wrap;
     overflow-wrap: break-word;
     min-height: calc(var(--reading-line-height) * 1em);
@@ -705,6 +802,58 @@
     text-align: var(--reading-align, left);
     text-indent: var(--reading-indent, 0);
     padding-bottom: var(--reading-para-spacing, 0);
+  }
+
+  /* 当前行高亮（P2-2 V-03） */
+  .row.current {
+    background: var(--hover);
+  }
+
+  /* 行号（P2-2 V-01/V-02）：不可选中、不参与复制（导出/复制仍走引擎文本） */
+  .ln {
+    display: inline-block;
+    text-align: right;
+    padding-right: 12px;
+    color: var(--muted);
+    opacity: 0.75;
+    user-select: none;
+  }
+
+  /* 文本容器：仅结构标记（不可加 position/z-index——会盖住 edit-surface
+     导致鼠标定位与修饰键点击失效） */
+  .txt {
+    display: inline;
+  }
+
+  /* 行尾空白标记（P2-2 V-07）与换行标记 */
+  .ts {
+    color: var(--accent);
+  }
+  .nl {
+    color: var(--muted);
+    opacity: 0.7;
+  }
+
+  /* 缩进参考线（P2-2 V-06） */
+  .guide {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--line);
+    pointer-events: none;
+  }
+
+  /* 标尺（P2-2 V-05） */
+  .ruler {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--accent);
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
   }
 
   .spacer {
