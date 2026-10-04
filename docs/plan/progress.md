@@ -451,3 +451,9 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 前端：SnapshotsPanel（恢复走 EditLayer applyResult）；App 自动保存定时、crash 一次性提示、`markCleanExit` 接入三条干净退出路径（修正首版误命中防抖保存）；恢复仅编辑态可用。
 - 验证：cargo **435（407 lib+15+2+6+5）**；svelte-check 0/0；vitest 115；smoke-snapshots **8/8**（S1 编辑变脏 → S2/S3 快照最新在上 → S4 恢复旧快照与 Ctrl+Z → S5 删除确认 → S6 文件落盘 → S7 截图 `p3-snapshots.png`）。
 - 后续：P3-2 新建文件（消费 `file.newEncoding/newEol`）、导出与打印。
+
+### P3-2 新建、导出与打印（完成）
+- 后端：`export.rs`（五格式流式导出 CappedWriter 64MB；打印 HTML 1MB）；`app_state` 未命名标签（open_untitled / save 守卫 / save_as 立即清理临时文件 / close 清理）+ export_text/print_html；命令 new_file/export_text/print_document（**async + run_on_main_thread 建打印窗**——同步命令在主线程调 run_on_main_thread 会自锁，曾实测挂起）；tauri feature `webview-data-url`。
+- 前端：文件菜单新建/导出…/打印…；未命名标签显示与保存重定向；导出格式由扩展名推断；会话不恢复未命名标签；修复 6 处 toasts 未翻译键。
+- 验证：cargo **443（415 lib+15+2+6+5）**；svelte-check 0/0；vitest 115；smoke-p32 **14/14**（并入 verify-all 现 46 步）。
+- 下一切片：P3-3 命令行打开与文件关联。

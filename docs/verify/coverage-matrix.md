@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 435（407 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 115；E2E 36 套 ≈571 项；verify-all 45 步。
+- 计数口径：Rust 443（415 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 115；E2E 37 套 ≈585 项；verify-all 46 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -157,3 +157,4 @@
 - 2026-10-04 P2-3：书签/高亮/注释（annotations.rs 摘录锚点重定位；10 命令 + edit_display_pos；行内高亮/丝带/标记渲染；标注面板；设置持久化 data/annotations/；修复空色高亮不渲染真实缺陷；smoke-annotations 11/11 并入 verify-all（现 42 步））。
 - 2026-10-03 P2-6：大纲/折叠/面包屑（设置 v14；outline_items/fold_regions 命令；smoke-outline 13 项；修复程序化跳转顶部行滞后与折叠标记缺滚动路径）。
 - 2026-10-04 P3-1：快照与版本历史（设置 v15 `app.file` 9 项；`snapshots.rs` 双上限存储与 6 命令；写盘原语统一 `document_bytes/encode_into`；前端自动保存/异常退出提示/快照面板与「文件→保存快照/版本历史…」；smoke-snapshots 8/8 并入 verify-all（现 45 步））。
+- 2026-10-04 P3-2：新建/导出/打印（export.rs 五格式流式 + 打印窗；命令 new_file/export_text/print_document；异步建窗自锁修复；smoke-p32 14/14 并入 verify-all（现 46 步））。

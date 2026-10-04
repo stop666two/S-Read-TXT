@@ -4,6 +4,13 @@
 
 ## [未发布]
 
+### P3-2（新建 / 导出 / 打印）
+
+- 新增：新建未命名文件（`file.newEncoding`/`file.newEol` 生效；临时文件位于 `data/untitled/`，关闭或另存后自动清理；未命名标签不进入会话恢复）；
+- 新增：导出（txt/md/csv/json/html 五种格式，64MB 上限，流式写出；格式由扩展名推断）；
+- 新增：打印（1MB 内 HTML → 打印预览窗口自动调起系统打印；`SRT_PRINT_NO_AUTO` 供自动化测试）；
+- 新增命令：`new_file`/`export_text`/`print_document`；修复：打印窗必须异步建窗（同步命令在主线程调用 `run_on_main_thread` 会自锁）；
+
 ### P3-1（快照 / 版本历史；schema v15）
 
 - 新增：自动保存（快照式）与版本历史（`file.versionHistory`/`file.autosaveIntervalSec`/`file.autosaveWriteBack`/`file.snapshotKeep`/`file.snapshotMaxMB`；`data/snapshots/` 双上限、逐字节去重、原子写）；
