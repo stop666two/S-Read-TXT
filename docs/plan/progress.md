@@ -384,3 +384,11 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 前端：StatusBar v2（items 顺序渲染 8 种元素；行列内联跳转；换行菜单编辑态转换；未选择文案；只读徽标；修改标记）；App/ReaderView/EditLayer 接线（文档统计/选区统计 250ms 防抖/光标行列/顶部行）；修复两处 effect 竞态（标签刷新重触发清空、顶部行首帧上报被清）。
 - 验证：cargo 378 lib + 15 + 2 + 6 + 5（共 406）；vitest 96；svelte-check 0/0；smoke-status 9/9（物理验证：真实启动/操作/截图 6 张）并入 verify-all（现 40 步）。
 - 提交：ae9e1f3（refactor app.status）/ eb7b0e8（fix 换行崩溃）/ f3ee6f0（feat 状态栏 v2）/ 85251da（test smoke-status）/ edfc157（chore 截图）。
+
+### P2-2 显示选项（P2-2a–d，完成）
+- 设置 v11：`app.display` 9 项（行号/相对行号/当前行高亮/自动换行/标尺+位置 0–1000/缩进参考线/不可见字符白名单/滚动条标记开关，滚动条标记留 P2-2 后续）；registry 共 85；migrate v11；store 归一测试；设置页「显示选项」分组。
+- 渲染（ReaderView）：行号 gutter（ch 宽度、不可选中）、相对行号（阅读参照首帧/编辑参照光标）、当前行高亮、标尺竖线、缩进参考线（每 indentWidth 列）、不可见字符（空格·/制表→/行尾␣/换行¶；均为 1:1 替换保映射，超 4000 字符行跳过）、自动换行关闭（横向滚动，layoutKey 含 wordWrap 触发重排）。
+- 兼容修复（开发中实测发现并解决）：① Svelte 空白泄漏——行内元素间换行符进入 textContent 导致文本断言全面失败 → 行模板压为单行零空白；② `.txt` 曾加 position/z-index 盖住 edit-surface → 鼠标定位/修饰键全失效 → 改用 `display:inline`；③ refreshMatches 残留 `node.firstChild` → 搜索高亮丢失 → 改 textAt 跨节点换算；④ smoke-multi 测试侧 pointOf 同步改 `.txt` 文本节点。
+- 验证：cargo 407；vitest 96；svelte-check 0/0；smoke-display 15/15 并入 verify-all（现 41 步）；回归 multi 18/18、find 27/27、edit 12/12、status 9/9、clipboard 19/19、abuse 41/41、i18n 27/27；截图 p2-display-{on,nowrap,edit}.png。
+- 提交：feat（渲染）+ test（smoke-display/verify-all/multi 适配）+ chore（截图）+ docs（本台账）。
+- 备注：V-08 折叠/V-09 大纲/V-10 面包屑归 P2-6；V-11 滚动条标记（搜索/书签/修改标记点）在本阶段末小节实施。

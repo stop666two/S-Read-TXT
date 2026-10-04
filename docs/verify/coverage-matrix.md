@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 406（378 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 96；E2E 31 套 ≈507 项；verify-all 40 步。
+- 计数口径：Rust 407（379 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 96；E2E 32 套 ≈522 项；verify-all 41 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -21,6 +21,7 @@
 | smoke-i18n | 27 | 8 语言渲染/查找/替换/编码往返/切换 |
 | smoke-titlebar | 10 | 标题栏：拖拽/三键/双击/最小化/主题/齿轮入口 |
 | smoke-buttons | 33 | 全按钮审计：欢迎页区块/工具栏/菜单/标签栏/状态栏/退出流 |
+| smoke-display | 15 | 显示选项（P2-2）：行号/相对行号（阅读参照首行·编辑参照光标）/当前行高亮/标尺位置/缩进参考线/不可见字符（长度不变）/自动换行关闭/全部关闭清理/截图 3 张 |
 | smoke-settings | 48 | 设置窗口全控件：常规/排版/字体导入/开关/页签 |
 | smoke-status | 9 | 状态栏 v2（P2-1）：阅读态行列/字数/进度/编码/换行 → 编辑态行列与选中统计/修改标记 → 设置窗状态栏分组 → 计数单位切字节 → 换行转换 CRLF（截图 6 张） |
 | smoke-shortcuts | 30 | 快捷键：固定键/循环/翻页/全屏/录制/持久化/模态挂起 |
