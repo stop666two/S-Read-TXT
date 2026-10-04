@@ -22,6 +22,7 @@ pub mod background;
 pub mod clipboard_history;
 pub mod elevation;
 pub mod export;
+pub mod cli;
 pub mod find_history;
 pub mod fonts;
 pub mod history;

@@ -7,6 +7,7 @@
   import { onMount } from 'svelte';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
   import { listen } from '@tauri-apps/api/event';
+import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { open, save } from '@tauri-apps/plugin-dialog';
 
@@ -1312,6 +1313,39 @@ let outlineOpen = $state(false);
     restartEyeCare();
   });
 
+  /** 打开剪贴板中的路径（P3-3 D-17）：取首行、去空白后走统一打开链路。 */
+  async function pastePathOpen(): Promise<void> {
+    let text = '';
+    try {
+      text = await readClipboardText();
+    } catch {
+      text = '';
+    }
+    const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? '';
+    if (firstLine === '') {
+      toasts.show(t('cli.pasteEmpty'));
+      return;
+    }
+    await tabs.openPath(firstLine);
+  }
+
+  // P3-3 命令行/单实例：启动队列排空 + 运行期转发监听（事件与队列叠加不丢失）。
+  onMount(() => {
+    let unlistenCli: (() => void) | undefined;
+    void ipc
+      .takeCliFiles()
+      .then((paths) => {
+        for (const path of paths) void tabs.openPath(path);
+      })
+      .catch(() => {});
+    void listen<string[]>('srt://cli-open', (event) => {
+      for (const path of event.payload) void tabs.openPath(path);
+    }).then((stop) => {
+      unlistenCli = stop;
+    });
+    return () => unlistenCli?.();
+  });
+
   
 onMount(() => {
     // 启动显示策略（维护者确认）：窗口由 Rust 侧在启动时立即显示
@@ -1569,6 +1603,7 @@ onMount(() => {
   onSnapshotNow={() => void snapshotNow()}
   onSnapshotHistory={() => (snapshotsOpen = true)}
   onNewFile={() => void newFileFlow()}
+              onPastePathOpen={() => void pastePathOpen()}
   onExport={() => void exportFlow()}
   onPrint={() => void printFlow()}
           onFoldAll={foldAll}

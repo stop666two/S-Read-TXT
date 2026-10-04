@@ -1146,6 +1146,8 @@ export const ipc = {
     invoke<boolean>('delete_snapshot', { tabId, name }),
   markCleanExit: () => invoke<void>('mark_clean_exit'),
   takeCrashFlag: () => invoke<boolean>('take_crash_flag'),
+  /** 取走命令行/单实例待打开文件（P3-3）。 */
+  takeCliFiles: () => invoke<string[]>('take_cli_files'),
   newFile: () => invoke<TabInfo>('new_file'),
   exportText: (tabId: number, path: string) => invoke<number>('export_text', { tabId, path }),
   printDocument: (tabId: number) => invoke<void>('print_document', { tabId }),

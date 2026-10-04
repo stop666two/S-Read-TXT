@@ -61,6 +61,8 @@
   onSnapshotNow?: () => void;
   onSnapshotHistory?: () => void;
   onNewFile?: () => void;
+  /** 打开剪贴板中的路径（P3-3） */
+  onPastePathOpen?: () => void;
   onExport?: () => void;
   onPrint?: () => void;
   /** 切换打字机模式 */
@@ -124,6 +126,7 @@
   onSnapshotNow,
   onSnapshotHistory,
   onNewFile,
+  onPastePathOpen,
   onExport,
   onPrint,
   pomodoroOn,
@@ -200,6 +203,7 @@
     <div class="dropdown" role="menu" style="left: 4px">
       <button class="item" onclick={() => run(onOpenFile)}><span>{t('menu.file.open')}</span><span class="hint">Ctrl+O</span></button>
 <button class="item" onclick={() => run(onNewFile)}><span>{t('menu.file.new')}</span></button>
+<button class="item" onclick={() => run(onPastePathOpen)}><span>{t('menu.file.pastePath')}</span></button>
       <button class="item" disabled={!hasTab} onclick={() => run(onReload)}><span>{t('menu.file.reload')}</span></button>
 <button class="item" disabled={!hasTab} onclick={() => run(onExport)}><span>{t('menu.file.export')}</span></button>
 <button class="item" disabled={!hasTab} onclick={() => run(onPrint)}><span>{t('menu.file.print')}</span></button>

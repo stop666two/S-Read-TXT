@@ -131,6 +131,14 @@ fn main() {
     }
 
     let app_result = tauri::Builder::default()
+        // 单实例（P3-3）：第二次启动只把文件参数转发给已运行实例并退出。
+        // 必须最先注册（官方要求）；同时避免多实例并写同一便携数据目录。
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let paths = s_read_txt::cli::file_args(argv.iter().skip(1).map(String::as_str));
+            if !paths.is_empty() {
+                s_read_txt::cli::push_pending(app, paths);
+            }
+        }))
         // 原生对话框能力（文件选择/目录选择/消息框）
         .plugin(tauri_plugin_dialog::init())
         // 剪贴板能力（复制/剪切/粘贴走 Rust 侧，避免 WebView 的剪贴板权限弹窗）
@@ -139,6 +147,11 @@ fn main() {
         // 优先使用 128px 图标（缩放到各尺寸更清晰），解码失败回退构建期内置图标。
         .setup(move |app| {
             use tauri::{Manager, PhysicalPosition, PhysicalSize};
+            // 启动参数中的文件路径入队（前端挂载后经 take_cli_files 取走打开）。
+            let startup_files = s_read_txt::cli::file_args(std::env::args().skip(1));
+            if !startup_files.is_empty() {
+                s_read_txt::cli::push_pending(app.handle(), startup_files);
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))
                     .ok()
@@ -201,9 +214,12 @@ fn main() {
         })
         // 运行状态：打开标签集合（由命令层以 Mutex 访问）
         .manage(Mutex::new(AppState::new()))
+        // 命令行/单实例待打开队列（P3-3）
+        .manage(s_read_txt::cli::PendingCliFiles::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,
             commands::data_dir_status,
+            commands::take_cli_files,
             commands::set_data_dir,
             commands::get_settings,
             commands::save_settings,

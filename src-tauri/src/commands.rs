@@ -132,6 +132,12 @@ fn persisted_dir_text() -> Option<String> {
     paths::read_pointer(&exe).map(|dir| dir.to_string_lossy().into_owned())
 }
 
+/// 取走命令行/单实例转发的待打开文件列表（P3-3）。
+#[tauri::command]
+pub fn take_cli_files(pending: State<'_, s_read_txt::cli::PendingCliFiles>) -> Vec<String> {
+    s_read_txt::cli::take_pending(&pending)
+}
+
 /// 命令：探测数据目录可写性（启动自检与「目录不可写」引导流程的数据源）。
 ///
 /// 返回：Ok(DataDirStatus)——即使不可写也返回 Ok，由前端依据 `writable`

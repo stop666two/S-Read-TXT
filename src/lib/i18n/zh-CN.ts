@@ -264,6 +264,8 @@ export const zhCN = {
   'outline.empty': '未找到章节（可在设置中调整大纲正则）',
   'menu.file.snapshotNow': '保存快照',
   'menu.file.new': '新建文件',
+  'menu.file.pastePath': '打开剪贴板中的路径',
+  'cli.pasteEmpty': '剪贴板中没有可用路径',
   'menu.file.export': '导出…',
   'menu.file.print': '打印…',
   'untitled.name': '未命名 {n}',

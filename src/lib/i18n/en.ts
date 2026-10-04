@@ -272,6 +272,8 @@ export const en: Record<MessageKey, string> = {
   'outline.empty': 'No chapters found (adjust outline patterns in settings)',
   'menu.file.snapshotNow': 'Save snapshot',
   'menu.file.new': 'New file',
+  'menu.file.pastePath': 'Open path from clipboard',
+  'cli.pasteEmpty': 'Clipboard contains no usable path',
   'menu.file.export': 'Export…',
   'menu.file.print': 'Print…',
   'untitled.name': 'Untitled {n}',
