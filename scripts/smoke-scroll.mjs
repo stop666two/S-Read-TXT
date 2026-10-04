@@ -1,8 +1,10 @@
 // 滚动渲染完整性 E2E（常驻套件）。
 // 目的：编码「滑动多次后内容渲染不出来」这一缺陷类别——
 //   A 随机跳转 30 轮；B 滚轮连发 5 轮；C 上下震荡 3 轮；D 滑块连调 13 轮。
-// 断言：每轮 settle 后，可视区域内 .row 全部有文本（blank=0）；
+// 断言：每轮**轮询至稳定**（最多 3s）后，可视区域内 .row 全部有文本（blank=0）；
 //   滑块轮另断言 CSS 变量到达目标值；窗口占位无需滚动即已落定。
+// 说明：断言的是「最终必须渲染完整」，不绑定固定时限（debug 构建下大跳转后
+//   内容填充需数百毫秒；曾用固定 420ms 导致假阴性——P2/P3 报告均 0/4）。
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -69,16 +71,27 @@ try {
     return raw ? JSON.parse(raw) : null;
   };
 
+  /** 轮询现场直至可视行全部有文本（blank=0）或到期限；返回最后现场与耗时。 */
+  const settle = async (maxMs = 3000) => {
+    const startedAt = Date.now();
+    let state = null;
+    for (;;) {
+      state = await check();
+      if (state && state.blank === 0) return { state, ms: Date.now() - startedAt };
+      if (Date.now() - startedAt >= maxMs) return { state, ms: Date.now() - startedAt };
+      await delay(120);
+    }
+  };
+
   // ---- A. 随机跳转 30 轮 ----
   let aFail = 0;
   for (let i = 0; i < 30; i += 1) {
     const target = ((i * 7919 + 13) % 97) / 97;
     await evalMain(`(() => { const r = document.querySelector('.reader'); if (r) r.scrollTop = ${target} * (r.scrollHeight - r.clientHeight); return true; })()`);
-    await delay(420);
-    const state = await check();
+    const { state, ms } = await settle();
     if (!state || state.blank > 0) {
       aFail += 1;
-      if (aFail === 1) console.log(`  ! A 首败 ROUND ${i}: ${JSON.stringify(state)}`);
+      if (aFail === 1) console.log(`  ! A 首败 ROUND ${i}（${ms}ms）: ${JSON.stringify(state)}`);
     }
   }
   if (aFail === 0) ok('A 随机跳转 30 轮渲染完整');
@@ -94,11 +107,10 @@ try {
     for (let k = 0; k < 20; k += 1) {
       await main.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: point.x, y: point.y, deltaX: 0, deltaY: 900 });
     }
-    await delay(550);
-    const state = await check();
+    const { state, ms } = await settle();
     if (!state || state.blank > 0) {
       bFail += 1;
-      if (bFail === 1) console.log(`  ! B 首败 burst ${burst}: ${JSON.stringify(state)}`);
+      if (bFail === 1) console.log(`  ! B 首败 burst ${burst}（${ms}ms）: ${JSON.stringify(state)}`);
     }
   }
   if (bFail === 0) ok('B 滚轮连发 5×20 渲染完整');
@@ -111,15 +123,14 @@ try {
       const ratio = k % 2 === 0 ? 0.9 : 0.1;
       await evalMain(`(() => { const r = document.querySelector('.reader'); if (r) r.scrollTop = ${ratio} * (r.scrollHeight - r.clientHeight); return true; })()`);
     }
-    await delay(650);
-    const state = await check();
+    const { state, ms } = await settle();
     const raw2 = await evalMain(`(() => { const r = document.querySelector('.reader'); if (!r) return null;
       return JSON.stringify({ ratio: r.scrollTop / Math.max(1, r.scrollHeight - r.clientHeight) }); })()`);
     const ratio = raw2 ? JSON.parse(raw2).ratio : -1;
     const landed = ratio < 0.2 || ratio > 0.8;
     if (!state || state.blank > 0 || !landed) {
       cFail += 1;
-      console.log(`  ! C 失败 round ${round}: landed=${ratio.toFixed(3)} ${JSON.stringify(state)}`);
+      console.log(`  ! C 失败 round ${round}（${ms}ms）: landed=${ratio.toFixed(3)} ${JSON.stringify(state)}`);
     }
   }
   if (cFail === 0) ok('C 上下震荡 3×30 渲染完整且落点稳定');
@@ -153,14 +164,13 @@ try {
       await setNumber('input[data-setting-num="reader.typography.fontSize"]', String(size), ['change']);
     }
     await waitForValue(async () => ((await evalMain(`getComputedStyle(document.documentElement).getPropertyValue('--reading-size').trim()`)) === `${size}px` ? true : null), 5000);
-    await delay(320);
-    const state = await check();
+    const { state, ms } = await settle();
     const geom = await evalMain(`(() => { const r = document.querySelector('.reader'); const row = r?.querySelector('.row[data-row]');
       return JSON.stringify({ rowReal: row ? Math.round(row.getBoundingClientRect().height * 10) / 10 : null, sh: r?.scrollHeight ?? -1 }); })()`);
     const info = geom ? JSON.parse(geom) : null;
     if (!state || state.blank > 0) {
       dFail += 1;
-      console.log(`  ! D 失败 size=${size}: blank=${state?.blank} ${JSON.stringify(info)}`);
+      console.log(`  ! D 失败 size=${size}（${ms}ms）: blank=${state?.blank} ${JSON.stringify(info)}`);
     }
   }
   if (dFail === 0) ok('D 滑块连调 13 轮（含 8/72 极值）渲染完整');

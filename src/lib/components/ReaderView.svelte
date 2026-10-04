@@ -2,7 +2,7 @@
   // 阅读视图：虚拟滚动（仅渲染可视行 + 实测高度缓存 + 滚动锚定）+ 按窗取行。
   // 进度口径：状态栏百分比 = 顶部定位行的累计高度 / 内容总高度（视觉进度）。
   // 标签/编码切换：重建高度与缓存、按记忆行号恢复滚动位置（阶段 8 会话持久化同口径）。
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
 
   import EditLayer from './EditLayer.svelte';
   import type { EditorAction } from '../edit/actions';
@@ -109,8 +109,25 @@
 
   const heights = new HeightModel(BASE_LINE_HEIGHT);
   const cache = new RowCache();
-  /** 在途取行批次键（防重复请求） */
-  const inflight = new Set<string>();
+  /** 在途取行批次键 → 发起时间（看门狗：响应偶发丢失时超时重试，防永久空白） */
+  const inflight = new Map<string, number>();
+  /** 在途批次看门狗超时（ms）：超过即视为丢失，允许重新取行
+   *  （实测取行响应 <1ms；快速滚动下偶发请求未达后端，故设置较短超时保证可见区及时补齐） */
+  const INFLIGHT_TIMEOUT_MS = 1200;
+  /** 同时最多在途批次数（快速滚动时不淹没 IPC，降低消息丢失概率） */
+  const MAX_INFLIGHT = 4;
+  /** 延迟补取定时器（有被跳过的批次时兜底重试） */
+  let ensureRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  function scheduleEnsureRetry(): void {
+    if (ensureRetryTimer) return;
+    ensureRetryTimer = setTimeout(() => {
+      ensureRetryTimer = null;
+      refreshWindow();
+    }, 250);
+  }
+  onDestroy(() => {
+    if (ensureRetryTimer) clearTimeout(ensureRetryTimer);
+  });
   /** 标签 → 顶部定位行的注册表（跨模块共享；见 reader/scroll-memory.ts） */
   /** 程序化滚动标记（锚定补偿时避免重入滚动处理） */
   let programmatic = false;
@@ -433,12 +450,25 @@
    *  过滤启用时：批次中的显示行经 `filterRows` 映射为文件行，经 `fetch_rows_at` 稀疏取回，
    *  并按「显示行」键写入缓存（虚拟列表与百分比均以显示行为准）。 */
   function ensureRows(start: number, end: number): void {
+    // 看门狗：清掉超时未回的在途键（IPC 响应偶发丢失；不清将永久跳过该窗口）
+    const now = Date.now();
+    for (const [key, at] of inflight) {
+      if (now - at > INFLIGHT_TIMEOUT_MS) inflight.delete(key);
+    }
     const wanted: number[] = [];
     for (let row = start; row < end; row += 1) wanted.push(row);
+    let deferred = false;
     for (const batch of planBatches(wanted, (row) => cache.has(row), MAX_BATCH)) {
       const key = `${batch.start}:${batch.count}`;
-      if (inflight.has(key)) continue;
-      inflight.add(key);
+      if (inflight.has(key)) {
+        deferred = true;
+        continue;
+      }
+      if (inflight.size >= MAX_INFLIGHT) {
+        deferred = true;
+        break;
+      }
+      inflight.set(key, Date.now());
       const tabId = tab.tabId;
       const filter = viewRows; // 快照：视图行集变化后旧批次作废
       const fetch = filter
@@ -469,6 +499,8 @@
         },
       );
     }
+    // 有批次因在途/上限被跳过：稍后重试，保证窗口最终补齐
+    if (deferred) scheduleEnsureRetry();
   }
 
   /** 编辑结果回报：失效受影响行起的缓存与行高（行号平移的最小正确范围），
