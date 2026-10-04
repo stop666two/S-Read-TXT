@@ -30,7 +30,8 @@ pub fn now_unix_seconds() -> i64 {
 pub fn local_day_string() -> String {
     let now = time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc());
     let format = time::macros::format_description!("[year]-[month]-[day]");
-    now.format(format).unwrap_or_else(|_| "1970-01-01".to_string())
+    now.format(format)
+        .unwrap_or_else(|_| "1970-01-01".to_string())
 }
 
 /// 当前 UNIX 毫秒（毫秒级排序用；与 `now_rfc3339` 的毫秒精度对齐）。

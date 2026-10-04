@@ -312,7 +312,7 @@ pub fn fold_regions(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Vec<FoldRegion>, IpcError> {
     with_context(LogContext::request(), || {
-        let settings = current_app_settings()?;
+        let settings = current_app_settings();
         let patterns = if settings.display.outline_patterns.is_empty() {
             s_read_txt::settings::defaults::DEFAULT_OUTLINE_PATTERNS
                 .iter()
@@ -335,7 +335,7 @@ pub fn outline_items(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Vec<OutlineItem>, IpcError> {
     with_context(LogContext::request(), || {
-        let settings = current_app_settings()?;
+        let settings = current_app_settings();
         let patterns = if settings.display.outline_patterns.is_empty() {
             s_read_txt::settings::defaults::DEFAULT_OUTLINE_PATTERNS
                 .iter()

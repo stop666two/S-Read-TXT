@@ -174,7 +174,8 @@ impl FileAnnotations {
         self.next_id = self.next_id.max(max_id.saturating_add(1)).max(1);
 
         self.bookmarks.sort_by_key(|item| (item.row, item.utf16));
-        self.bookmarks.dedup_by(|a, b| a.id == b.id || (a.row == b.row && a.utf16 == b.utf16));
+        self.bookmarks
+            .dedup_by(|a, b| a.id == b.id || (a.row == b.row && a.utf16 == b.utf16));
         self.bookmarks.truncate(MAX_PER_KIND);
         for item in &mut self.bookmarks {
             if let Some(label) = &mut item.label {
@@ -186,9 +187,11 @@ impl FileAnnotations {
             item.excerpt = truncate_chars(&item.excerpt, EXCERPT_CHARS);
         }
 
-        self.highlights.sort_by_key(|item| (item.row, item.start_utf16));
+        self.highlights
+            .sort_by_key(|item| (item.row, item.start_utf16));
         self.highlights.dedup_by(|a, b| {
-            a.id == b.id || (a.row == b.row && a.start_utf16 == b.start_utf16 && a.end_utf16 == b.end_utf16)
+            a.id == b.id
+                || (a.row == b.row && a.start_utf16 == b.start_utf16 && a.end_utf16 == b.end_utf16)
         });
         self.highlights.truncate(MAX_PER_KIND);
         for item in &mut self.highlights {
@@ -386,13 +389,19 @@ pub fn add_bookmark<'a>(
         id: annotations.alloc_id(),
         row,
         utf16,
-        label: label.map(|text| truncate_chars(text.trim(), LABEL_MAX_CHARS)).filter(|text| !text.is_empty()),
+        label: label
+            .map(|text| truncate_chars(text.trim(), LABEL_MAX_CHARS))
+            .filter(|text| !text.is_empty()),
         created_at: crate::time_util::now_rfc3339(),
         excerpt: excerpt_at(row, utf16, source),
     };
     annotations.bookmarks.push(bookmark);
     annotations.normalize();
-    annotations.bookmarks.iter().find(|item| item.row == row && item.utf16 == utf16).expect("刚插入")
+    annotations
+        .bookmarks
+        .iter()
+        .find(|item| item.row == row && item.utf16 == utf16)
+        .expect("刚插入")
 }
 
 /// 删除书签（按 id；返回是否删除）。
@@ -424,17 +433,18 @@ pub fn add_highlight<'a>(
         row,
         start_utf16,
         end_utf16,
-        color: color.map(|value| truncate_chars(value.trim(), 32)).filter(|value| !value.is_empty()),
+        color: color
+            .map(|value| truncate_chars(value.trim(), 32))
+            .filter(|value| !value.is_empty()),
         note: None,
         created_at: crate::time_util::now_rfc3339(),
         excerpt: excerpt_at(row, start_utf16, source),
     };
     annotations.highlights.push(highlight);
     annotations.normalize();
-    annotations
-        .highlights
-        .iter()
-        .find(|item| item.row == row && item.start_utf16 == start_utf16 && item.end_utf16 == end_utf16)
+    annotations.highlights.iter().find(|item| {
+        item.row == row && item.start_utf16 == start_utf16 && item.end_utf16 == end_utf16
+    })
 }
 
 /// 删除高亮（按 id；返回是否删除）。
@@ -506,7 +516,9 @@ pub fn remove_note(annotations: &mut FileAnnotations, id: u64) -> bool {
 
 /// 清空单文件全部标注（返回是否有删除）。
 pub fn clear_all(annotations: &mut FileAnnotations) -> bool {
-    let had = !annotations.bookmarks.is_empty() || !annotations.highlights.is_empty() || !annotations.notes.is_empty();
+    let had = !annotations.bookmarks.is_empty()
+        || !annotations.highlights.is_empty()
+        || !annotations.notes.is_empty();
     annotations.bookmarks.clear();
     annotations.highlights.clear();
     annotations.notes.clear();
@@ -544,7 +556,15 @@ mod tests {
         let mut annotations = FileAnnotations::empty("D:\\Docs\\A.txt");
         add_bookmark(&mut annotations, &source, 1, 6, Some("重要".into()));
         add_highlight(&mut annotations, &source, 0, 0, 5, Some("#FFEE00".into()));
-        add_note(&mut annotations, &source, 1, 0, None, "看一下".into(), NoteKind::Todo);
+        add_note(
+            &mut annotations,
+            &source,
+            1,
+            0,
+            None,
+            "看一下".into(),
+            NoteKind::Todo,
+        );
         save(dir.path(), &mut annotations).expect("保存");
         let loaded = load(dir.path(), "D:\\Docs\\A.txt");
         assert_eq!(loaded.bookmarks.len(), 1);
@@ -611,7 +631,16 @@ mod tests {
         let long = "字".repeat(NOTE_MAX_CHARS + 100);
         add_note(&mut annotations, &source, 0, 0, None, long, NoteKind::Note);
         assert_eq!(annotations.notes[0].text.chars().count(), NOTE_MAX_CHARS);
-        assert!(add_note(&mut annotations, &source, 0, 0, None, "   ".into(), NoteKind::Note).is_none());
+        assert!(add_note(
+            &mut annotations,
+            &source,
+            0,
+            0,
+            None,
+            "   ".into(),
+            NoteKind::Note
+        )
+        .is_none());
         assert!(add_highlight(&mut annotations, &source, 0, 5, 5, None).is_none());
     }
 
@@ -621,10 +650,23 @@ mod tests {
         let dir = tempfile::tempdir().expect("临时目录");
         let source = doc(dir.path(), "line one\nline two\n");
         let mut annotations = FileAnnotations::empty("X.txt");
-        let id = add_note(&mut annotations, &source, 0, 0, None, "待办".into(), NoteKind::Todo)
-            .expect("添加")
-            .id;
-        assert!(update_note(&mut annotations, id, Some("办完了".into()), Some(true)));
+        let id = add_note(
+            &mut annotations,
+            &source,
+            0,
+            0,
+            None,
+            "待办".into(),
+            NoteKind::Todo,
+        )
+        .expect("添加")
+        .id;
+        assert!(update_note(
+            &mut annotations,
+            id,
+            Some("办完了".into()),
+            Some(true)
+        ));
         assert_eq!(annotations.notes[0].text, "办完了");
         assert!(annotations.notes[0].done);
         assert!(remove_note(&mut annotations, id));
