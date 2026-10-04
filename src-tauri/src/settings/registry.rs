@@ -283,20 +283,74 @@ pub const SPECS: &[SettingSpec] = &[
         },
     },
     SettingSpec {
-        id: "reader.typography.pagePadding",
-        group: "reader.typography",
+        id: "reader.margins.reading.top",
+        group: "reader.margins",
         kind: SettingKind::Number {
-            min: defaults::PAGE_PADDING_RANGE.0 as f64,
-            max: defaults::PAGE_PADDING_RANGE.1 as f64,
+            min: defaults::MARGIN_RANGE.0 as f64,
+            max: defaults::MARGIN_RANGE.1 as f64,
             integer: true,
         },
     },
     SettingSpec {
-        id: "reader.typography.pagePaddingY",
-        group: "reader.typography",
+        id: "reader.margins.reading.right",
+        group: "reader.margins",
         kind: SettingKind::Number {
-            min: defaults::PAGE_PADDING_Y_RANGE.0 as f64,
-            max: defaults::PAGE_PADDING_Y_RANGE.1 as f64,
+            min: defaults::MARGIN_RANGE.0 as f64,
+            max: defaults::MARGIN_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.margins.reading.bottom",
+        group: "reader.margins",
+        kind: SettingKind::Number {
+            min: defaults::MARGIN_RANGE.0 as f64,
+            max: defaults::MARGIN_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.margins.reading.left",
+        group: "reader.margins",
+        kind: SettingKind::Number {
+            min: defaults::MARGIN_RANGE.0 as f64,
+            max: defaults::MARGIN_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.margins.editing.top",
+        group: "reader.margins",
+        kind: SettingKind::Number {
+            min: defaults::MARGIN_RANGE.0 as f64,
+            max: defaults::MARGIN_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.margins.editing.right",
+        group: "reader.margins",
+        kind: SettingKind::Number {
+            min: defaults::MARGIN_RANGE.0 as f64,
+            max: defaults::MARGIN_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.margins.editing.bottom",
+        group: "reader.margins",
+        kind: SettingKind::Number {
+            min: defaults::MARGIN_RANGE.0 as f64,
+            max: defaults::MARGIN_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.margins.editing.left",
+        group: "reader.margins",
+        kind: SettingKind::Number {
+            min: defaults::MARGIN_RANGE.0 as f64,
+            max: defaults::MARGIN_RANGE.1 as f64,
             integer: true,
         },
     },
@@ -878,7 +932,8 @@ mod tests {
             SettingKind::Number { integer: true, .. }
         ));
         assert!(spec_by_id("app.notExist").is_none());
-        assert_eq!(specs_in_group("reader.typography").count(), 10);
+        assert_eq!(specs_in_group("reader.typography").count(), 8);
+        assert_eq!(specs_in_group("reader.margins").count(), 8);
         assert_eq!(specs_in_group("no.such.group").count(), 0);
     }
 

@@ -63,10 +63,6 @@ pub struct Typography {
     pub line_height: f32,
     /// 正文限宽（px，范围见 [`defaults::CONTENT_WIDTH_RANGE`]）
     pub content_width: u32,
-    /// 阅读区左右页边距（px，范围见 [`defaults::PAGE_PADDING_RANGE`]）
-    pub page_padding: u32,
-    /// 阅读区上下留白（px，范围见 [`defaults::PAGE_PADDING_Y_RANGE`]）
-    pub page_padding_y: u32,
     /// 段间距（px，范围见 [`defaults::PARAGRAPH_SPACING_RANGE`]）
     pub paragraph_spacing: u32,
     /// 首行缩进（字符数，范围见 [`defaults::FIRST_LINE_INDENT_RANGE`]）
@@ -84,8 +80,6 @@ impl Default for Typography {
             font_size: defaults::DEFAULT_FONT_SIZE,
             line_height: defaults::DEFAULT_LINE_HEIGHT,
             content_width: defaults::DEFAULT_CONTENT_WIDTH,
-            page_padding: defaults::DEFAULT_PAGE_PADDING,
-            page_padding_y: defaults::DEFAULT_PAGE_PADDING_Y,
             paragraph_spacing: defaults::DEFAULT_PARAGRAPH_SPACING,
             first_line_indent: defaults::DEFAULT_FIRST_LINE_INDENT,
             text_align: defaults::DEFAULT_TEXT_ALIGN,
@@ -179,6 +173,50 @@ impl Default for BackgroundSettings {
     }
 }
 
+/// 四向页边距（px）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Margin4 {
+    /// 上边距（px）
+    pub top: u32,
+    /// 右边距（px）
+    pub right: u32,
+    /// 下边距（px）
+    pub bottom: u32,
+    /// 左边距（px）
+    pub left: u32,
+}
+
+impl Default for Margin4 {
+    fn default() -> Self {
+        Self {
+            top: defaults::DEFAULT_MARGIN,
+            right: defaults::DEFAULT_MARGIN,
+            bottom: defaults::DEFAULT_MARGIN,
+            left: defaults::DEFAULT_MARGIN,
+        }
+    }
+}
+
+/// 页边距设置（阅读 / 编辑两套独立，各四向）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct MarginSettings {
+    /// 阅读模式边距
+    pub reading: Margin4,
+    /// 编辑模式边距
+    pub editing: Margin4,
+}
+
+impl Default for MarginSettings {
+    fn default() -> Self {
+        Self {
+            reading: Margin4::default(),
+            editing: Margin4::default(),
+        }
+    }
+}
+
 /// 阅读排版配置（`reader.json`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -196,6 +234,8 @@ pub struct ReaderSettings {
     pub theme_anim_ms: u32,
     /// 排版参数
     pub typography: Typography,
+    /// 页边距（阅读 / 编辑两套独立，各四向）
+    pub margins: MarginSettings,
     /// 背景图
     pub background: BackgroundSettings,
 }
@@ -208,6 +248,7 @@ impl Default for ReaderSettings {
             theme_anim_enabled: defaults::DEFAULT_THEME_ANIM_ENABLED,
             theme_anim_ms: defaults::DEFAULT_THEME_ANIM_MS,
             typography: Typography::default(),
+            margins: MarginSettings::default(),
             background: BackgroundSettings::default(),
         }
     }

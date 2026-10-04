@@ -71,6 +71,7 @@ const STEPS: &[(u32, MigrationStep)] = &[
     (8, v8_to_v9),
     (9, v9_to_v10),
     (10, v10_to_v11),
+    (11, v11_to_v12),
 ];
 
 /// v7 → v8：新增 `editor.insert` / `editor.autoPairs` / `editor.cleanup` 字段（serde default 补齐）。
@@ -89,6 +90,30 @@ fn v9_to_v10(value: &mut Value) {
 
 /// v10 → v11：新增 `display` 节（字段补齐由 serde default 处理）。
 fn v10_to_v11(_value: &mut Value) {}
+
+/// v11 → v12：页边距改为「阅读/编辑两套 × 四向」——把 `typography.pagePadding(Y)`
+/// 映射到 `margins.reading` 与 `margins.editing`（左/右 = pagePadding，上/下 = pagePaddingY），
+/// 并移除旧键；缺失时由 serde 默认补齐。
+fn v11_to_v12(value: &mut Value) {
+    let Some(root) = value.as_object_mut() else {
+        return;
+    };
+    let Some(typography) = root.get_mut("typography").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let pad = typography.remove("pagePadding").and_then(|raw| raw.as_u64());
+    let pad_y = typography.remove("pagePaddingY").and_then(|raw| raw.as_u64());
+    if pad.is_none() && pad_y.is_none() {
+        return;
+    }
+    let pad = pad.unwrap_or(defaults::DEFAULT_MARGIN as u64);
+    let pad_y = pad_y.unwrap_or(defaults::DEFAULT_MARGIN as u64);
+    let margin = serde_json::json!({ "top": pad_y, "right": pad, "bottom": pad_y, "left": pad });
+    root.insert(
+        "margins".into(),
+        serde_json::json!({ "reading": margin.clone(), "editing": margin }),
+    );
+}
 
 /// v1 → v2：字段补齐式迁移（无结构变换）。
 fn v1_to_v2(_value: &mut Value) {}
@@ -232,6 +257,26 @@ fn backup_path_for(path: &Path, version: u32) -> PathBuf {
 mod tests {
     use super::*;
     use crate::settings::store;
+
+    /// v11 → v12：旧页边距键映射为阅读/编辑两套四向并移除旧键。
+    #[test]
+    fn v11_migrates_padding_to_margins() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let path = dir.path().join("reader.json");
+        std::fs::write(
+            &path,
+            br#"{"schemaVersion":11,"theme":"light","typography":{"pagePadding":64,"pagePaddingY":20}}"#,
+        )
+        .expect("写入失败");
+        let _ = migrate_file(&path);
+        let raw = std::fs::read_to_string(&path).expect("读取失败");
+        let value: Value = serde_json::from_str(&raw).expect("解析失败");
+        assert_eq!(value["schemaVersion"], 12);
+        assert_eq!(value["margins"]["reading"]["left"], 64);
+        assert_eq!(value["margins"]["reading"]["top"], 20);
+        assert_eq!(value["margins"]["editing"]["right"], 64);
+        assert!(value["typography"].get("pagePadding").is_none());
+    }
 
     /// v1 → 当前版本：写回版本号、生成 `.v1.bak` 备份、内容保持可解析。
     #[test]

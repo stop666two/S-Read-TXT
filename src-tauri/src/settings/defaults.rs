@@ -19,7 +19,7 @@ use crate::settings::status::CountMode;
 /// v9：新增查找多文件开关与并发数（find.multifile*，P1-8）。
 /// v10：新增状态栏显示与交互设置节（status，P2-1）。
 /// v11：新增显示选项设置节（display，P2-2）。
-pub const SCHEMA_VERSION: u32 = 11;
+pub const SCHEMA_VERSION: u32 = 12;
 
 // ---------- settings.json ----------
 
@@ -110,14 +110,10 @@ pub const LINE_HEIGHT_RANGE: (f32, f32) = (0.5, 5.0);
 pub const DEFAULT_CONTENT_WIDTH: u32 = 720;
 /// 正文限宽允许范围（px，闭区间）
 pub const CONTENT_WIDTH_RANGE: (u32, u32) = (160, 20000);
-/// 默认阅读区左右页边距（px）
-pub const DEFAULT_PAGE_PADDING: u32 = 48;
-/// 左右页边距允许范围（px，闭区间）
-pub const PAGE_PADDING_RANGE: (u32, u32) = (0, 2000);
-/// 默认阅读区上下留白（px）
-pub const DEFAULT_PAGE_PADDING_Y: u32 = 48;
-/// 阅读区上下留白允许范围（px，闭区间）
-pub const PAGE_PADDING_Y_RANGE: (u32, u32) = (0, 2000);
+/// 默认页边距（px；阅读与编辑两套默认一致）
+pub const DEFAULT_MARGIN: u32 = 48;
+/// 页边距允许范围（px，闭区间）
+pub const MARGIN_RANGE: (u32, u32) = (0, 2000);
 /// 默认段间距（px；0 表示无额外间距）
 pub const DEFAULT_PARAGRAPH_SPACING: u32 = 0;
 /// 段间距允许范围（px，闭区间）

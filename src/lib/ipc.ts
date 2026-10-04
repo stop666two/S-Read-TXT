@@ -512,26 +512,30 @@ export interface DisplaySettings {
   scrollbarMarkers: boolean;
 }
 
+/** 四向页边距（px；与 Rust `Margin4` 对应）。 */
+export interface Margin4 {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/** 边距设置（阅读 / 编辑两套独立；与 Rust `MarginSettings` 对应）。 */
+export interface MarginSettings {
+  reading: Margin4;
+  editing: Margin4;
+}
+
 /** 排版配置（与 Rust `TypographySettings` 对应）。 */
 export interface TypographySettings {
   fontFamily: string;
   fontSize: number;
   lineHeight: number;
   contentWidth: number;
-  pagePadding: number;
-  pagePaddingY: number;
   paragraphSpacing: number;
   firstLineIndent: number;
   textAlign: 'left' | 'justify';
   smoothScroll: boolean;
-}
-
-/** 状态栏元素显隐（与 Rust `StatusBarSettings` 对应）。 */
-export interface StatusBarSettings {
-  showFileName: boolean;
-  showPercent: boolean;
-  showSize: boolean;
-  showEncoding: boolean;
 }
 
 /** 过滤视图查询（与 Rust `FilterQuery` 对应）。 */
@@ -587,7 +591,7 @@ export interface ReaderSettings {
   /** 主题切换过渡时长（ms；0 = 无过渡） */
   themeAnimMs: number;
   typography: TypographySettings;
-  statusBar: StatusBarSettings;
+  margins: MarginSettings;
   background: BackgroundSettings;
 }
 

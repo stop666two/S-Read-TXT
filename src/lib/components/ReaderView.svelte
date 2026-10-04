@@ -707,14 +707,14 @@
       {/if}
     </div>
   {/if}
-  <div class="page" class:nowrap>
+  <div class="page" class:nowrap class:editing={tab.editing}>
     {#if rulerOn}
       <!-- 标尺（P2-2 V-05）：位置相对正文列左缘（px），仅视觉参考 -->
       <div
         class="ruler"
         data-ruler
         aria-hidden="true"
-        style="left: calc(var(--reading-pad-x) + {disp?.rulerPosition ?? 0}px)"
+        style="left: calc(var(--reading-pad-left) + {disp?.rulerPosition ?? 0}px)"
       ></div>
     {/if}
     {#if filterActive && filterRows?.length === 0}
@@ -760,6 +760,11 @@
 </div>
 
 <style>
+  /* 编辑模式：改用编辑专用边距（四向独立，设置中分开展示） */
+  .page.editing {
+    padding: var(--edit-pad-top) var(--edit-pad-right) var(--edit-pad-bottom) var(--edit-pad-left);
+  }
+
   .reader {
     flex: 1;
     overflow-y: auto;
@@ -775,7 +780,8 @@
     z-index: 0;
     max-width: var(--reading-width);
     margin: 0 auto;
-    padding: var(--reading-pad-y) var(--reading-pad-x);
+    padding: var(--reading-pad-top) var(--reading-pad-right) var(--reading-pad-bottom)
+      var(--reading-pad-left);
     font-family: var(--font-reading);
     font-size: var(--reading-size);
     line-height: var(--reading-line-height);

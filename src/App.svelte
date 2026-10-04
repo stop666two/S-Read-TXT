@@ -136,10 +136,15 @@
   /** 生效快捷键绑定（后端为唯一真源；启动加载，设置变更后刷新） */
   let shortcuts = $state<ShortcutMap>({});
 
-  /** 重新载入全部配置快照（启动 / 设置窗口变更事件 / 窗口聚焦兜底） */
+  /** 重新载入全部配置快照（启动 / 设置窗口变更事件 / 窗口聚焦兜底）。
+   *  序号守卫：并发「设置变更广播」的响应可能乱序，仅采纳最后一次
+   *  （S4 实测缺陷：连续拖两个滑块会回跳）。 */
+  let settingsLoadSeq = 0;
   async function reloadSettings(): Promise<void> {
+    const seq = ++settingsLoadSeq;
     try {
       const snapshot = await ipc.getSettings();
+      if (seq !== settingsLoadSeq) return;
       appSettings = snapshot.app;
       readerSettings = snapshot.reader;
         shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
@@ -166,6 +171,7 @@
         shortcuts: shortcuts as Record<string, string>,
       });
       if (seq !== readerSaveSeq) return;
+      settingsLoadSeq += 1;
       appSettings = snapshot.app;
       readerSettings = snapshot.reader;
         shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
@@ -943,9 +949,20 @@
     root.style.setProperty('--reading-size', `${typo.fontSize}px`);
     root.style.setProperty('--reading-line-height', `${typo.lineHeight}`);
     root.style.setProperty('--reading-width', `${typo.contentWidth}px`);
-    root.style.setProperty('--reading-pad-x', `${typo.pagePadding}px`);
-    root.style.setProperty('--reading-pad-y', `${typo.pagePaddingY}px`);
     root.style.setProperty('--reading-para-spacing', `${typo.paragraphSpacing}px`);
+    const margins = readerSettings?.margins;
+    if (margins) {
+      const reading = margins.reading;
+      const editing = margins.editing;
+      root.style.setProperty('--reading-pad-top', `${reading.top}px`);
+      root.style.setProperty('--reading-pad-right', `${reading.right}px`);
+      root.style.setProperty('--reading-pad-bottom', `${reading.bottom}px`);
+      root.style.setProperty('--reading-pad-left', `${reading.left}px`);
+      root.style.setProperty('--edit-pad-top', `${editing.top}px`);
+      root.style.setProperty('--edit-pad-right', `${editing.right}px`);
+      root.style.setProperty('--edit-pad-bottom', `${editing.bottom}px`);
+      root.style.setProperty('--edit-pad-left', `${editing.left}px`);
+    }
     root.style.setProperty('--reading-indent', `${typo.firstLineIndent * typo.fontSize}px`);
     root.style.setProperty('--reading-align', typo.textAlign === 'justify' ? 'justify' : 'left');
   });

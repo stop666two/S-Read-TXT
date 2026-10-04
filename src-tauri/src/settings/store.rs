@@ -384,13 +384,16 @@ fn normalize_reader(settings: &mut ReaderSettings) {
         .typography
         .content_width
         .clamp(min_width, max_width);
-    let (min_pad, max_pad) = defaults::PAGE_PADDING_RANGE;
-    settings.typography.page_padding = settings.typography.page_padding.clamp(min_pad, max_pad);
-    let (min_pad_y, max_pad_y) = defaults::PAGE_PADDING_Y_RANGE;
-    settings.typography.page_padding_y = settings
-        .typography
-        .page_padding_y
-        .clamp(min_pad_y, max_pad_y);
+    let (min_margin, max_margin) = defaults::MARGIN_RANGE;
+    for margin in [
+        &mut settings.margins.reading,
+        &mut settings.margins.editing,
+    ] {
+        margin.top = margin.top.clamp(min_margin, max_margin);
+        margin.right = margin.right.clamp(min_margin, max_margin);
+        margin.bottom = margin.bottom.clamp(min_margin, max_margin);
+        margin.left = margin.left.clamp(min_margin, max_margin);
+    }
     let (min_para, max_para) = defaults::PARAGRAPH_SPACING_RANGE;
     settings.typography.paragraph_spacing = settings
         .typography
@@ -594,7 +597,7 @@ mod tests {
         let dir = data_dir();
         std::fs::write(
             reader_settings_path(dir.path()),
-            br#"{"theme":"neon","themeAnimMs":99999,"typography":{"fontFamily":"   ","fontSize":1000,"lineHeight":0.1,"contentWidth":10,"pagePadding":99999,"pagePaddingY":99999,"paragraphSpacing":99999,"firstLineIndent":999,"textAlign":"diagonal"},"statusBar":{"showSize":true,"showEncoding":false}}"#,
+            br#"{"theme":"neon","themeAnimMs":99999,"typography":{"fontFamily":"   ","fontSize":1000,"lineHeight":0.1,"contentWidth":10,"paragraphSpacing":99999,"firstLineIndent":999,"textAlign":"diagonal"},"margins":{"reading":{"top":0,"right":99999,"bottom":99999,"left":99999},"editing":{"top":1,"right":2,"bottom":3,"left":4}}}"#,
         )
         .expect("写配置失败");
         let loaded = load_reader_settings(dir.path());
@@ -604,8 +607,12 @@ mod tests {
         assert_eq!(loaded.typography.font_size, 512);
         assert!((loaded.typography.line_height - 0.5).abs() < f32::EPSILON);
         assert_eq!(loaded.typography.content_width, 160);
-        assert_eq!(loaded.typography.page_padding, 2000);
-        assert_eq!(loaded.typography.page_padding_y, 2000);
+        assert_eq!(loaded.margins.reading.top, 0);
+        assert_eq!(loaded.margins.reading.right, 2000);
+        assert_eq!(loaded.margins.reading.bottom, 2000);
+        assert_eq!(loaded.margins.reading.left, 2000);
+        assert_eq!(loaded.margins.editing.top, 1);
+        assert_eq!(loaded.margins.editing.left, 4);
         assert_eq!(loaded.typography.paragraph_spacing, 2000);
         assert_eq!(loaded.typography.first_line_indent, 200);
         assert_eq!(
@@ -614,7 +621,6 @@ mod tests {
         );
     }
 
-    /// 旧版 reader.json（无 pagePaddingY 字段）加载 → 取默认 48（向后兼容）。
     /// 剪贴板历史设置归一：上限钳制（0 = 禁用保留），持久化开关原样。
     #[test]
     fn editor_clipboard_normalizes_on_load() {
@@ -703,20 +709,21 @@ mod tests {
         assert!(loaded.editor.multi_cursor.enabled);
     }
 
+    /// 缺省 margins 时回退默认四向（向后兼容旧文件）。
     #[test]
-    fn reader_settings_missing_padding_y_defaults() {
+    fn reader_settings_missing_margins_defaults() {
         let dir = data_dir();
         std::fs::write(
             reader_settings_path(dir.path()),
-            br#"{"theme":"light","typography":{"fontFamily":"Arial","fontSize":16,"lineHeight":1.8,"contentWidth":720,"pagePadding":48}}"#,
+            br#"{"theme":"light","typography":{"fontFamily":"Arial","fontSize":16,"lineHeight":1.8,"contentWidth":720}}"#,
         )
         .expect("写配置失败");
         let loaded = load_reader_settings(dir.path());
         assert_eq!(loaded.typography.font_size, 16);
-        assert_eq!(
-            loaded.typography.page_padding_y,
-            defaults::DEFAULT_PAGE_PADDING_Y
-        );
+        assert_eq!(loaded.margins.reading.top, defaults::DEFAULT_MARGIN);
+        assert_eq!(loaded.margins.reading.left, defaults::DEFAULT_MARGIN);
+        assert_eq!(loaded.margins.editing.bottom, defaults::DEFAULT_MARGIN);
+        assert_eq!(loaded.margins.editing.right, defaults::DEFAULT_MARGIN);
         assert_eq!(
             loaded.typography.paragraph_spacing,
             defaults::DEFAULT_PARAGRAPH_SPACING

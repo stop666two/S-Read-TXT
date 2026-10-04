@@ -15,7 +15,7 @@ function snapshot(): SettingsSnapshot {
     },
     reader: {
       typography: { fontSize: 16, lineHeight: 1.8 },
-      statusBar: { showFileName: true },
+      margins: { reading: { top: 48 } },
     },
   } as unknown as SettingsSnapshot;
 }
@@ -59,7 +59,7 @@ describe('buildPatch', () => {
     const nested = buildPatch(reader, 'reader.typography.fontSize', 22);
     expect(nested.typography.fontSize).toBe(22);
     expect(nested.typography.lineHeight).toBe(1.8);
-    const top = buildPatch(reader, 'reader.statusBar', { showFileName: false });
-    expect(top.statusBar.showFileName).toBe(false);
+    const top = buildPatch(reader, 'reader.margins.reading.top', 12);
+    expect(top.margins.reading.top).toBe(12);
   });
 });
