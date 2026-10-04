@@ -16,7 +16,7 @@
     type FilterQuery,
     type TabInfo,
   } from '../ipc';
-  import { buildVisibleRows, hiddenIntervals } from '../reader/folds';
+  import { breadcrumbChain, buildVisibleRows, hiddenIntervals } from '../reader/folds';
   import { HeightModel } from '../reader/heights';
   import { RowCache } from '../reader/row-cache';
   import { scrollMemory } from '../reader/scroll-memory';
@@ -57,6 +57,8 @@
   readingSettings?: ReadingSettings | null;
   /** 用户主动滚动回调（用于停止自动滚动） */
   onUserScroll?: () => void;
+  /** 面包屑跳转（点击路径段） */
+  onBreadcrumbJump?: (row: number) => void;
   /** 折叠指令（P2-6b：菜单折叠全部/展开全部；seq 去重） */
   foldCommand?: { kind: 'all' | 'none'; seq: number } | null;
   /** 时间戳插入设置（透传编辑层；未就绪为 null） */
@@ -79,7 +81,7 @@
     editCaretRow?: number | null;
   }
   let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, readingSettings,
-    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll, foldCommand = null }: Props = $props();
+    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll, onBreadcrumbJump, foldCommand = null }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -545,12 +547,14 @@
     if (viewRows === null) {
       if (topDisplayRow !== lastTopRow) {
         lastTopRow = topDisplayRow;
+        bcTopRow = topDisplayRow;
         onTopRow?.(topDisplayRow + 1);
       }
     } else {
       const fileRow = viewRows![Math.min(topDisplayRow, viewRows!.length - 1)] ?? 0;
       if (fileRow !== lastTopRow) {
         lastTopRow = fileRow;
+        bcTopRow = fileRow;
         onTopRow?.(fileRow + 1);
       }
     }
@@ -750,7 +754,11 @@
         : contentTop;
       setContentScrollTop(target);
       if (Math.abs(container.scrollTop - (target + pagePadTop)) <= 2 || attempts >= 120) {
-        requestAnimationFrame(() => refreshWindow());
+        requestAnimationFrame(() => {
+          refreshWindow();
+          // 程序化定位同样需要上报顶部行（handleScroll 在 programmatic 期间被忽略）
+          reportTopRow();
+        });
         return;
       }
       attempts += 1;
@@ -971,15 +979,44 @@
       turnSpread(signal.kind === 'down' ? 1 : -1);
     }
   });
+  // ---------- 面包屑（P2-6c V-10：顶行所在章节路径；仅阅读滚动模式） ----------
+  let outlineData = $state<{ row: number; level: number; title: string }[]>([]);
+  const bcActive = $derived.by(
+    () => (disp?.breadcrumb ?? true) && !tab.editing && !spreadMode && outlineData.length > 0,
+  );
+  /** 顶部文件行（0 基，随滚动更新；面包屑依据） */
+  let bcTopRow = $state(0);
+  const bcChain = $derived(breadcrumbChain(outlineData, bcTopRow));
+  let outlineSeq = 0;
+  $effect(() => {
+    const enabled = disp?.breadcrumb ?? true;
+    void tab.tabId;
+    void version;
+    if (!enabled || tab.editing) {
+      outlineData = [];
+      return;
+    }
+    const seq = ++outlineSeq;
+    void ipc
+      .outlineItems(tab.tabId)
+      .then((items) => {
+        if (seq === outlineSeq) outlineData = items;
+      })
+      .catch(() => {
+        if (seq === outlineSeq) outlineData = [];
+      });
+  });
+
 </script>
 
 {#snippet rowMarkup(item: { row: number; text: string }, absolute: boolean, top: number)}
   {@const marked = markRow(item.text)}
   {@const ann = rowAnn(item.row)}
-  <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow} style={absolute ? `top: ${top}px` : undefined}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}{#if foldsActive && foldStarts.has(item.row)}<button class="fold-mark" class:folded={foldedRows.has(item.row)} data-fold-mark={item.row} aria-label={t('fold.toggle')} onpointerdown={(event) => event.stopPropagation()} onclick={(event) => { event.stopPropagation(); toggleFold(item.row); }}>{foldedRows.has(item.row) ? '▸' : '▾'}</button>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.hl}<span class="hl" style={seg.color ? `--hl-color: ${seg.color}` : undefined}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
+  <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow} style={absolute ? `top: ${top}px` : undefined}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}{#if foldsActive && foldStarts.has(item.row)}<button class="fold-mark" class:folded={foldedRows.has(item.row)} data-fold-mark={item.row} aria-label={t('fold.toggle')} onpointerdown={(event) => event.stopPropagation()} onclick={(event) => { event.stopPropagation(); toggleFold(item.row); }}></button>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.hl}<span class="hl" style={seg.color ? `--hl-color: ${seg.color}` : undefined}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
 {/snippet}
 
 <svelte:window onkeydown={markUserInput} />
+<!-- svelte-ignore a11y_no_static_element_interactions -- 滚动容器仅用于「区分用户滚动」的输入标记，不引入交互语义 -->
 <div class="reader" class:spread={spreadMode} bind:this={container} onscroll={handleScroll} onwheel={handleSpreadWheel} onpointerdown={markUserInput} ontouchstart={markUserInput}>
   {#if !tab.editing && tab.rowsTotal > 0}
     <div class="filter-host">
@@ -1063,6 +1100,13 @@
     </div>
   {:else}
   <div class="page" class:nowrap class:editing={tab.editing}>
+    {#if bcActive && bcChain.length > 0}
+      <nav class="breadcrumb" data-breadcrumb aria-label={t('outline.title')}>
+        {#each bcChain as item (item.row)}
+          <button class="crumb" data-breadcrumb-seg={item.row} onclick={() => onBreadcrumbJump?.(item.row)}>{item.title}</button><span class="crumb-sep" aria-hidden="true">›</span>
+        {/each}
+      </nav>
+    {/if}
     {#if rulerOn}
       <!-- 标尺（P2-2 V-05）：位置相对正文列左缘（px），仅视觉参考 -->
       <div
@@ -1081,7 +1125,7 @@
       {#each renderedRows as item (item.row)}
         {@const marked = markRow(item.text)}
         {@const ann = rowAnn(item.row)}
-        <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.hl}<span class="hl" style={seg.color ? `--hl-color: ${seg.color}` : undefined}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
+        <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}{#if foldsActive && foldStarts.has(item.row)}<button class="fold-mark" class:folded={foldedRows.has(item.row)} data-fold-mark={item.row} aria-label={t('fold.toggle')} onpointerdown={(event) => event.stopPropagation()} onclick={(event) => { event.stopPropagation(); toggleFold(item.row); }}></button>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.hl}<span class="hl" style={seg.color ? `--hl-color: ${seg.color}` : undefined}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
       {/each}
       <div class="spacer" style="height: {spacerBottom}px"></div>
     {/if}
@@ -1218,6 +1262,7 @@
   /* 文本容器：仅结构标记（不可加 position/z-index——会盖住 edit-surface
      导致鼠标定位与修饰键点击失效） */
   .fold-mark {
+    /* 三角由伪元素绘制：按钮内不放文本节点（编辑层 textAt 遍历文本节点定位字符） */
     flex: none;
     position: relative;
     z-index: 7;
@@ -1231,9 +1276,45 @@
     line-height: inherit;
     cursor: pointer;
   }
-  .fold-mark:hover {
-    color: var(--accent);
+  .fold-mark::before {
+    content: '▾';
   }
+  .fold-mark.folded::before {
+    content: '▸';
+  }
+  .fold-mark:hover {
+  color: var(--accent);
+}
+.breadcrumb {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
+  margin-bottom: 6px;
+  background: var(--base);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+.crumb {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.crumb:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.crumb-sep:last-child {
+  display: none;
+}
   .txt {
     display: inline;
   }

@@ -73,3 +73,25 @@ export function buildVisibleRows(total: number, intervals: readonly HiddenInterv
   for (let row = cursor; row < total; row += 1) rows.push(row);
   return rows;
 }
+
+/**
+ * 面包屑（P2-6c V-10）：给定大纲条目与当前顶部行，返回层级路径。
+ *
+ * 语义：按行序扫描，维护层级栈——遇到条目先按 `level` 弹栈再压入；
+ * 返回“最后一行不超过 `row` 的条目”所在的完整祖先链（含自身）。
+ * 无任何条目命中时返回空数组。
+ */
+export function breadcrumbChain<T extends { row: number; level: number }>(
+  items: readonly T[],
+  row: number,
+): T[] {
+  const chain: T[] = [];
+  for (const item of items) {
+    if (item.row > row) break;
+    while (chain.length > 0 && chain[chain.length - 1].level >= item.level) {
+      chain.pop();
+    }
+    chain.push(item);
+  }
+  return chain;
+}

@@ -53,6 +53,8 @@
   foldingEnabled?: boolean;
   onFoldAll?: () => void;
   onFoldNone?: () => void;
+  outlineEnabled?: boolean;
+  onToggleOutline?: () => void;
   /** 切换打字机模式 */
   onToggleTypewriter?: () => void;
   /** 番茄钟进行中（影响菜单项文案） */
@@ -107,6 +109,8 @@
     foldingEnabled,
     onFoldAll,
     onFoldNone,
+  outlineEnabled,
+  onToggleOutline,
   pomodoroOn,
   onTogglePomodoro,
     onFontIncrease,
@@ -421,6 +425,7 @@
       <button class="item" onclick={() => run(() => onToggleTypewriter?.())}><span>{t('menu.view.typewriter')}</span><span class="hint">{typewriter ? '✓' : ''}</span></button>
 <button class="item" disabled={!foldingEnabled} onclick={() => run(() => onFoldAll?.())}><span>{t('menu.view.foldAll')}</span></button>
 <button class="item" disabled={!foldingEnabled} onclick={() => run(() => onFoldNone?.())}><span>{t('menu.view.foldNone')}</span></button>
+<button class="item" disabled={!outlineEnabled} onclick={() => run(() => onToggleOutline?.())}><span>{t('menu.view.outline')}</span></button>
         <button class="item" onclick={() => run(onTogglePomodoro)}
           ><span>{pomodoroOn ? t('menu.view.pomodoroStop') : t('menu.view.pomodoroStart')}</span><span
             class="hint">{pomodoroOn ? '✓' : ''}</span

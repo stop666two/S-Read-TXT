@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildVisibleRows, hiddenIntervals, isHidden, type FoldRegion } from './folds';
+import { breadcrumbChain, buildVisibleRows, hiddenIntervals, isHidden, type FoldRegion } from './folds';
 
 const regions: FoldRegion[] = [
   { startRow: 2, endRow: 5 },
@@ -57,5 +57,22 @@ describe('buildVisibleRows', () => {
 
   it('区间越界收缩到总行数', () => {
     expect(buildVisibleRows(3, [{ from: 1, to: 99 }])).toEqual([0]);
+  });
+
+  it('面包屑：返回命中行的祖先链', () => {
+    const items = [
+      { row: 0, level: 0, title: 'A' },
+      { row: 4, level: 1, title: 'A.1' },
+      { row: 9, level: 0, title: 'B' },
+    ];
+    expect(breadcrumbChain(items, 0).map((item) => item.title)).toEqual(['A']);
+    expect(breadcrumbChain(items, 5).map((item) => item.title)).toEqual(['A', 'A.1']);
+    expect(breadcrumbChain(items, 9).map((item) => item.title)).toEqual(['B']);
+    expect(breadcrumbChain(items, 100).map((item) => item.title)).toEqual(['B']);
+  });
+
+  it('面包屑：行在首条目之前返回空链', () => {
+    const items = [{ row: 3, level: 0, title: 'A' }];
+    expect(breadcrumbChain(items, 0)).toEqual([]);
   });
 });

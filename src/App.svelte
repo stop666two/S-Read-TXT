@@ -16,6 +16,7 @@
   import EmptyState from './lib/components/EmptyState.svelte';
   import HistoryPanel from './lib/components/HistoryPanel.svelte';
   import AnnotationsPanel from './lib/components/AnnotationsPanel.svelte';
+import OutlinePanel from './lib/components/OutlinePanel.svelte';
   import { annotations } from './lib/state/annotations.svelte';
   import MenuBar from './lib/components/MenuBar.svelte';
   import Onboarding from './lib/components/Onboarding.svelte';
@@ -74,6 +75,7 @@
   /** 历史面板开关（工具栏 / 菜单 / 快捷键共用） */
   let historyOpen = $state(false);
   let annotationsOpen = $state(false);
+let outlineOpen = $state(false);
   let annotClearOpen = $state(false);
 
   /** 标注：切换书签（编辑态经编辑层；阅读态放在当前顶部行）。 */
@@ -1425,6 +1427,8 @@ onMount(() => {
     typewriter={readerSettings?.reading.typewriter ?? false}
     onToggleTypewriter={toggleTypewriter}
           foldingEnabled={foldingEnabled}
+  outlineEnabled={appSettings?.display.outline ?? true}
+  onToggleOutline={() => (outlineOpen = !outlineOpen)}
           onFoldAll={foldAll}
           onFoldNone={foldNone}
     pomodoroOn={pomodoroOn}
@@ -1496,6 +1500,9 @@ onMount(() => {
         readingSettings={readerSettings?.reading ?? null}
         pageTurn={pageTurnSignal}
         onUserScroll={handleUserScroll}
+            onBreadcrumbJump={(row) => {
+              if (active) jumpStore.request(active.tabId, row, 0, 0);
+            }}
               foldCommand={foldCommand}
         layoutKey={typographyKey}
       />
@@ -1550,6 +1557,15 @@ onMount(() => {
     onJump={(row) => {
       if (active) jumpStore.request(active.tabId, row, 0, 0);
     }}
+  />
+  <OutlinePanel
+    tabId={active?.tabId ?? null}
+    open={outlineOpen}
+    refreshKey={active ? `${active.tabId}:${active.rowsTotal}` : ''}
+    onJump={(row) => {
+      if (active) jumpStore.request(active.tabId, row, 0, 0);
+    }}
+    onClose={() => (outlineOpen = false)}
   />
   <ConfirmDialog
     open={annotClearOpen}
