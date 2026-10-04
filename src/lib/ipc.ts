@@ -476,6 +476,28 @@ export interface MatchCount {
   truncated: boolean;
 }
 
+export interface FileSettings {
+  newEncoding: string;
+  newEol: NewEol;
+  autosaveIntervalSec: number;
+  autosaveWriteBack: boolean;
+  snapshotKeep: number;
+  snapshotMaxMB: number;
+  versionHistory: boolean;
+  associations: string[];
+  recentLimit: number;
+}
+
+/** 新建文件换行风格（与 Rust `NewEol` 对应）。 */
+export type NewEol = 'lf' | 'crlf' | 'cr';
+
+/** 快照条目（P3-1 版本历史）。 */
+export interface SnapshotInfo {
+  name: string;
+  createdMillis: number;
+  bytes: number;
+}
+
 export interface AppSettings {
   schemaVersion: number;
   logLevel: string;
@@ -488,6 +510,7 @@ export interface AppSettings {
   locale: 'zh-CN' | 'en';
   /** 编辑器设置（P1-2 起） */
   editor: EditorSettings;
+  file: FileSettings;
   /** 查找设置（P1-6 起） */
   find: FindSettings;
   /** 状态栏显示设置（P2-1 起） */
@@ -1113,6 +1136,14 @@ export const ipc = {
   outlineItems: (tabId: number) => invoke<OutlineItem[]>('outline_items', { tabId }),
   /** 折叠区间（P2-6b V-08；按当前折叠设置计算）。 */
   foldRegions: (tabId: number) => invoke<FoldRegion[]>('fold_regions', { tabId }),
+  listSnapshots: (tabId: number) => invoke<SnapshotInfo[]>('list_snapshots', { tabId }),
+  createSnapshot: (tabId: number) => invoke<SnapshotInfo | null>('create_snapshot', { tabId }),
+  restoreSnapshot: (tabId: number, name: string) =>
+    invoke<EditApplied>('restore_snapshot', { tabId, name }),
+  deleteSnapshot: (tabId: number, name: string) =>
+    invoke<boolean>('delete_snapshot', { tabId, name }),
+  markCleanExit: () => invoke<void>('mark_clean_exit'),
+  takeCrashFlag: () => invoke<boolean>('take_crash_flag'),
   /** 剪贴板历史（读取最新列表）。 */
   listClipboardHistory: () => invoke<ClipboardEntry[]>('list_clipboard_history'),
   /** 记录一次复制到历史（空文本/禁用时后端 no-op；返回最新列表）。 */

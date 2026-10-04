@@ -55,6 +55,11 @@
   onFoldNone?: () => void;
   outlineEnabled?: boolean;
   onToggleOutline?: () => void;
+  /** 版本历史（P3-1） */
+  versionHistoryEnabled?: boolean;
+  snapshotEditing?: boolean;
+  onSnapshotNow?: () => void;
+  onSnapshotHistory?: () => void;
   /** 切换打字机模式 */
   onToggleTypewriter?: () => void;
   /** 番茄钟进行中（影响菜单项文案） */
@@ -111,6 +116,10 @@
     onFoldNone,
   outlineEnabled,
   onToggleOutline,
+  versionHistoryEnabled,
+  snapshotEditing,
+  onSnapshotNow,
+  onSnapshotHistory,
   pomodoroOn,
   onTogglePomodoro,
     onFontIncrease,
@@ -185,6 +194,8 @@
     <div class="dropdown" role="menu" style="left: 4px">
       <button class="item" onclick={() => run(onOpenFile)}><span>{t('menu.file.open')}</span><span class="hint">Ctrl+O</span></button>
       <button class="item" disabled={!hasTab} onclick={() => run(onReload)}><span>{t('menu.file.reload')}</span></button>
+<button class="item" disabled={!versionHistoryEnabled || !snapshotEditing} onclick={() => run(onSnapshotNow)}><span>{t('menu.file.snapshotNow')}</span></button>
+<button class="item" disabled={!versionHistoryEnabled || !hasTab} onclick={() => run(onSnapshotHistory)}><span>{t('menu.file.versionHistory')}</span></button>
       <div class="separator"></div>
       <div
         class="submenu-wrap"

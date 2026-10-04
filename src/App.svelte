@@ -17,6 +17,7 @@
   import HistoryPanel from './lib/components/HistoryPanel.svelte';
   import AnnotationsPanel from './lib/components/AnnotationsPanel.svelte';
 import OutlinePanel from './lib/components/OutlinePanel.svelte';
+import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import { annotations } from './lib/state/annotations.svelte';
   import MenuBar from './lib/components/MenuBar.svelte';
   import Onboarding from './lib/components/Onboarding.svelte';
@@ -121,7 +122,7 @@ let outlineOpen = $state(false);
   }
 
   /** 最近打开（菜单子项；最多 10 条，来自共享历史 store） */
-  const recentEntries = $derived(historyStore.entries.slice(0, 10));
+  const recentEntries = $derived(historyStore.entries.slice(0, Math.max(0, appSettings?.file.recentLimit ?? 20)));
 
   /** 编辑动作信号（菜单 → 编辑层；seq 递增区分重复动作） */
   let editorAction = $state<EditorAction | null>(null);
@@ -608,7 +609,8 @@ let outlineOpen = $state(false);
       return;
     }
     historyStore.flushAll(tabs.tabs);
-    await saveSessionNow();
+    await ipc.markCleanExit().catch(() => {});
+        await saveSessionNow();
     allowClose = true;
     await getCurrentWindow().close();
   }
@@ -915,6 +917,7 @@ let outlineOpen = $state(false);
       focusEditorProxy();
     } else {
       historyStore.flushAll(tabs.tabs);
+      await ipc.markCleanExit().catch(() => {});
       await saveSessionNow();
       allowClose = true;
       await getCurrentWindow().close();
@@ -1286,6 +1289,7 @@ onMount(() => {
         }
         void (async () => {
           historyStore.flushAll(tabs.tabs);
+          await ipc.markCleanExit().catch(() => {});
           await saveSessionNow();
           allowClose = true;
           await getCurrentWindow().close();
@@ -1396,6 +1400,70 @@ onMount(() => {
       window.removeEventListener('keydown', onGlobalKeydown, true);
     };
   });
+  // ---------- P3-1 快照与自动保存 ----------
+
+  /** 自动保存（快照式）：编辑中且脏的标签按设置间隔生成快照（后端去重）。 */
+  let autosaveTimer: ReturnType<typeof setInterval> | null = null;
+  $effect(() => {
+    const intervalSec = appSettings?.file.autosaveIntervalSec ?? 30;
+    const enabled = (appSettings?.file.versionHistory ?? true) && intervalSec >= 5;
+    if (autosaveTimer !== null) {
+      clearInterval(autosaveTimer);
+      autosaveTimer = null;
+    }
+    if (!enabled) return;
+    autosaveTimer = setInterval(() => {
+      for (const tab of tabs.tabs) {
+        if (tab.editing && tab.dirty) void ipc.createSnapshot(tab.tabId).catch(() => {});
+      }
+    }, intervalSec * 1000);
+    return () => {
+      if (autosaveTimer !== null) {
+        clearInterval(autosaveTimer);
+        autosaveTimer = null;
+      }
+    };
+  });
+
+  /** 上次异常退出提示（P3-1）：首次拿到设置后检查一次。 */
+  let crashChecked = false;
+  $effect(() => {
+    if (crashChecked || !appSettings) return;
+    crashChecked = true;
+    void ipc
+      .takeCrashFlag()
+      .then((crashed) => {
+        if (crashed && appSettings?.file.versionHistory) toasts.show('snapshot.crashToast');
+      })
+      .catch(() => {});
+  });
+
+  let snapshotsOpen = $state(false);
+  let snapshotsRefresh = $state(0);
+  let snapshotRestoreRequest = $state<{ name: string; seq: number } | null>(null);
+  let snapshotSeq = 0;
+
+  /** 立即生成快照（仅编辑态）。 */
+  async function snapshotNow(): Promise<void> {
+    const current = active;
+    if (!current || !current.editing) return;
+    try {
+      const created = await ipc.createSnapshot(current.tabId);
+      toasts.show(created ? 'snapshot.created' : 'snapshot.unchanged');
+      snapshotsRefresh += 1;
+    } catch (error) {
+      toasts.error(toIpcError(error).message);
+    }
+  }
+
+  /** 请求从快照恢复（转发给 EditLayer 执行，结果走单撤销步）。 */
+  function requestSnapshotRestore(name: string): void {
+    if (!active || !active.editing) {
+      toasts.error(t('snapshot.needEdit'));
+      return;
+    }
+    snapshotRestoreRequest = { name, seq: ++snapshotSeq };
+  }
 </script>
 
 <div class="shell" class:focus-reading={focusReading}>
@@ -1429,6 +1497,10 @@ onMount(() => {
           foldingEnabled={foldingEnabled}
   outlineEnabled={appSettings?.display.outline ?? true}
   onToggleOutline={() => (outlineOpen = !outlineOpen)}
+  versionHistoryEnabled={appSettings?.file.versionHistory ?? true}
+  snapshotEditing={active?.editing ?? false}
+  onSnapshotNow={() => void snapshotNow()}
+  onSnapshotHistory={() => (snapshotsOpen = true)}
           onFoldAll={foldAll}
           onFoldNone={foldNone}
     pomodoroOn={pomodoroOn}
@@ -1503,6 +1575,7 @@ onMount(() => {
             onBreadcrumbJump={(row) => {
               if (active) jumpStore.request(active.tabId, row, 0, 0);
             }}
+        snapshotRestore={snapshotRestoreRequest}
               foldCommand={foldCommand}
         layoutKey={typographyKey}
       />
@@ -1566,6 +1639,14 @@ onMount(() => {
       if (active) jumpStore.request(active.tabId, row, 0, 0);
     }}
     onClose={() => (outlineOpen = false)}
+  />
+  <SnapshotsPanel
+    tabId={active?.tabId ?? null}
+    open={snapshotsOpen}
+    refreshKey={snapshotsRefresh}
+    canRestore={active?.editing ?? false}
+    onRestore={requestSnapshotRestore}
+    onClose={() => (snapshotsOpen = false)}
   />
   <ConfirmDialog
     open={annotClearOpen}

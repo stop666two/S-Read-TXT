@@ -149,7 +149,7 @@ import DiskSection from './DiskSection.svelte';
         />
       </div>
       {#if tab === 'general'}
-        <RegistryPage groups={['app.basic', 'app.startup']} {query} />
+        <RegistryPage groups={['app.basic', 'app.startup', 'app.file']} {query} />
         {#if !searchActive}
     <BackupSection />
     <DiskSection />

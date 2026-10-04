@@ -59,6 +59,8 @@
   onUserScroll?: () => void;
   /** 面包屑跳转（点击路径段） */
   onBreadcrumbJump?: (row: number) => void;
+  /** 快照恢复请求（P3-1；seq 去重，由父组件触发） */
+  snapshotRestore?: { name: string; seq: number } | null;
   /** 折叠指令（P2-6b：菜单折叠全部/展开全部；seq 去重） */
   foldCommand?: { kind: 'all' | 'none'; seq: number } | null;
   /** 时间戳插入设置（透传编辑层；未就绪为 null） */
@@ -81,7 +83,7 @@
     editCaretRow?: number | null;
   }
   let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, readingSettings,
-    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll, onBreadcrumbJump, foldCommand = null }: Props = $props();
+    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll, onBreadcrumbJump, snapshotRestore, foldCommand = null }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -1149,6 +1151,7 @@
         lineDefaults={lineDefaults ?? null}
         multiCursor={multiCursor ?? null}
         findSettings={findSettings ?? null}
+        snapshotRestore={snapshotRestore ?? null}
         insertSettings={insertSettings ?? null}
         autoPairs={autoPairs ?? null}
         cleanupSettings={cleanupSettings ?? null}

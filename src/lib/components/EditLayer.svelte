@@ -71,6 +71,8 @@ import { annotations } from '../state/annotations.svelte';
     rowsTotal: number;
     /** 渲染版本号（文本到达/测量变化时驱动叠加层重算） */
     revision: number;
+    /** 快照恢复请求（P3-1；seq 去重，由父组件触发） */
+    snapshotRestore?: { name: string; seq: number } | null;
     /** 已渲染行节点查询 */
     rowNode: (row: number) => HTMLElement | undefined;
     /** 行文本查询（可能未加载） */
@@ -111,6 +113,7 @@ import { annotations } from '../state/annotations.svelte';
     rowMeta,
     ensureRow,
     getContainer,
+    snapshotRestore,
     onApplied,
     editorAction,
     lineDefaults,
@@ -678,6 +681,21 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
   function logicalSelection(sel: Selection): Selection {
     return { anchor: logicalOf(sel.anchor), head: logicalOf(sel.head) };
   }
+
+  /** 快照恢复（P3-1）：由父组件触发（seq 去重），结果走单撤销步。 */
+  let restoreHandledSeq = 0;
+  $effect(() => {
+    const request = snapshotRestore;
+    if (!request || request.seq === restoreHandledSeq) return;
+    restoreHandledSeq = request.seq;
+    void ipc
+      .restoreSnapshot(tabId, request.name)
+      .then(async (result) => {
+        await applyResult(async () => result);
+        toasts.show('snapshot.restoreDone');
+      })
+      .catch((error) => toasts.error(describeIpcError(error)));
+  });
 
   /** 下发操作并在完成后落定光标（后端权威落点）、刷新。 */
   async function applyResult(apply: () => Promise<EditApplied>): Promise<void> {
