@@ -526,6 +526,20 @@ export interface MarginSettings {
   editing: Margin4;
 }
 
+/** 阅读模式设置（与 Rust `ReadingSettings` 对应；P2-4）。 */
+export interface ReadingSettings {
+  columns: number;
+  autoScrollSpeed: number;
+  focusMode: boolean;
+  typewriter: boolean;
+  eyeCareIntervalMin: number;
+  pomodoroMin: number;
+  readingStats: boolean;
+  progressMemory: boolean;
+  pageMode: 'scroll' | 'paged' | 'double';
+  pageAnimMs: number;
+}
+
 /** 排版配置（与 Rust `TypographySettings` 对应）。 */
 export interface TypographySettings {
   fontFamily: string;

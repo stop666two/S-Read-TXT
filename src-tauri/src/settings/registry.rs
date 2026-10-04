@@ -355,6 +355,78 @@ pub const SPECS: &[SettingSpec] = &[
         },
     },
     SettingSpec {
+        id: "reader.reading.columns",
+        group: "reader.reading",
+        kind: SettingKind::Number {
+            min: defaults::READING_COLUMNS_RANGE.0 as f64,
+            max: defaults::READING_COLUMNS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.reading.autoScrollSpeed",
+        group: "reader.reading",
+        kind: SettingKind::Number {
+            min: defaults::AUTO_SCROLL_SPEED_RANGE.0 as f64,
+            max: defaults::AUTO_SCROLL_SPEED_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.reading.focusMode",
+        group: "reader.reading",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "reader.reading.typewriter",
+        group: "reader.reading",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "reader.reading.eyeCareIntervalMin",
+        group: "reader.reading",
+        kind: SettingKind::Number {
+            min: 0.0,
+            max: defaults::EYE_CARE_INTERVAL_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.reading.pomodoroMin",
+        group: "reader.reading",
+        kind: SettingKind::Number {
+            min: defaults::POMODORO_MIN_RANGE.0 as f64,
+            max: defaults::POMODORO_MIN_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "reader.reading.readingStats",
+        group: "reader.reading",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "reader.reading.progressMemory",
+        group: "reader.reading",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "reader.reading.pageMode",
+        group: "reader.reading",
+        kind: SettingKind::Enum {
+            values: &["scroll", "paged", "double"],
+        },
+    },
+    SettingSpec {
+        id: "reader.reading.pageAnimMs",
+        group: "reader.reading",
+        kind: SettingKind::Number {
+            min: defaults::PAGE_ANIM_MS_RANGE.0 as f64,
+            max: defaults::PAGE_ANIM_MS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
         id: "reader.typography.paragraphSpacing",
         group: "reader.typography",
         kind: SettingKind::Number {

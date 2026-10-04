@@ -72,6 +72,7 @@ const STEPS: &[(u32, MigrationStep)] = &[
     (9, v9_to_v10),
     (10, v10_to_v11),
     (11, v11_to_v12),
+    (12, v12_to_v13),
 ];
 
 /// v7 → v8：新增 `editor.insert` / `editor.autoPairs` / `editor.cleanup` 字段（serde default 补齐）。
@@ -140,6 +141,9 @@ fn v2_to_v3(value: &mut Value) {
         object.insert("theme".to_string(), Value::from("paper-cream"));
     }
 }
+
+/// v12 → v13：新增 `reading` 节（字段补齐由 serde default 处理）。
+fn v12_to_v13(_value: &mut Value) {}
 
 /// 把 JSON 值从 `from` 版本沿迁移链推进到当前版本，并把 `schemaVersion` 字段改为当前值。
 ///
@@ -271,7 +275,7 @@ mod tests {
         let _ = migrate_file(&path);
         let raw = std::fs::read_to_string(&path).expect("读取失败");
         let value: Value = serde_json::from_str(&raw).expect("解析失败");
-        assert_eq!(value["schemaVersion"], 12);
+        assert_eq!(value["schemaVersion"], defaults::SCHEMA_VERSION);
         assert_eq!(value["margins"]["reading"]["left"], 64);
         assert_eq!(value["margins"]["reading"]["top"], 20);
         assert_eq!(value["margins"]["editing"]["right"], 64);

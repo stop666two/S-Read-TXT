@@ -156,7 +156,7 @@ import DiskSection from './DiskSection.svelte';
     <DataSection />
         {/if}
       {:else if tab === 'typography'}
-        <RegistryPage groups={['reader.basic', 'reader.typography', 'reader.margins', 'app.status', 'app.display']} {query} />
+        <RegistryPage groups={['reader.basic', 'reader.typography', 'reader.margins', 'reader.reading', 'app.status', 'app.display']} {query} />
         {#if !query}
           <ThemeEditor />
         {/if}

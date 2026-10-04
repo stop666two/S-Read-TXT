@@ -7,7 +7,7 @@ use crate::settings::editor::{
     TimestampFormat,
 };
 use crate::settings::model::{FindScope, Language, LogLevel};
-use crate::settings::reader::{BackgroundFill, TextAlign};
+use crate::settings::reader::{BackgroundFill, PageMode, TextAlign};
 use crate::settings::status::CountMode;
 
 /// 配置 schema 版本（settings/reader/shortcuts 共用一个版本号；结构变更时递增并提供迁移）。
@@ -19,7 +19,9 @@ use crate::settings::status::CountMode;
 /// v9：新增查找多文件开关与并发数（find.multifile*，P1-8）。
 /// v10：新增状态栏显示与交互设置节（status，P2-1）。
 /// v11：新增显示选项设置节（display，P2-2）。
-pub const SCHEMA_VERSION: u32 = 12;
+/// v12：页边距改四向「阅读/编辑两套」（typography.pagePadding → margins，S4）。
+/// v13：新增阅读模式设置节（reading，P2-4）。
+pub const SCHEMA_VERSION: u32 = 13;
 
 // ---------- settings.json ----------
 
@@ -114,6 +116,39 @@ pub const CONTENT_WIDTH_RANGE: (u32, u32) = (160, 20000);
 pub const DEFAULT_MARGIN: u32 = 48;
 /// 页边距允许范围（px，闭区间）
 pub const MARGIN_RANGE: (u32, u32) = (0, 2000);
+
+// ---------- reader.json · reading（阅读模式；P2-4） ----------
+
+/// 默认分栏数（1 = 单栏）
+pub const DEFAULT_READING_COLUMNS: u32 = 1;
+/// 分栏数允许范围（闭区间）
+pub const READING_COLUMNS_RANGE: (u32, u32) = (1, 2);
+/// 默认自动滚动速度（px/s）
+pub const DEFAULT_AUTO_SCROLL_SPEED: u32 = 30;
+/// 自动滚动速度允许范围（px/s，闭区间）
+pub const AUTO_SCROLL_SPEED_RANGE: (u32, u32) = (5, 300);
+/// 默认专注模式
+pub const DEFAULT_FOCUS_MODE: bool = false;
+/// 默认打字机模式
+pub const DEFAULT_TYPEWRITER: bool = false;
+/// 默认护眼提醒间隔（分钟；0 = 关闭）
+pub const DEFAULT_EYE_CARE_INTERVAL_MIN: u32 = 0;
+/// 护眼提醒间隔允许范围（分钟，闭区间；0 单独放行表示关闭）
+pub const EYE_CARE_INTERVAL_RANGE: (u32, u32) = (5, 240);
+/// 默认番茄钟时长（分钟）
+pub const DEFAULT_POMODORO_MIN: u32 = 25;
+/// 番茄钟时长允许范围（分钟，闭区间）
+pub const POMODORO_MIN_RANGE: (u32, u32) = (5, 120);
+/// 默认开启阅读时长统计
+pub const DEFAULT_READING_STATS: bool = true;
+/// 默认开启阅读进度记忆
+pub const DEFAULT_PROGRESS_MEMORY: bool = true;
+/// 默认翻页方式
+pub const DEFAULT_PAGE_MODE: PageMode = PageMode::Scroll;
+/// 默认翻页动画时长（ms）
+pub const DEFAULT_PAGE_ANIM_MS: u32 = 320;
+/// 翻页动画时长允许范围（ms，闭区间；0 = 无动画）
+pub const PAGE_ANIM_MS_RANGE: (u32, u32) = (0, 2000);
 /// 默认段间距（px；0 表示无额外间距）
 pub const DEFAULT_PARAGRAPH_SPACING: u32 = 0;
 /// 段间距允许范围（px，闭区间）

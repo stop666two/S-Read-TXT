@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `12` | `12` | 配置格式版本（当前 v12；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `13` | `12` | 配置格式版本（当前 v12；启动自动迁移旧版，见 §2.7） |
 | `display.lineNumbers` | boolean | `true`/`false` | `false` | 显示行号（显示行序号，1 基；P2-2） |
 | `display.relativeLineNumbers` | boolean | `true`/`false` | `false` | 相对行号（相对编辑光标 / 阅读顶部行） |
 | `display.highlightCurrentLine` | boolean | `true`/`false` | `true` | 高亮当前行 |
@@ -110,6 +110,16 @@
 | `typography.contentWidth` | number | 160–20000（px） | `720` | 正文限宽（约 40 汉字/行） |
 | `margins.reading.top/right/bottom/left` | number | 0–2000（px） | `48` | 阅读模式四向页边距（旧版 `typography.pagePadding/pagePaddingY` 迁移而来） |
 | `margins.editing.top/right/bottom/left` | number | 0–2000（px） | `48` | 编辑模式四向页边距（与阅读独立设置） |
+| `reading.columns` | number | 1–2 | `1` | 阅读分栏（1 单栏 / 2 双栏；仅阅读模式） |
+| `reading.autoScrollSpeed` | number | 5–300 | `30` | 自动滚动速度（px/s） |
+| `reading.focusMode` | boolean | true / false | `false` | 专注模式（隐藏工具栏与状态栏） |
+| `reading.typewriter` | boolean | true / false | `false` | 打字机模式（当前行保持视口中部） |
+| `reading.eyeCareIntervalMin` | number | 0 或 5–240 | `0` | 护眼提醒间隔（分钟；0 = 关闭） |
+| `reading.pomodoroMin` | number | 5–120 | `25` | 番茄钟时长（分钟） |
+| `reading.readingStats` | boolean | true / false | `true` | 阅读时长统计 |
+| `reading.progressMemory` | boolean | true / false | `true` | 阅读进度记忆（关闭后不记录/恢复位置） |
+| `reading.pageMode` | string | scroll / paged / double | `scroll` | 翻页方式 |
+| `reading.pageAnimMs` | number | 0–2000 | `320` | 翻页动画时长（ms；0 = 无动画） |
 | `typography.paragraphSpacing` | number | 0–2000（px） | `0` | 段间距（段落间额外留白） |
 | `typography.firstLineIndent` | number | 0–200（字） | `0` | 首行缩进字符数（按字号换算实际像素） |
 | `typography.textAlign` | string | `left`/`justify` | `left` | 文字对齐；未知值载入时归一为 `left` |
@@ -176,7 +186,7 @@
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v12）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键）：
+**schema 版本（当前 v13）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键）：
 
 | 情况 | 行为 |
 |---|---|

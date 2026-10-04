@@ -217,6 +217,96 @@ impl Default for MarginSettings {
     }
 }
 
+/// 阅读模式翻页方式（`reader.reading.pageMode`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PageMode {
+    /// 滚动（默认）
+    Scroll,
+    /// 分页（按视口高度翻页）
+    Paged,
+    /// 双页（分页并排两页）
+    Double,
+    /// 未知取值（向前兼容；载入时归一为默认）
+    Unknown,
+}
+
+/// 手写反序列化：未知字符串宽容归入 `Unknown`（避免整份配置回退）。
+impl<'de> Deserialize<'de> for PageMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.trim().to_ascii_lowercase().as_str() {
+            "scroll" => Self::Scroll,
+            "paged" | "page" => Self::Paged,
+            "double" | "doublepage" | "two" => Self::Double,
+            _ => Self::Unknown,
+        })
+    }
+}
+
+impl Default for PageMode {
+    fn default() -> Self {
+        defaults::DEFAULT_PAGE_MODE
+    }
+}
+
+impl PageMode {
+    /// 归一：`Unknown` 回退默认翻页方式。
+    pub fn normalized(self) -> Self {
+        if self == Self::Unknown {
+            defaults::DEFAULT_PAGE_MODE
+        } else {
+            self
+        }
+    }
+}
+
+/// 阅读模式配置（`reader.json` 的 `reading` 节点；P2-4）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ReadingSettings {
+    /// 分栏（1 = 单栏，2 = 双栏）
+    pub columns: u32,
+    /// 自动滚动速度（px/s）
+    pub auto_scroll_speed: u32,
+    /// 专注模式（隐藏界面干扰元素）
+    pub focus_mode: bool,
+    /// 打字机模式（当前行保持在视图中部）
+    pub typewriter: bool,
+    /// 护眼提醒间隔（分钟；0 = 关闭）
+    pub eye_care_interval_min: u32,
+    /// 番茄钟时长（分钟）
+    pub pomodoro_min: u32,
+    /// 阅读时长统计
+    pub reading_stats: bool,
+    /// 阅读进度记忆（关闭后不再记录与恢复阅读位置）
+    pub progress_memory: bool,
+    /// 翻页方式
+    pub page_mode: PageMode,
+    /// 翻页动画时长（ms；0 = 无动画）
+    pub page_anim_ms: u32,
+}
+
+impl Default for ReadingSettings {
+    fn default() -> Self {
+        Self {
+            columns: defaults::DEFAULT_READING_COLUMNS,
+            auto_scroll_speed: defaults::DEFAULT_AUTO_SCROLL_SPEED,
+            focus_mode: defaults::DEFAULT_FOCUS_MODE,
+            typewriter: defaults::DEFAULT_TYPEWRITER,
+            eye_care_interval_min: defaults::DEFAULT_EYE_CARE_INTERVAL_MIN,
+            pomodoro_min: defaults::DEFAULT_POMODORO_MIN,
+            reading_stats: defaults::DEFAULT_READING_STATS,
+            progress_memory: defaults::DEFAULT_PROGRESS_MEMORY,
+            page_mode: defaults::DEFAULT_PAGE_MODE,
+            page_anim_ms: defaults::DEFAULT_PAGE_ANIM_MS,
+        }
+    }
+}
+
 /// 阅读排版配置（`reader.json`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -238,6 +328,8 @@ pub struct ReaderSettings {
     pub margins: MarginSettings,
     /// 背景图
     pub background: BackgroundSettings,
+    /// 阅读模式（分栏/自动滚动/专注/打字机/提醒/统计/翻页等；P2-4）
+    pub reading: ReadingSettings,
 }
 
 impl Default for ReaderSettings {
@@ -250,6 +342,7 @@ impl Default for ReaderSettings {
             typography: Typography::default(),
             margins: MarginSettings::default(),
             background: BackgroundSettings::default(),
+            reading: ReadingSettings::default(),
         }
     }
 }

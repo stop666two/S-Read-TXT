@@ -394,6 +394,22 @@ fn normalize_reader(settings: &mut ReaderSettings) {
         margin.bottom = margin.bottom.clamp(min_margin, max_margin);
         margin.left = margin.left.clamp(min_margin, max_margin);
     }
+    settings.reading.page_mode = settings.reading.page_mode.normalized();
+    let (min_cols, max_cols) = defaults::READING_COLUMNS_RANGE;
+    settings.reading.columns = settings.reading.columns.clamp(min_cols, max_cols);
+    let (min_speed, max_speed) = defaults::AUTO_SCROLL_SPEED_RANGE;
+    settings.reading.auto_scroll_speed = settings.reading.auto_scroll_speed.clamp(min_speed, max_speed);
+    if settings.reading.eye_care_interval_min != 0 {
+        let (min_eye, max_eye) = defaults::EYE_CARE_INTERVAL_RANGE;
+        settings.reading.eye_care_interval_min = settings
+            .reading
+            .eye_care_interval_min
+            .clamp(min_eye, max_eye);
+    }
+    let (min_pomo, max_pomo) = defaults::POMODORO_MIN_RANGE;
+    settings.reading.pomodoro_min = settings.reading.pomodoro_min.clamp(min_pomo, max_pomo);
+    let (min_panim, max_panim) = defaults::PAGE_ANIM_MS_RANGE;
+    settings.reading.page_anim_ms = settings.reading.page_anim_ms.clamp(min_panim, max_panim);
     let (min_para, max_para) = defaults::PARAGRAPH_SPACING_RANGE;
     settings.typography.paragraph_spacing = settings
         .typography
@@ -733,6 +749,27 @@ mod tests {
             defaults::DEFAULT_FIRST_LINE_INDENT
         );
         assert!(loaded.typography.smooth_scroll);
+    }
+
+    /// 阅读模式设置归一：翻页方式回退、数值钳制、护眼 0 放行。
+    #[test]
+    fn reading_settings_normalize_on_load() {
+        let dir = data_dir();
+        std::fs::write(
+            reader_settings_path(dir.path()),
+            r#"{"schemaVersion":13,"reading":{"columns":9,"autoScrollSpeed":1,"focusMode":true,"typewriter":false,"eyeCareIntervalMin":3,"pomodoroMin":999,"readingStats":false,"progressMemory":false,"pageMode":"weird","pageAnimMs":9999}}"#,
+        )
+        .expect("写阅读配置失败");
+        let loaded = load_reader_settings(dir.path());
+        assert_eq!(loaded.reading.columns, 2);
+        assert_eq!(loaded.reading.auto_scroll_speed, 5);
+        assert!(loaded.reading.focus_mode);
+        assert_eq!(loaded.reading.eye_care_interval_min, 5);
+        assert_eq!(loaded.reading.pomodoro_min, 120);
+        assert!(!loaded.reading.reading_stats);
+        assert!(!loaded.reading.progress_memory);
+        assert_eq!(loaded.reading.page_mode, crate::settings::reader::PageMode::Scroll);
+        assert_eq!(loaded.reading.page_anim_ms, 2000);
     }
 
     /// 显示选项归一：标尺位置钳制 + 不可见标记白名单去重。
