@@ -221,6 +221,23 @@
 
 迁移行为：复制 → 校验（文件数/字节数）→ 写指针 → 清理原目录。被占用文件跳过（典型为 WebView2 缓存）；原目录清理失败时写入新目录 `.cleanup.json` 标记，下次启动自动重试（删除成功即移除标记，损坏标记仅清除自身）。任何失败都会保留原目录并返回 `MIGRATE_FAILED`。
 
+### 2.9 `annotations/`（书签 / 高亮 / 注释；P2-3）
+
+每源文件一个 JSON：`data/annotations/<FNV1a-128（路径小写）>.json`（文件名与路径强绑定；目录内文件与已打开文件路径不匹配时视为空集合——防哈希碰撞误归）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `schemaVersion` | number | 固定 `1`（独立于设置 schema） |
+| `path` | string | 源文件绝对路径（校验用） |
+| `nextId` | number | 自增主键 |
+| `bookmarks[]` | object[] | `{id,row,utf16,label?,createdAt,excerpt}` |
+| `highlights[]` | object[] | `{id,row,startUtf16,endUtf16,color?,note?,createdAt,excerpt}` |
+| `notes[]` | object[] | `{id,row,utf16,endUtf16?,text,done,kind（note/todo/inline）,createdAt,excerpt}` |
+
+坐标约定：`row` 为**显示行**（超长行的分段号），`utf16` 为行内 UTF-16 偏移；编辑态创建时经 `edit_display_pos` 映射。
+
+锚点跟随：每条保存 ≤24 字符摘录（`excerpt`）；读取时在存储行 ±2048 行窗口内检索摘录重定位（修正后自动回写）；窗口外或内容变动过大时保留原坐标。上限：每类 10 000 条；注释文本 ≤4000 字符；标签 ≤200 字符。清除方式：编辑菜单「标注 → 清除本文件标注」（二次确认）。
+
 ## 3. `src-tauri/tauri.conf.json` 字段说明
 
 | 字段 | 值 | 说明 |

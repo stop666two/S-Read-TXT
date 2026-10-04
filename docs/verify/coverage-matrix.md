@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 410（382 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 104；E2E 32 套 ≈526 项；verify-all 41 步。
+- 计数口径：Rust 417（389 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 104；E2E 33 套 ≈537 项；verify-all 42 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -24,6 +24,7 @@
 | smoke-display | 15 | 显示选项（P2-2）：行号/相对行号（阅读参照首行·编辑参照光标）/当前行高亮/标尺位置/缩进参考线/不可见字符（长度不变）/自动换行关闭/全部关闭清理/截图 3 张 |
 | smoke-settings | 57 | 设置窗口全控件：常规/排版/字体导入/开关/页签/主题编辑器（S17）/页边距四向两套（S14f–i） |
 | smoke-status | 9 | 状态栏 v2（P2-1）：阅读态行列/字数/进度/编码/换行 → 编辑态行列与选中统计/修改标记 → 设置窗状态栏分组 → 计数单位切字节 → 换行转换 CRLF（截图 6 张） |
+| smoke-annotations | 11 | 标注（P2-3）：阅读态书签 / 编辑态高亮·注释·待办 / 面板分区·勾选 / 重启持久化 / 编辑后锚点重定位 / 清除 / 截图 |
 | smoke-shortcuts | 30 | 快捷键：固定键/循环/翻页/全屏/录制/持久化/模态挂起 |
 | smoke-tabs | 10 | 多标签：顺序/中键/拖拽/菜单/上限/溢出滚轮/拖拽取消 |
 | smoke-history | 13 | 历史：面板/搜索/进度/删除/清空/最近打开/**长列表虚拟滚动** |
@@ -74,6 +75,8 @@
 | export_shortcuts / import_shortcuts | smoke-settings-io（快捷键导出 / 合法导入 / 非法包拒绝） |
 | set_background_file / clear_background_file / read_background_image | smoke-bg B1–B9；Rust background 6 项 |
 | list_themes / get_theme / import_theme / save_theme / export_theme / remove_theme | smoke-theme T1–T10；smoke-settings S17（save_theme：智能配色/保存入清单/清理）；Rust theme 10 项 |
+| list_annotations / add_bookmark / remove_bookmark / add_highlight / remove_highlight / add_note / update_note / remove_note / clear_annotations | **smoke-annotations A1–A10（11 项）**；Rust annotations 9 项 |
+| edit_display_pos | smoke-annotations A3/A9（编辑态逻辑→显示坐标映射） |
 
 ## 3. 错误码 × 证据（24 个）
 
@@ -146,3 +149,7 @@
 - 2026-10-03 P1-6：查找增强（全词（`\b` 包裹）/计数 20 万上限/正则超时中断/查找历史去重置顶；设置节 v7：`app.find` 9 项 + `app.regex` 2 项，注册表新类型 Color/StringList；FindBar v2：W/计数/历史下拉/范围（文档·选区·行区间）；高亮颜色与高亮全部·计数·循环开关接线；smoke-find 增至 27/27）。
 - 2026-10-03 P1-7：辅助编辑（设置节 v8：`editor.insert`/`editor.autoPairs`/`editor.cleanup`；时间戳 5 种格式；自动补对（含选区包裹/跳过/空对退格）与回车缩进、括号配对高亮（跨行受限扫描）；编辑菜单「插入日期时间」与「清理」子菜单（单项 + 一键，参与项可配）；修复两处真实缺陷：自动补对跳过路径 `moveRight` 实参顺序、物理 `Enter` 未接自动缩进；陈旧断言同步（settings 页签数 6、settings-io 版本断言 v8）；smoke-tools 16/16 并入 verify-all（现 38 步）。
 - 2026-10-03 P1-8：工作区（多文件）查找与替换（设置 v9：`find.multifileEnabled`/`find.multifileConcurrency`；编辑态复用流式引擎（跨行一致）、只读逐行匹配；受限并发扫描与超时保留；结果树含行文本摘要/徽标/截断与超时标注；命中跳转自动切标签并定位（编辑态选区 + 只读滚动）；全部替换仅作用编辑态标签、逐文件单撤销步；smoke-workspace 18/18 并入 verify-all（现 39 步））。
+- 2026-10-04 P2-1：状态栏 v2（状态栏按 items 驱动 8 元素；字数三口径；编辑态行列/选区统计；行列跳转；换行检测与转换（单撤销步，≤32MB）；设置 v10 `app.status` 9 项；顺带修复 convert_eol 绝对偏移崩溃；smoke-status 9/9 并入 verify-all（现 40 步））。
+- 2026-10-04 P2-2：显示选项（行号/相对行号/当前行高亮/标尺+位置/缩进参考线/不可见字符/自动换行关闭；设置 v11 `app.display` 9 项；修复行模板空白污染、`.txt` 定位遮挡编辑层两个真实缺陷；smoke-display 15/15 并入 verify-all（现 41 步））。
+- 2026-10-04 设置自定义化 S1–S4：数值范围大幅放宽（24 常量）；字体自由输入+datalist；颜色校验扩展（hsl/rgb 系+注入防线）；主题编辑器+智能配色（palette 对比度达标+语义色固定）+AI 占位；页边距四向×阅读/编辑两套（设置 v12）；修复设置广播乱序回跳；smoke-settings 57/57。
+- 2026-10-04 P2-3：书签/高亮/注释（annotations.rs 摘录锚点重定位；10 命令 + edit_display_pos；行内高亮/丝带/标记渲染；标注面板；设置持久化 data/annotations/；修复空色高亮不渲染真实缺陷；smoke-annotations 11/11 并入 verify-all（现 42 步））。

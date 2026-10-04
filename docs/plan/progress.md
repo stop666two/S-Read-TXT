@@ -420,3 +420,11 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - S5 物理验证（截图交付）：`docs/screenshots/p2-margins-{read,edit,settings}.png`（阅读 220/160、编辑 24/16 对比明显；设置界面页边距分组 8 项）。
 - 提交：feat + test + docs（见提交记录）。
 - 设置自定义化批次（S1–S4）至此全部完成；后续待办回到 P2-3（书签/高亮/批注）→ P2-4 阅读模式组 → P2-5 提醒统计 → P2-6 大纲/折叠/面包屑。
+
+### P2-3 书签/高亮/注释（完成）
+- 引擎：`src-tauri/src/annotations.rs`（三类标注 + 摘录锚点重定位 + 上限/去重/排序；9 单测）；存储 `data/annotations/<FNV1a-128(path)>.json`。
+- IPC：10 命令（list/add/remove×3/update/clear）+ `edit_display_pos`（逻辑→显示坐标映射，长行分段场景必需）。
+- 前端：`annotations.svelte.ts` 状态库；ReaderView 行内高亮/丝带/标记渲染；EditLayer 四类动作 + NoteDialog；AnnotationsPanel（分区/跳转/删除/勾选/清空）；MenuBar「标注」子菜单；App 接线（阅读态书签=顶部行）。
+- **真实缺陷修复**：①高亮空色不渲染（分段以颜色判空，改为显式 hl 段标记）；②E2E 发现合成 `input` 事件不驱动 textarea 值绑定 → 测试改用 CDP `Input.insertText`（物理输入路径）；③filesystem 工具 replaceAll 仅替首处的工具限制（改用 Node 临时脚本批量替换）。
+- E2E `smoke-annotations` **11/11**（书签/高亮/注释/待办/面板/勾选/重启持久/编辑后重定位/清除/截图），并入 verify-all（42 步）；回归 find 27/27、edit 12/12（含高亮渲染变更）。
+- 验证：cargo **417**（389 lib+15+2+6+5）；svelte-check 0/0；vitest 104；提交：feat×3 + test + docs（见提交记录）。
