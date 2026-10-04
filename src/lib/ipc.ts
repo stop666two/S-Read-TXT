@@ -499,6 +499,9 @@ export interface AppSettings {
   startup: StartupSettings;
 }
 
+/** 折叠方式（显示选项 V-08）。 */
+export type FoldingMode = 'off' | 'indent' | 'heading' | 'regex';
+
 /** 显示选项（与 Rust `DisplaySettings` 对应，P2-2）。 */
 export interface DisplaySettings {
   lineNumbers: boolean;
@@ -510,6 +513,14 @@ export interface DisplaySettings {
   indentGuides: boolean;
   invisible: string[];
   scrollbarMarkers: boolean;
+  /** 折叠方式（V-08：关闭/按缩进/按标题/按正则） */
+  folding: FoldingMode;
+  /** 大纲面板（V-09） */
+  outline: boolean;
+  /** 面包屑（V-10） */
+  breadcrumb: boolean;
+  /** 大纲正则（空列表后端回退内置默认） */
+  outlinePatterns: string[];
 }
 
 /** 四向页边距（px；与 Rust `Margin4` 对应）。 */

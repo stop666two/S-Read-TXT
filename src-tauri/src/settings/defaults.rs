@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::settings::display::FoldingMode;
 use crate::settings::editor::{
     LineCaseMode, LineDedupeMode, LineIndentStyle, LineScopeKind, LineSortMode, RectModifier,
     TimestampFormat,
@@ -21,7 +22,8 @@ use crate::settings::status::CountMode;
 /// v11：新增显示选项设置节（display，P2-2）。
 /// v12：页边距改四向「阅读/编辑两套」（typography.pagePadding → margins，S4）。
 /// v13：新增阅读模式设置节（reading，P2-4）。
-pub const SCHEMA_VERSION: u32 = 13;
+/// v14：新增显示折叠/大纲/面包屑字段（P2-6）。
+pub const SCHEMA_VERSION: u32 = 14;
 
 // ---------- settings.json ----------
 
@@ -268,7 +270,7 @@ pub const DEFAULT_STATUS_ITEMS: &[&str] = &[
 ];
 /// 状态栏显示项可选 id（顺序即设置界面选项顺序）
 pub const STATUS_ITEM_IDS: &[&str] = &[
-"lineCol", "counts", "words", "progress", "size", "encoding", "eol", "modified", "readTime",
+    "lineCol", "counts", "words", "progress", "size", "encoding", "eol", "modified", "readTime",
 ];
 /// 状态栏显示项数量上限
 pub const STATUS_ITEMS_MAX: u32 = 16;
@@ -305,6 +307,21 @@ pub const DEFAULT_DISPLAY_INDENT_GUIDES: bool = false;
 pub const DISPLAY_INVISIBLE_IDS: &[&str] = &["space", "tab", "newline", "trailingSpace"];
 /// 滚动条标记默认开
 pub const DEFAULT_DISPLAY_SCROLLBAR_MARKERS: bool = true;
+/// 默认折叠方式（关闭：V-08）
+pub const DEFAULT_DISPLAY_FOLDING: FoldingMode = FoldingMode::Off;
+/// 默认是否启用大纲面板（V-09）
+pub const DEFAULT_DISPLAY_OUTLINE: bool = true;
+/// 默认是否显示面包屑（V-10）
+pub const DEFAULT_DISPLAY_BREADCRUMB: bool = true;
+/// 大纲正则条目数量上限
+pub const OUTLINE_PATTERNS_MAX_ITEMS: u32 = 32;
+/// 大纲正则单条字符数上限
+pub const OUTLINE_PATTERN_MAX_CHARS: u32 = 200;
+/// 内置章节正则（「按标题」折叠与大纲默认规则；可被 `display.outlinePatterns` 覆盖）
+pub const DEFAULT_OUTLINE_PATTERNS: &[&str] = &[
+    r"^\s*第[0-9零一二三四五六七八九十百千万]+[章节回卷部篇]",
+    r"^\s*(?:Chapter|CHAPTER|Part|PART)\s+(?:[0-9]+|[IVXLCDM]+)\b",
+];
 
 // ---------- shortcuts.json ----------
 

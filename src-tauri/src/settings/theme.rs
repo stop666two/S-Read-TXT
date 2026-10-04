@@ -370,7 +370,10 @@ pub fn resolve_theme(data_dir: &Path, setting_id: &str) -> Result<ResolvedTheme,
 
 /// 保存（新建或覆盖）用户主题：强校验 + 内置 id 保护 + 同名用户主题覆盖。
 /// 与 `import_theme` 共用同一校验链；供设置界面「主题编辑器」直接调用。
-pub fn save_manifest(data_dir: &Path, mut manifest: ThemeManifest) -> Result<ThemeSummary, ThemeError> {
+pub fn save_manifest(
+    data_dir: &Path,
+    mut manifest: ThemeManifest,
+) -> Result<ThemeSummary, ThemeError> {
     manifest.builtin = false;
     validate_manifest(&manifest).map_err(ThemeError::Invalid)?;
     if builtin_manifest(&manifest.id).is_some() {
@@ -383,7 +386,8 @@ pub fn save_manifest(data_dir: &Path, mut manifest: ThemeManifest) -> Result<The
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|e| ThemeError::Io(e.to_string()))?;
     }
-    let text = serde_json::to_string_pretty(&manifest).map_err(|e| ThemeError::Io(e.to_string()))?;
+    let text =
+        serde_json::to_string_pretty(&manifest).map_err(|e| ThemeError::Io(e.to_string()))?;
     crate::storage::atomic::write_atomic_str(&target, &format!("{text}\n"))
         .map_err(|e| ThemeError::Io(e.to_string()))?;
     Ok(summary_of(&manifest))

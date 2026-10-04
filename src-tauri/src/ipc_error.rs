@@ -75,6 +75,8 @@ pub const CODE_EOL_CONVERT_TOO_LARGE: &str = "EOL_CONVERT_TOO_LARGE";
 pub const CODE_INVALID_EOL: &str = "INVALID_EOL";
 /// 多文件搜索已禁用（设置 `app.find.multifileEnabled = false`）
 pub const CODE_MULTIFILE_DISABLED: &str = "MULTIFILE_DISABLED";
+/// 大纲正则非法
+pub const CODE_OUTLINE_INVALID: &str = "OUTLINE_INVALID";
 /// 字体格式不支持
 pub const CODE_FONT_UNSUPPORTED: &str = "FONT_UNSUPPORTED";
 /// 字体文件过大
@@ -214,6 +216,12 @@ impl From<SaveError> for IpcError {
     }
 }
 
+impl From<crate::outline::OutlineError> for IpcError {
+    fn from(err: crate::outline::OutlineError) -> Self {
+        Self::new(CODE_OUTLINE_INVALID, err.to_string())
+    }
+}
+
 impl From<AppStateError> for IpcError {
     fn from(err: AppStateError) -> Self {
         match err {
@@ -227,6 +235,7 @@ impl From<AppStateError> for IpcError {
             AppStateError::TextFile(err) => err.into(),
             AppStateError::Edit(err) => err.into(),
             AppStateError::Batch(err) => err.into(),
+            AppStateError::Outline(err) => err.into(),
             AppStateError::Filter(err) => err.into(),
             AppStateError::LineOp(err) => err.into(),
             AppStateError::Save(err) => err.into(),

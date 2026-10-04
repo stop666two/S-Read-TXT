@@ -30,6 +30,7 @@ use s_read_txt::ipc_error::{
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
+use s_read_txt::outline::OutlineItem;
 use s_read_txt::resources;
 use s_read_txt::session::model::SessionState;
 use s_read_txt::session::store as session_store;
@@ -303,6 +304,29 @@ pub fn apply_line_op(
 }
 
 use s_read_txt::textfile::filter::{FilterQuery, FilterResult};
+
+/// 大纲提取（P2-6 V-09）：按显示设置中的可编辑正则扫描当前标签文档。
+#[tauri::command]
+pub fn outline_items(
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<OutlineItem>, IpcError> {
+    with_context(LogContext::request(), || {
+        let settings = current_app_settings()?;
+        let patterns = if settings.display.outline_patterns.is_empty() {
+            s_read_txt::settings::defaults::DEFAULT_OUTLINE_PATTERNS
+                .iter()
+                .map(|pattern| (*pattern).to_string())
+                .collect()
+        } else {
+            settings.display.outline_patterns.clone()
+        };
+        let app_state = lock_state(&state)?;
+        let items = app_state.outline_items(tab_id, &patterns)?;
+        log::debug!(target: "sread::commands", "outline_items: tab={tab_id} items={}", items.len());
+        Ok(items)
+    })
+}
 
 /// 命令：过滤扫描（P1-4，只读会话；返回命中显示行号供阅读态虚拟化）。
 #[tauri::command]
@@ -1306,7 +1330,9 @@ pub fn edit_display_pos(
 ) -> Result<(u64, u64), IpcError> {
     with_context(LogContext::request(), || {
         let guard = lock_state(&state)?;
-        guard.display_pos(tab_id, row, utf16).map_err(IpcError::from)
+        guard
+            .display_pos(tab_id, row, utf16)
+            .map_err(IpcError::from)
     })
 }
 
@@ -1490,7 +1516,9 @@ pub fn get_reading_stats() -> Result<s_read_txt::reading_stats::ReadingStats, Ip
 
 /// 命令：累计阅读秒数（上限 3600/次；返回最新快照）。
 #[tauri::command]
-pub fn add_reading_seconds(seconds: u64) -> Result<s_read_txt::reading_stats::ReadingStats, IpcError> {
+pub fn add_reading_seconds(
+    seconds: u64,
+) -> Result<s_read_txt::reading_stats::ReadingStats, IpcError> {
     with_context(LogContext::request(), || {
         let (dir, _origin) = paths::resolve_data_dir();
         let today = s_read_txt::time_util::local_day_string();

@@ -773,6 +773,32 @@ pub const SPECS: &[SettingSpec] = &[
         group: "app.display",
         kind: SettingKind::Bool,
     },
+    SettingSpec {
+        id: "app.display.folding",
+        group: "app.display",
+        kind: SettingKind::Enum {
+            values: &["off", "indent", "heading", "regex"],
+        },
+    },
+    SettingSpec {
+        id: "app.display.outline",
+        group: "app.display",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.display.breadcrumb",
+        group: "app.display",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.display.outlinePatterns",
+        group: "app.display",
+        kind: SettingKind::StringList {
+            max_items: defaults::OUTLINE_PATTERNS_MAX_ITEMS,
+            max_chars: defaults::OUTLINE_PATTERN_MAX_CHARS,
+            allowed: None,
+        },
+    },
     // ---------- shortcuts.json ----------
     SettingSpec {
         id: "shortcuts.bindings",
@@ -918,7 +944,9 @@ pub fn validate_value(spec: &SettingSpec, value: &Value) -> Result<(), String> {
                         return Err(format!("{}：不支持的值「{raw}」", spec.id));
                     }
                 }
-                if spec.id == "app.regex.library" && regex::Regex::new(raw).is_err() {
+                if matches!(spec.id, "app.regex.library" | "app.display.outlinePatterns")
+                    && regex::Regex::new(raw).is_err()
+                {
                     return Err(format!("{}：正则语法非法「{raw}」", spec.id));
                 }
             }

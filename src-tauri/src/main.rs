@@ -249,6 +249,7 @@ fn main() {
             commands::preview_line_op,
             commands::apply_line_op,
             commands::filter_rows,
+        commands::outline_items,
             commands::fetch_rows_at,
             commands::list_encodings,
             commands::list_tabs,

@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `13` | `12` | 配置格式版本（当前 v12；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `14` | `14` | 配置格式版本（当前 v14；启动自动迁移旧版，见 §2.7） |
 | `display.lineNumbers` | boolean | `true`/`false` | `false` | 显示行号（显示行序号，1 基；P2-2） |
 | `display.relativeLineNumbers` | boolean | `true`/`false` | `false` | 相对行号（相对编辑光标 / 阅读顶部行） |
 | `display.highlightCurrentLine` | boolean | `true`/`false` | `true` | 高亮当前行 |
@@ -34,6 +34,10 @@
 | `display.indentGuides` | boolean | `true`/`false` | `false` | 缩进参考线 |
 | `display.invisible` | string[] | `space`/`tab`/`newline`/`trailingSpace` 子集 | `[]` | 不可见字符标记 |
 | `display.scrollbarMarkers` | boolean | `true`/`false` | `true` | 滚动条标记（搜索 / 书签 / 修改） |
+| `display.folding` | string | `off`/`indent`/`heading`/`regex` | `off` | 折叠方式（V-08；编辑与阅读双模式；P2-6） |
+| `display.outline` | boolean | `true`/`false` | `true` | 大纲面板（V-09） |
+| `display.breadcrumb` | boolean | `true`/`false` | `true` | 面包屑（V-10） |
+| `display.outlinePatterns` | string[] | 每条为正则（≤200 字符、≤32 条） | 内置两条 | 大纲/「按标题」折叠的章节正则；空列表回退内置默认 |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
 | `maxFileSizeMB` | number | 1–65536 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
 | `hardLimitMB` | number | 100–1048576 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
@@ -94,7 +98,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `11` | `11` | 配置格式版本（当前 v11；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `14` | `14` | 配置格式版本（当前 v14；启动自动迁移旧版，见 §2.7） |
 | `theme` | string | `system` / `light` / `dark` / `eye-green` / `paper-cream` / `high-contrast` / `minimal-gray` / 用户主题 id | `system` | 主题 id；`system` 跟随系统明暗解析；用户主题来自 `data/themes/<id>.json`（导入生成） |
 | `themeAnimEnabled` | boolean | `true`/`false` | `true` | 主题切换过渡动画（尊重系统「减少动态效果」） |
 | `themeAnimMs` | number | 0–10000 整数 | `200` | 主题过渡时长（ms；0 = 无过渡） |
@@ -131,7 +135,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `11` | `11` | 配置格式版本（当前 v11；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `14` | `14` | 配置格式版本（当前 v14；启动自动迁移旧版，见 §2.7） |
 | `bindings` | object | 动作 id → 组合键字符串 | 见下表 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
 
 组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`）。
@@ -186,7 +190,7 @@
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v13）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键）：
+**schema 版本（当前 v14）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键；v12→v13 新增 `reading` 节；v13→v14 新增显示折叠/大纲/面包屑字段）：
 
 | 情况 | 行为 |
 |---|---|

@@ -73,6 +73,7 @@ const STEPS: &[(u32, MigrationStep)] = &[
     (10, v10_to_v11),
     (11, v11_to_v12),
     (12, v12_to_v13),
+    (13, v13_to_v14),
 ];
 
 /// v7 → v8：新增 `editor.insert` / `editor.autoPairs` / `editor.cleanup` 字段（serde default 补齐）。
@@ -102,8 +103,12 @@ fn v11_to_v12(value: &mut Value) {
     let Some(typography) = root.get_mut("typography").and_then(Value::as_object_mut) else {
         return;
     };
-    let pad = typography.remove("pagePadding").and_then(|raw| raw.as_u64());
-    let pad_y = typography.remove("pagePaddingY").and_then(|raw| raw.as_u64());
+    let pad = typography
+        .remove("pagePadding")
+        .and_then(|raw| raw.as_u64());
+    let pad_y = typography
+        .remove("pagePaddingY")
+        .and_then(|raw| raw.as_u64());
     if pad.is_none() && pad_y.is_none() {
         return;
     }
@@ -144,6 +149,9 @@ fn v2_to_v3(value: &mut Value) {
 
 /// v12 → v13：新增 `reading` 节（字段补齐由 serde default 处理）。
 fn v12_to_v13(_value: &mut Value) {}
+
+/// v13→v14：新增显示折叠/大纲/面包屑字段（serde 默认补齐，空操作）。
+fn v13_to_v14(_value: &mut Value) {}
 
 /// 把 JSON 值从 `from` 版本沿迁移链推进到当前版本，并把 `schemaVersion` 字段改为当前值。
 ///

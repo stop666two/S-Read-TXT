@@ -9,6 +9,60 @@ use serde::{Deserialize, Serialize};
 
 use crate::settings::defaults;
 
+/// 折叠方式（显示选项 V-08；编辑与阅读双模式）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum FoldingMode {
+    /// 关闭（默认）
+    #[serde(rename = "off")]
+    Off,
+    /// 按缩进
+    #[serde(rename = "indent")]
+    Indent,
+    /// 按标题（内置章节正则）
+    #[serde(rename = "heading")]
+    Heading,
+    /// 按正则（使用可编辑大纲正则）
+    #[serde(rename = "regex")]
+    Regex,
+    /// 未知取值（向前兼容；载入时归一为默认）
+    #[serde(rename = "unknown")]
+    Unknown,
+}
+
+/// 手写反序列化：未知字符串宽容归入 `Unknown`（避免整份配置回退）。
+impl<'de> Deserialize<'de> for FoldingMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.trim().to_ascii_lowercase().as_str() {
+            "" | "off" | "none" => Self::Off,
+            "indent" => Self::Indent,
+            "heading" | "title" => Self::Heading,
+            "regex" => Self::Regex,
+            _ => Self::Unknown,
+        })
+    }
+}
+
+impl Default for FoldingMode {
+    fn default() -> Self {
+        defaults::DEFAULT_DISPLAY_FOLDING
+    }
+}
+
+impl FoldingMode {
+    /// 归一：`Unknown` 回退默认，其余原样。
+    pub fn normalized(self) -> Self {
+        if self == Self::Unknown {
+            defaults::DEFAULT_DISPLAY_FOLDING
+        } else {
+            self
+        }
+    }
+}
+
 /// 显示选项（`settings.json` 的嵌套对象 `display`）。
 ///
 /// 注意：容器级 `rename_all = "camelCase"` 使 JSON 键与注册表 id 一致
@@ -34,6 +88,14 @@ pub struct DisplaySettings {
     pub invisible: Vec<String>,
     /// 滚动条标记（搜索命中 / 书签 / 修改位置）
     pub scrollbar_markers: bool,
+    /// 折叠方式（V-08：关闭/按缩进/按标题/按正则）
+    pub folding: FoldingMode,
+    /// 大纲面板（V-09）
+    pub outline: bool,
+    /// 面包屑（V-10）
+    pub breadcrumb: bool,
+    /// 大纲正则（逐条正则；归一后空列表回退内置默认）
+    pub outline_patterns: Vec<String>,
 }
 
 impl Default for DisplaySettings {
@@ -48,6 +110,13 @@ impl Default for DisplaySettings {
             indent_guides: defaults::DEFAULT_DISPLAY_INDENT_GUIDES,
             invisible: Vec::new(),
             scrollbar_markers: defaults::DEFAULT_DISPLAY_SCROLLBAR_MARKERS,
+            folding: defaults::DEFAULT_DISPLAY_FOLDING,
+            outline: defaults::DEFAULT_DISPLAY_OUTLINE,
+            breadcrumb: defaults::DEFAULT_DISPLAY_BREADCRUMB,
+            outline_patterns: defaults::DEFAULT_OUTLINE_PATTERNS
+                .iter()
+                .map(|pattern| (*pattern).to_string())
+                .collect(),
         }
     }
 }

@@ -95,6 +95,7 @@ pub struct WorkspaceReplaceResponse {
     pub skipped: u32,
 }
 use crate::annotations::{self, FileAnnotations};
+use crate::outline::{self as outline_mod, OutlineItem};
 use crate::textfile::source::DocumentSource;
 use crate::textfile::window::RowText;
 
@@ -122,6 +123,9 @@ pub enum AppStateError {
     /// 批量插入/序号错误（透传）
     #[error(transparent)]
     Batch(#[from] BatchError),
+    /// 大纲提取错误（透传）
+    #[error(transparent)]
+    Outline(#[from] crate::outline::OutlineError),
     /// 过滤视图错误（透传）
     #[error(transparent)]
     Filter(#[from] FilterError),
@@ -932,6 +936,16 @@ impl AppState {
 
     // ---------- 标注（P2-3：书签/高亮/注释） ----------
 
+    /// 大纲提取（P2-6 V-09）：按给定正则扫描当前标签文档（编辑优先）。
+    pub fn outline_items(
+        &self,
+        tab_id: u64,
+        patterns: &[String],
+    ) -> Result<Vec<OutlineItem>, AppStateError> {
+        let (_path, source) = self.annotation_context(tab_id)?;
+        outline_mod::extract(source, patterns, outline_mod::OUTLINE_MAX_ITEMS).map_err(Into::into)
+    }
+
     /// 当前标签的标注数据源：返回（源文件路径，文档来源；编辑优先）。
     fn annotation_context(
         &self,
@@ -948,7 +962,12 @@ impl AppState {
 
     /// 逻辑坐标 → 显示坐标（编辑态长行分段映射；非编辑态或无长行时为恒等）。
     /// 供前端创建标注（标注统一采用显示行坐标，与渲染/重定位一致）。
-    pub fn display_pos(&self, tab_id: u64, row: u64, utf16: u64) -> Result<(u64, u64), AppStateError> {
+    pub fn display_pos(
+        &self,
+        tab_id: u64,
+        row: u64,
+        utf16: u64,
+    ) -> Result<(u64, u64), AppStateError> {
         let tab = self.tab(tab_id)?;
         match &tab.edit {
             Some(doc) => Ok(doc.seg_of_row_utf16(row, utf16)),

@@ -180,6 +180,38 @@ fn normalize_display(settings: &mut DisplaySettings) {
         marks.push(id);
     }
     settings.invisible = marks;
+    settings.folding = settings.folding.normalized();
+    let mut patterns: Vec<String> = Vec::new();
+    for raw in std::mem::take(&mut settings.outline_patterns) {
+        let pattern = raw.trim().to_string();
+        if pattern.is_empty() {
+            continue;
+        }
+        if pattern.chars().count() > defaults::OUTLINE_PATTERN_MAX_CHARS as usize {
+            log::warn!("大纲正则过长，已忽略：{pattern}");
+            continue;
+        }
+        if regex::Regex::new(&pattern).is_err() {
+            log::warn!("大纲正则语法非法，已忽略：{pattern}");
+            continue;
+        }
+        if patterns.contains(&pattern) {
+            continue;
+        }
+        if patterns.len() >= defaults::OUTLINE_PATTERNS_MAX_ITEMS as usize {
+            log::warn!("大纲正则超过数量上限，多余项已忽略");
+            break;
+        }
+        patterns.push(pattern);
+    }
+    settings.outline_patterns = if patterns.is_empty() {
+        defaults::DEFAULT_OUTLINE_PATTERNS
+            .iter()
+            .map(|pattern| (*pattern).to_string())
+            .collect()
+    } else {
+        patterns
+    };
 }
 
 /// 状态栏归一：显示项白名单/去重/回退默认、计数模式、宽度钳制、提示文案截断。
@@ -291,7 +323,10 @@ pub(crate) fn is_valid_color(value: &str) -> bool {
         ("hsl(", 3usize, true),
         ("hsla(", 4usize, true),
     ] {
-        if let Some(inner) = lowered.strip_prefix(prefix).and_then(|rest| rest.strip_suffix(')')) {
+        if let Some(inner) = lowered
+            .strip_prefix(prefix)
+            .and_then(|rest| rest.strip_suffix(')'))
+        {
             let parts: Vec<&str> = inner.split(',').collect();
             if parts.len() != components {
                 return false;
@@ -385,10 +420,7 @@ fn normalize_reader(settings: &mut ReaderSettings) {
         .content_width
         .clamp(min_width, max_width);
     let (min_margin, max_margin) = defaults::MARGIN_RANGE;
-    for margin in [
-        &mut settings.margins.reading,
-        &mut settings.margins.editing,
-    ] {
+    for margin in [&mut settings.margins.reading, &mut settings.margins.editing] {
         margin.top = margin.top.clamp(min_margin, max_margin);
         margin.right = margin.right.clamp(min_margin, max_margin);
         margin.bottom = margin.bottom.clamp(min_margin, max_margin);
@@ -398,7 +430,10 @@ fn normalize_reader(settings: &mut ReaderSettings) {
     let (min_cols, max_cols) = defaults::READING_COLUMNS_RANGE;
     settings.reading.columns = settings.reading.columns.clamp(min_cols, max_cols);
     let (min_speed, max_speed) = defaults::AUTO_SCROLL_SPEED_RANGE;
-    settings.reading.auto_scroll_speed = settings.reading.auto_scroll_speed.clamp(min_speed, max_speed);
+    settings.reading.auto_scroll_speed = settings
+        .reading
+        .auto_scroll_speed
+        .clamp(min_speed, max_speed);
     if settings.reading.eye_care_interval_min != 0 {
         let (min_eye, max_eye) = defaults::EYE_CARE_INTERVAL_RANGE;
         settings.reading.eye_care_interval_min = settings
@@ -768,11 +803,40 @@ mod tests {
         assert_eq!(loaded.reading.pomodoro_min, 120);
         assert!(!loaded.reading.reading_stats);
         assert!(!loaded.reading.progress_memory);
-        assert_eq!(loaded.reading.page_mode, crate::settings::reader::PageMode::Scroll);
+        assert_eq!(
+            loaded.reading.page_mode,
+            crate::settings::reader::PageMode::Scroll
+        );
         assert_eq!(loaded.reading.page_anim_ms, 2000);
     }
 
     /// 显示选项归一：标尺位置钳制 + 不可见标记白名单去重。
+    /// 显示「折叠/大纲」字段归一（P2-6）：未知折叠回退默认、非法/超长/重复正则剔除、空列表回退内置默认。
+    #[test]
+    fn display_outline_and_folding_normalize() {
+        use crate::settings::display::{DisplaySettings, FoldingMode};
+
+        let mut settings = DisplaySettings::default();
+        settings.folding = FoldingMode::Unknown;
+        settings.outline_patterns = vec![
+            "  ^第..$  ".to_string(),
+            "(".to_string(),
+            "".to_string(),
+            "^第..$".to_string(),
+        ];
+        normalize_display(&mut settings);
+        assert_eq!(settings.folding, FoldingMode::Off);
+        assert_eq!(settings.outline_patterns, vec!["^第..$".to_string()]);
+
+        let mut empty = DisplaySettings::default();
+        empty.outline_patterns = vec!["   ".to_string(), "(".to_string()];
+        normalize_display(&mut empty);
+        assert_eq!(
+            empty.outline_patterns.len(),
+            crate::settings::defaults::DEFAULT_OUTLINE_PATTERNS.len()
+        );
+    }
+
     #[test]
     fn display_normalizes_on_load() {
         let dir = data_dir();
