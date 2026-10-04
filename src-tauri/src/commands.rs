@@ -491,7 +491,8 @@ pub async fn print_document(
     // 必须在主线程创建窗口：从命令线程同步 build 会阻塞（实测挂起）
     let app_for_window = app.clone();
     app.run_on_main_thread(move || {
-        if let Some(existing) = tauri::Manager::get_webview_window(&app_for_window, "print-preview") {
+        if let Some(existing) = tauri::Manager::get_webview_window(&app_for_window, "print-preview")
+        {
             let _ = existing.close();
         }
         let result = tauri::WebviewWindowBuilder::new(

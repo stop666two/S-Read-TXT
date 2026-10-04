@@ -180,7 +180,8 @@ fn write_document(
                     writer.write_chunk(line.as_bytes())?;
                 }
                 ExportFormat::Json => {
-                    let encoded = serde_json::to_string(&item.text).unwrap_or_else(|_| "\"\"".into());
+                    let encoded =
+                        serde_json::to_string(&item.text).unwrap_or_else(|_| "\"\"".into());
                     writer.write_chunk(format!("  {encoded}").as_bytes())?;
                 }
                 ExportFormat::Html => {

@@ -309,8 +309,8 @@ impl AppState {
         let dir = data_dir.join("untitled");
         std::fs::create_dir_all(&dir)?;
         let path = dir.join(format!("untitled-{seq}.txt"));
-        let encoding = FileEncoding::from_label(&settings.file.new_encoding)
-            .unwrap_or(FileEncoding::Utf8);
+        let encoding =
+            FileEncoding::from_label(&settings.file.new_encoding).unwrap_or(FileEncoding::Utf8);
         let mut bytes = Vec::new();
         bytes.extend_from_slice(encoding.bom());
         bytes.extend_from_slice(settings.file.new_eol.sequence().as_bytes());
@@ -2159,9 +2159,7 @@ mod tests {
 
         assert!(target.exists(), "目标文件应已生成");
         assert!(!temp_path.exists(), "另存为后临时文件应立即清理（N7 回归）");
-        let info = state
-            .tab_info(info.tab_id)
-            .expect("取标签信息失败");
+        let info = state.tab_info(info.tab_id).expect("取标签信息失败");
         assert!(info.untitled.is_none(), "未命名标记应被清除");
     }
 }

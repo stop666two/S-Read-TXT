@@ -87,7 +87,10 @@ mod tests {
             "--flag".to_string(),
             file_a.to_string_lossy().into_owned(),
             dir.path().to_string_lossy().into_owned(),
-            dir.path().join("missing.txt").to_string_lossy().into_owned(),
+            dir.path()
+                .join("missing.txt")
+                .to_string_lossy()
+                .into_owned(),
             file_b.to_string_lossy().into_owned(),
             file_a.to_string_lossy().into_owned(),
         ];
