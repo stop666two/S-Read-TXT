@@ -135,10 +135,21 @@ try {
     `[...document.querySelectorAll('.menu-bar button')].find((b) => b.textContent?.trim() === '文件')`,
   );
   if (!menuRect) throw new Error('未找到「文件」菜单');
-  await clickAt(menuRect.x, menuRect.y);
-  const itemRect = await centerOf(
-    `[...document.querySelectorAll('.menu-bar .item')].find((b) => b.textContent?.includes('打开剪贴板中的路径'))`,
-  );
+  // 真实鼠标点击偶发未展开下拉（转发标签刷新与点击的时序竞争）：
+  // 重试至多 3 次，每次等待下拉出现；仍失败才判 FAIL。
+  let itemRect = null;
+  for (let attempt = 0; attempt < 3 && !itemRect; attempt += 1) {
+    await delay(200);
+    await clickAt(menuRect.x, menuRect.y);
+    itemRect = await waitForValue(
+      () =>
+        centerOf(
+          `[...document.querySelectorAll('.menu-bar .item')].find((b) => b.textContent?.includes('打开剪贴板中的路径'))`,
+        ),
+      1500,
+      200,
+    );
+  }
   check('C3a 菜单项存在', Boolean(itemRect));
   if (itemRect) {
     await clickAt(itemRect.x, itemRect.y);
