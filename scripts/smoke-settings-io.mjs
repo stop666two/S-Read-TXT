@@ -92,7 +92,11 @@ const evalIn = async (client, expression) => {
     awaitPromise: true,
     returnByValue: true,
   });
-  if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
+  if (result.exceptionDetails) {
+    throw new Error(
+      result.exceptionDetails.exception?.description ?? result.exceptionDetails.text,
+    );
+  }
   return result.result?.value;
 };
 

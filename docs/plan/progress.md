@@ -48,8 +48,10 @@
   - `cargo test` 需再把 `src-tauri\target\debug` 加入 PATH（WebView2Loader.dll 由构建脚本放在该目录，GNU 测试目标从 deps 目录运行找不到它）；
   - **运行冒烟必须使用 `npm run tauri build -- --debug --no-bundle` 产物，且冒烟前重新构建一次**：`cargo build`/`cargo test` 的 debug 产物可能按 Tauri dev 语义指向 `http://localhost:1420`（不内嵌前端 → 页面无 `window.__srt`）；smoke 脚本已对「前端未就绪」给出明确诊断。
   - **严禁按进程名结束 `msedgewebview2`（安全红线，抹录在案）**：WebView2 是系统共享运行时，其他应用也在使用；清理残留只能按本应用 PID 结束整树（`taskkill /PID <pid> /T /F`，其 WebView2 子进程随树回收）。此前排查时曾误杀全系统 WebView2 进程一次，已作为反面教训记录。
-- **GNU 工具链测试目标清单问题（架构性规避）**：链接 GUI 依赖的测试目标缺 Common-Controls v6 清单 → 加载旧 comctl32 → `TaskDialogIndirect` 入口点缺失（`0xC0000139`）；lib+bin 拆分后库测试不链接 GUI 即规避；应用二进制由 tauri-build 注入清单，不受影响。
+- **GNU 工具链测试目标清单问题（2026-10-04 根治）**：链接 GUI 依赖的测试目标（lib 单元测试 harness 导入 `comctl32!TaskDialogIndirect`）缺 Common-Controls v6 清单 → 加载旧 comctl32 → `0xC0000139`。早前记录的「lib+bin 拆分即规避」在 P3 阶段已不成立（本日全量自检实测复现；历史报告中 cargo test ✅ 与实测不符，判定为后续阶段依赖图变化后未再被全量覆盖）。根治：`build.rs` 在 `tauri_build::build()` 后用 `cargo:rustc-link-arg` 为全部目标补注同一 `libresource.a`（实测 `cargo:rustc-link-arg-tests` 不覆盖 lib 单元测试目标；bin 重复链接同资源对象经构建与冒烟验证无异常）；`cargo test` **444/444** 复验通过。应用二进制由 tauri-build 注入清单，不受影响。
 - **阶段 9 打包清单（预登记）**：确认 NSIS 是否携带 `WebView2Loader.dll`（构建脚本已置于 profile 目录；如未携带需加入 `bundle.resources`）；同机安装/便携运行核验。
+- **WebView2/Tauri IPC 投递层弱性（2026-10-04 实测）**：批量并发请求叠加高负载时，投递延迟可达数秒且偶发丢响应（对端引擎毫秒级完成、页面 await 秒级返回；`0xC0000139` 之外的独立问题）；取行侧已加看门狗/退避/自适应批次规避；后续大载荷接口（导出、工作区扫描、跨窗口拖拽 tick）应避免高频大消息。
+- **检查脚本禁扫大临时物**：`scripts/check-encoding.mjs` 会扫描 `tmp/` 下全部文本文件；严禁在 `tmp/` 留 >100MB 诊断产物（曾致自检首步卡死），用后即删。
 - 阶段 1 完成：2026-10-02（97/97 测试；0 告警；运行冒烟通过）。
 
 ## 阶段 2：阅读界面（已完成 ✅ 2026-10-02）
@@ -457,3 +459,19 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 前端：文件菜单新建/导出…/打印…；未命名标签显示与保存重定向；导出格式由扩展名推断；会话不恢复未命名标签；修复 6 处 toasts 未翻译键。
 - 验证：cargo **443（415 lib+15+2+6+5）**；svelte-check 0/0；vitest 115；smoke-p32 **14/14**（并入 verify-all 现 46 步）。
 - 下一切片：P3-3 命令行打开与文件关联。
+
+### P3-3 命令行、单实例、粘贴打开与文件关联（完成）
+- 后端：`cli.rs`（`file_args` 参数清洗：跳过 flag/目录/不存在、去 `\\?\`、去重；`PendingCliFiles` 队列 + `srt://cli-open` 事件）；`main.rs` 首位注册 `tauri-plugin-single-instance`（二次启动转发参数后退出）；命令 `take_cli_files`（1 单测）。
+- 前端：启动排空队列 + 运行期事件监听（叠加不丢失）；文件菜单「打开剪贴板中的路径」；i18n 两键。
+- 安装器：`bundle.fileAssociations` 注册 `.txt`/`.log`；debug 打包实测 `installer.nsi` 生成 `APP_ASSOCIATE`/`APP_UNASSOCIATE`（安装备份旧默认值、卸载恢复；`*_backup` 值残留清理与 release 安装包重建列入 P4）。
+- E2E：smoke-cli **7/7**（C1 启动参数自动打开 + 队列排空、C2 二次启动退出码 0 + 转发标签、C3 剪贴板首行路径、C4 截图 `phase-p33-cli.png`）并入 verify-all 现 **47 步**；套件修正（项目 tmp 工作目录、去引导遮挡、`findTarget` 惯用法、菜单点击抗抖）。
+- 质量门禁修复（本日全量自检暴露的历史遗留，均已单独提交）：
+  - **cargo fmt**：P3-2/P3-3 遗留 5 文件未格式化，已修正；
+  - **cargo test 0xC0000139 根治**：lib 单元测试 harness 链接 GUI 依赖（导入 `comctl32!TaskDialogIndirect`）但缺 Common-Controls v6 清单；`build.rs` 在 `tauri_build::build()` 后用 `cargo:rustc-link-arg` 为全部目标补注 `libresource.a`（实测 `cargo:rustc-link-arg-tests` 不覆盖 lib 单元测试目标；bin 重复链接同资源经验证无异常）；**444/444** 全绿；
+  - **smoke-settings-io**：迁移/导出断言同步 schema **v15**；
+  - **滚动永久空白根治**：快速滚动/滚轮连发时 IPC 取行响应偶发丢失且 `inflight` 无超时 → 看门狗（1.2s 超时重取）+ 并发上限（≤4）+ 大行文件自适应批次（8KB 段文件 16 行/批、并发 2）+ 指数退避（300ms→5s 封顶）；smoke-scroll **0/4→4/4**、smoke-longline **8/9→9/9**；
+  - smoke-clipboard 清空确认竞态（列表刷新前点击 disabled 按钮）与 smoke-history 历史重开陈旧条目竞态，均已加固（19/19、13/13）。
+- 最终全量自检 **46/47**（2049s）：唯一失败 smoke-uninstall（该套件需以提权方式运行 NSIS 安装包；用户当夜临时拒 UAC → 解释排除、非回归；同日早些时候该套件 46.5s 通过，机器无残余安装/注册表）。其余功能性套件全绿：find 27/27、settings 57/57、disk 6/6、scroll 4/4、longline 9/9、clipboard 19/19、history 13/13、settings-io EXIT=0。
+- 自检基建修复：smoke-disk/clipboard/settings-v2 端口段避开 Windows 保留区间 10008–10107（WebView2 调试端口无法绑定曾致 smoke-disk 必然超时）；find/settings 判定改轮询式。
+- 测试基线：Rust **444**；vitest 115；svelte-check 0/0；E2E **38 套 ≈592 项**；verify-all **47 步**。
+- 下一切片：P3-4 多窗口（计划 `docs/plan/2026-10-04-p34-multiwindow-plan.md`；维护者已定：完整原生拖放 + 标签颜色；从任务 1 AppState 按窗口分区开始）。

@@ -177,6 +177,18 @@ async function main() {
     // 从历史重开 za：进度应恢复
     await openPanelViaToolbar();
     await waitForValue(async () => ((await panelOpen()) ? true : null), 6000);
+    // 面板打开时异步刷新历史：必须等到 za 条目显示进度（非陈旧数据），否则
+    // 点击到 lastRow=0 的旧条目会跳过进度 seed（曾致 H3b 稳定失败）。
+    await waitForValue(async () => {
+      const text = await evalJs(
+        `(() => { const e = [...document.querySelectorAll('.panel .entry')].find((n) => n.querySelector('.name')?.textContent.trim() === 'za.txt'); return e ? (e.querySelector('.row3')?.textContent ?? '') : ''; })()`,
+      );
+      return String(text).includes('%') ? true : null;
+    }, 6000);
+    const zaEntryHint = await evalJs(
+      `(() => { const e = [...document.querySelectorAll('.panel .entry')].find((n) => n.querySelector('.name')?.textContent.trim() === 'za.txt'); return e ? (e.querySelector('.row3')?.textContent ?? '') : null; })()`,
+    );
+    console.log(`H3b_DIAG entry3=${JSON.stringify(zaEntryHint)}`);
     await evalJs(
       `(() => { const entry = [...document.querySelectorAll('.panel .entry')].find((n) => n.querySelector('.name')?.textContent.trim() === 'za.txt'); entry?.click(); return true; })()`,
     );

@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 443（415 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 115；E2E 37 套 ≈585 项；verify-all 46 步。
+- 计数口径：Rust 444（416 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 115；E2E 38 套 ≈592 项；verify-all 47 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -43,9 +43,12 @@
 | smoke-theme | 10 | 主题 v2（P0-5）：默认跟随系统、六套切换与令牌、系统解析、重启预载、导入/删除用户主题、非法导入与内置删除拒绝、动画类出现后移除、双主题截图 |
 | smoke-bg | 10 | 背景图（P0-6）：入库/启用图层/不透明度·模糊·亮度·填充参数/拉伸/截图/重启保持/缺失降级/幂等清理与非法名/非法格式/关闭开关 |
 | smoke-longline | 9 | 100MB 无换行：分段/滚动/编辑/保存字节级 |
+| smoke-snapshots | 8 | 快照与版本历史（P3-1）：编辑变脏→立即快照/列表最新在上/恢复旧快照与单撤销/删除确认/文件落盘/异常退出检测/截图 |
+| smoke-p32 | 14 | 新建/导出/打印（P3-2）：未命名标签与编辑态/保存重定向/导出内容断言（HTML/JSON）/打印窗（`SRT_PRINT_NO_AUTO` 自动化）/截图 |
+| smoke-cli | 7 | 命令行/单实例/粘贴路径（P3-3）：启动参数自动打开/启动队列排空/二次启动转发并退出/剪贴板首行路径打开/截图 |
 | offline-check | 4 | 离线核查：依赖树（静态）+ 运行时零外联（动态） |
 
-## 2. IPC 命令 × 证据（77 个）
+## 2. IPC 命令 × 证据（87 个）
 
 | 命令 | 证据 |
 |---|---|
@@ -79,6 +82,9 @@
 | list_themes / get_theme / import_theme / save_theme / export_theme / remove_theme | smoke-theme T1–T10；smoke-settings S17（save_theme：智能配色/保存入清单/清理）；Rust theme 10 项 |
 | list_annotations / add_bookmark / remove_bookmark / add_highlight / remove_highlight / add_note / update_note / remove_note / clear_annotations | **smoke-annotations A1–A10（11 项）**；Rust annotations 9 项 |
 | edit_display_pos | smoke-annotations A3/A9（编辑态逻辑→显示坐标映射） |
+| take_cli_files | smoke-cli C1b（启动队列排空）；Rust cli 1 项（file_args 清洗）+ 前端启动排空链路 |
+| list_snapshots / create_snapshot / restore_snapshot / delete_snapshot / mark_clean_exit / take_crash_flag | smoke-snapshots S1–S7（8 项）；Rust snapshots 5 项 |
+| new_file / export_text / print_document | smoke-p32（14 项：新建/导出/打印）；Rust export 7 项 |
 
 ## 3. 错误码 × 证据（24 个）
 
@@ -158,3 +164,6 @@
 - 2026-10-03 P2-6：大纲/折叠/面包屑（设置 v14；outline_items/fold_regions 命令；smoke-outline 13 项；修复程序化跳转顶部行滞后与折叠标记缺滚动路径）。
 - 2026-10-04 P3-1：快照与版本历史（设置 v15 `app.file` 9 项；`snapshots.rs` 双上限存储与 6 命令；写盘原语统一 `document_bytes/encode_into`；前端自动保存/异常退出提示/快照面板与「文件→保存快照/版本历史…」；smoke-snapshots 8/8 并入 verify-all（现 45 步））。
 - 2026-10-04 P3-2：新建/导出/打印（export.rs 五格式流式 + 打印窗；命令 new_file/export_text/print_document；异步建窗自锁修复；smoke-p32 14/14 并入 verify-all（现 46 步））。
+- 2026-10-04 P3-3：命令行/单实例/粘贴路径/文件关联（cli.rs 参数清洗 + 待开队列 + `srt://cli-open` 事件；单实例插件首位注册；菜单「打开剪贴板中的路径」；安装器注册 .txt/.log）；smoke-cli 7/7 并入 verify-all（现 47 步）；补录 smoke-snapshots / smoke-p32 至套件清单与命令证据行。
+- 2026-10-04 P3-3 收尾修复：cargo test 0xC0000139 根治（`build.rs` 为测试目标补注 Common-Controls v6 清单）；滚动取行抗丢包（看门狗/退避/大行自适应批次）；smoke-settings-io 断言同步 v15；smoke-scroll 4/4、smoke-longline 9/9、smoke-history 13/13、smoke-clipboard 19/19；复跑验证见 docs/verify/latest.md。
+- 2026-10-04 夜终轮（46/47）：smoke-find 27/27、smoke-settings 57/57、smoke-disk 6/6（根因=Windows 保留端口段 10008–10107 吞 WebView2 调试端口，端口段已避开）；smoke-uninstall 因用户临时拒绝 UAC（套件需提权运行安装包，脚本头注明 ELEVATION_REQUIRED）被解释排除，非回归。

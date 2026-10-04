@@ -87,7 +87,7 @@
 | `file.snapshotKeep` | number | 1–1000 | `50` | 快照保留份数上限 |
 | `file.snapshotMaxMB` | number | 10–4096 | `200` | 单文件快照容量上限（MB）|
 | `file.versionHistory` | boolean | `true`/`false` | `true` | 版本历史开关 |
-| `file.associations` | string[] | 扩展名（≤32 × 16 字） | `[".txt"]` | 关联扩展名（P3-3 注册）|
+| `file.associations` | string[] | 扩展名（≤32 × 16 字） | `[".txt"]` | 希望关联的扩展名（当前为偏好记录；实际注册由安装器完成——安装版注册 `.txt`/`.log`（`bundle.fileAssociations`），便携版不写注册表需手动关联，见 README「文件关联」）|
 | `file.recentLimit` | number | 0–200 | `20` | 「最近打开」显示条数；0 隐藏 |
 | `find.caseSensitive` | boolean | `true`/`false` | `false` | 查找默认区分大小写（F-01） |
 | `find.wholeWord` | boolean | `true`/`false` | `false` | 查找默认全词匹配（`\b` 边界；F-02） |
