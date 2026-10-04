@@ -438,3 +438,9 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - **真实缺陷修复**：①高亮空色不渲染（分段以颜色判空，改为显式 hl 段标记）；②E2E 发现合成 `input` 事件不驱动 textarea 值绑定 → 测试改用 CDP `Input.insertText`（物理输入路径）；③filesystem 工具 replaceAll 仅替首处的工具限制（改用 Node 临时脚本批量替换）。
 - E2E `smoke-annotations` **11/11**（书签/高亮/注释/待办/面板/勾选/重启持久/编辑后重定位/清除/截图），并入 verify-all（42 步）；回归 find 27/27、edit 12/12（含高亮渲染变更）。
 - 验证：cargo **417**（389 lib+15+2+6+5）；svelte-check 0/0；vitest 104；提交：feat×3 + test + docs（见提交记录）。
+
+### P2-6 大纲/折叠/面包屑（完成）
+- 设置 v14（display.folding/outline/breadcrumb/outlinePatterns，正则列表强校验+空回退内置）；后端 outline.rs（章节提取 + 折叠区间）+ 命令 outline_items/fold_regions；cargo 399 lib。
+- 前端：folds.ts 纯函数（13 测试）；ReaderView 视图行通道（过滤∩折叠）、折叠标记（CSS 伪元素三角）、大纲数据与面包屑（bcTopRow 随顶部行更新）；OutlinePanel（查看→大纲）；MenuBar/App 接线。
+- 修复：程序化跳转后顶部行/面包屑/状态栏行号不刷新（applyInitialScroll 完成后补报 reportTopRow）；折叠标记仅分屏路径出现（滚动/编辑行模板补齐）。
+- smoke-outline 13/13（并入 verify-all 44 步）；回归 edit 12/12、filter 13/13；截图 phase-p2-outline.png。
