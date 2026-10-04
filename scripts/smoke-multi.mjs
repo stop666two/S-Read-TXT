@@ -126,7 +126,9 @@ async function main() {
           const node = document.querySelector('.row[data-row="${row}"]');
           if (!node) return null;
           const rect = node.getBoundingClientRect();
-          const text = (node.querySelector('.txt') ?? node).firstChild;
+          // .txt 内可能以 Svelte 锚点注释/hl span 开头；用 TreeWalker 取首个文本节点
+          const txtEl = node.querySelector('.txt') ?? node;
+          const text = document.createTreeWalker(txtEl, NodeFilter.SHOW_TEXT).nextNode();
           if (!(text instanceof Text)) return { x: rect.left + 2, y: rect.top + rect.height / 2 };
           const offset = Math.min(${utf16}, text.length);
           const range = document.createRange();
