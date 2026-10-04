@@ -412,5 +412,11 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 验证：cargo **409**（381 lib+15+2+6+5）；svelte-check 0/0；vitest **104**；smoke-settings **53/53**（S17a–e：卡片/13 合法色/保存入清单/AI 占位/清理）；smoke-theme 10/10 回归。
 - 提交：feat + test + docs（见提交记录）。
 
-### 设置自定义化（第四批·S4 边距四向独立，进行中）
-- 待完成：schema v12（`readingMargins`/`editingMargins` 各四向）、注册表 91、迁移 v12、CSS 变量按编辑态切换、S5 回归+物理验证。
+### 设置自定义化（第四批·S4 边距四向独立，完成）+ S5 物理验证
+- 设置 v12：`reader.margins.{reading,editing}.{top,right,bottom,left}`（8 项，0–2000px）；删除旧 `typography.pagePadding/pagePaddingY`；registry 8 项（新分组 reader.margins；typography 组 10→8）；migrate v11→v12（旧键映射两套并移除，含测试）；store 归一（逐向钳制）+ 测试改写。
+- 前端：CSS 变量 `--reading-pad-*` / `--edit-pad-*`（App effect）；`.page.editing` 切换编辑套边距（ReaderView）；标尺 left 改用 `--reading-pad-left`；注册表驱动的 8 个滑块 + i18n 中英 17 键；ipc.ts Margin4/MarginSettings 类型；configuration.md 行与 v12。
+- **真实缺陷修复（S4 实测）**：连续拖动两个设置滑块 → 主窗口 `reloadSettings` 两次响应乱序，旧快照覆盖新值（控件回跳）。修复：`settingsLoadSeq` 序号守卫（仅采纳最后一次；persistReader 应用前自增使在途重载失效）。
+- 验证：cargo **410**（382 lib+15+2+6+5）；svelte-check 0/0；vitest 104；smoke-settings **57/57**（S14f–i：阅读/编辑边距即时生效与独立切换）；settings-io **24/24**（版本断言同步 v12）；theme 10/10；status 9/9。
+- S5 物理验证（截图交付）：`docs/screenshots/p2-margins-{read,edit,settings}.png`（阅读 220/160、编辑 24/16 对比明显；设置界面页边距分组 8 项）。
+- 提交：feat + test + docs（见提交记录）。
+- 设置自定义化批次（S1–S4）至此全部完成；后续待办回到 P2-3（书签/高亮/批注）→ P2-4 阅读模式组 → P2-5 提醒统计 → P2-6 大纲/折叠/面包屑。
