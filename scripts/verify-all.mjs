@@ -81,6 +81,7 @@ const steps = [
   { name: 'E2E 设置窗口（smoke-settings）', cmd: 'node scripts/smoke-settings.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 状态栏（smoke-status）', cmd: 'node scripts/smoke-status.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 快照（smoke-snapshots）', cmd: 'node scripts/smoke-snapshots.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 新建/导出/打印（smoke-p32）', cmd: 'node scripts/smoke-p32.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 大纲（smoke-outline）', cmd: 'node scripts/smoke-outline.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 阅读模式（smoke-reading）', cmd: 'node scripts/smoke-reading.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 标注（smoke-annotations）', cmd: 'node scripts/smoke-annotations.mjs', cwd: root, env: process.env, timeout: 600_000 },
