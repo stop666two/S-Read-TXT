@@ -134,24 +134,25 @@
   /** 当前标签标注快照（书签/高亮/注释；未加载为 null）。 */
   const annData = $derived(annotations.forTab(tab.tabId));
 
-  /** 行分段：按高亮区间切分已标记文本（不可见字符标记为 1:1 替换，偏移与逻辑 UTF-16 一致）。 */
-  function splitHighlights(main: string, row: number): Array<{ text: string; color: string | null }> {
+  /** 行分段：按高亮区间切分已标记文本（不可见字符标记为 1:1 替换，偏移与逻辑 UTF-16 一致）。
+   *  说明：`hl` 标记该段是否属于高亮（颜色为空时仍以主题默认色渲染，不能仅凭 color 判断）。 */
+  function splitHighlights(main: string, row: number): Array<{ text: string; hl: boolean; color: string | null }> {
     const list = annData?.highlights;
-    if (!list || list.length === 0) return [{ text: main, color: null }];
+    if (!list || list.length === 0) return [{ text: main, hl: false, color: null }];
     const inRow = list
       .filter((h) => h.row === row && h.endUtf16 > h.startUtf16)
       .sort((a, b) => a.startUtf16 - b.startUtf16);
-    if (inRow.length === 0) return [{ text: main, color: null }];
-    const parts: Array<{ text: string; color: string | null }> = [];
+    if (inRow.length === 0) return [{ text: main, hl: false, color: null }];
+    const parts: Array<{ text: string; hl: boolean; color: string | null }> = [];
     let cursor = 0;
     for (const h of inRow) {
       const start = Math.max(cursor, Math.min(h.startUtf16, main.length));
       const end = Math.min(Math.max(h.endUtf16, start), main.length);
-      if (start > cursor) parts.push({ text: main.slice(cursor, start), color: null });
-      if (end > start) parts.push({ text: main.slice(start, end), color: h.color ?? null });
+      if (start > cursor) parts.push({ text: main.slice(cursor, start), hl: false, color: null });
+      if (end > start) parts.push({ text: main.slice(start, end), hl: true, color: h.color ?? null });
       cursor = Math.max(cursor, end);
     }
-    if (cursor < main.length) parts.push({ text: main.slice(cursor), color: null });
+    if (cursor < main.length) parts.push({ text: main.slice(cursor), hl: false, color: null });
     return parts;
   }
 
@@ -770,7 +771,7 @@
       {#each renderedRows as item (item.row)}
         {@const marked = markRow(item.text)}
         {@const ann = rowAnn(item.row)}
-        <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.color}<span class="hl" style={`--hl-color: ${seg.color}`}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
+        <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.hl}<span class="hl" style={seg.color ? `--hl-color: ${seg.color}` : undefined}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
       {/each}
       <div class="spacer" style="height: {spacerBottom}px"></div>
     {/if}
