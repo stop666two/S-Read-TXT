@@ -604,6 +604,54 @@ export interface ThemeSummary {
   builtin: boolean;
 }
 
+/** 书签（与 Rust `Bookmark` 对应；坐标为显示行 + 行内 UTF-16）。 */
+export interface AnnotBookmark {
+  id: number;
+  row: number;
+  utf16: number;
+  label: string | null;
+  createdAt: string;
+  excerpt: string;
+}
+
+/** 高亮（同一行内的 UTF-16 半开区间）。 */
+export interface AnnotHighlight {
+  id: number;
+  row: number;
+  startUtf16: number;
+  endUtf16: number;
+  color: string | null;
+  note: string | null;
+  createdAt: string;
+  excerpt: string;
+}
+
+/** 注释类型：普通注释 / 待办 / 行内批注。 */
+export type NoteKind = 'note' | 'todo' | 'inline';
+
+/** 注释（`endUtf16` 非空表示区间批注，否则为单点）。 */
+export interface AnnotNote {
+  id: number;
+  row: number;
+  utf16: number;
+  endUtf16: number | null;
+  text: string;
+  done: boolean;
+  kind: NoteKind;
+  createdAt: string;
+  excerpt: string;
+}
+
+/** 单文件的全部标注（与 Rust `FileAnnotations` 对应）。 */
+export interface FileAnnotations {
+  schemaVersion: number;
+  path: string;
+  nextId: number;
+  bookmarks: AnnotBookmark[];
+  highlights: AnnotHighlight[];
+  notes: AnnotNote[];
+}
+
 /** 主题清单（与 Rust `ThemeManifest` 对应；主题编辑器保存时提交）。 */
 export interface ThemeManifest {
   schemaVersion: number;
@@ -1044,6 +1092,34 @@ export const ipc = {
   exportTheme: (id: string, path: string) => invoke<void>('export_theme', { id, path }),
   removeTheme: (id: string) => invoke<void>('remove_theme', { id }),
   saveTheme: (manifest: ThemeManifest) => invoke<ThemeSummary>('save_theme', { manifest }),
+  listAnnotations: (tabId: number) => invoke<FileAnnotations>('list_annotations', { tabId }),
+  addAnnotationBookmark: (tabId: number, row: number, utf16: number, label: string | null = null) =>
+    invoke<FileAnnotations>('add_bookmark', { tabId, row, utf16, label }),
+  removeAnnotationBookmark: (tabId: number, id: number) =>
+    invoke<FileAnnotations>('remove_bookmark', { tabId, id }),
+  addAnnotationHighlight: (
+    tabId: number,
+    row: number,
+    startUtf16: number,
+    endUtf16: number,
+    color: string | null = null,
+    note: string | null = null,
+  ) => invoke<FileAnnotations>('add_highlight', { tabId, row, startUtf16, endUtf16, color, note }),
+  removeAnnotationHighlight: (tabId: number, id: number) =>
+    invoke<FileAnnotations>('remove_highlight', { tabId, id }),
+  addAnnotationNote: (
+    tabId: number,
+    row: number,
+    utf16: number,
+    endUtf16: number | null,
+    text: string,
+    kind: NoteKind,
+  ) => invoke<FileAnnotations>('add_note', { tabId, row, utf16, endUtf16, text, kind }),
+  updateAnnotationNote: (tabId: number, id: number, text: string, done: boolean) =>
+    invoke<FileAnnotations>('update_note', { tabId, id, text, done }),
+  removeAnnotationNote: (tabId: number, id: number) =>
+    invoke<FileAnnotations>('remove_note', { tabId, id }),
+  clearAnnotations: (tabId: number) => invoke<FileAnnotations>('clear_annotations', { tabId }),
   getDiskUsage: () => invoke<DiskUsageReport>('get_disk_usage'),
   clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
   setBackgroundFile: (path: string) => invoke<BackgroundEntry>('set_background_file', { path }),

@@ -19,6 +19,7 @@
   import { RowCache } from '../reader/row-cache';
   import { scrollMemory } from '../reader/scroll-memory';
   import { jumpStore } from '../state/jump.svelte';
+  import { annotations } from '../state/annotations.svelte';
   import { computePercent, computeWindow, planBatches } from '../reader/viewport';
   import { toasts } from '../state/toasts.svelte';
   import type {
@@ -129,6 +130,47 @@
     if (ref < 0 || row === ref) return String(row + 1);
     return String(Math.abs(row - ref));
   }
+
+  /** 当前标签标注快照（书签/高亮/注释；未加载为 null）。 */
+  const annData = $derived(annotations.forTab(tab.tabId));
+
+  /** 行分段：按高亮区间切分已标记文本（不可见字符标记为 1:1 替换，偏移与逻辑 UTF-16 一致）。 */
+  function splitHighlights(main: string, row: number): Array<{ text: string; color: string | null }> {
+    const list = annData?.highlights;
+    if (!list || list.length === 0) return [{ text: main, color: null }];
+    const inRow = list
+      .filter((h) => h.row === row && h.endUtf16 > h.startUtf16)
+      .sort((a, b) => a.startUtf16 - b.startUtf16);
+    if (inRow.length === 0) return [{ text: main, color: null }];
+    const parts: Array<{ text: string; color: string | null }> = [];
+    let cursor = 0;
+    for (const h of inRow) {
+      const start = Math.max(cursor, Math.min(h.startUtf16, main.length));
+      const end = Math.min(Math.max(h.endUtf16, start), main.length);
+      if (start > cursor) parts.push({ text: main.slice(cursor, start), color: null });
+      if (end > start) parts.push({ text: main.slice(start, end), color: h.color ?? null });
+      cursor = Math.max(cursor, end);
+    }
+    if (cursor < main.length) parts.push({ text: main.slice(cursor), color: null });
+    return parts;
+  }
+
+  /** 行的标注标记（书签丝带 / 待办点 / 注释点）。 */
+  function rowAnn(row: number): { bm: boolean; todo: boolean; note: boolean } {
+    const data = annData;
+    if (!data) return { bm: false, todo: false, note: false };
+    return {
+      bm: data.bookmarks.some((b) => b.row === row),
+      todo: data.notes.some((n) => n.row === row && n.kind === 'todo' && !n.done),
+      note: data.notes.some((n) => n.row === row && (n.kind !== 'todo' || n.done)),
+    };
+  }
+
+  // 标注加载：标签切换（含首次显示）时按需拉取一次
+  $effect(() => {
+    const id = tab.tabId;
+    if (id && !annotations.forTab(id)) void annotations.load(id);
+  });
 
   /** 不可见字符标记（空格·/制表→/行尾空白切片；均为 1:1 替换，
    *  保证 DOM 索引与逻辑 UTF-16 偏移一致；¶ 在 .txt 之外追加不影响映射）。 */
@@ -329,6 +371,8 @@
     refreshWindow();
     version += 1;
     onEditApplied?.(tab.tabId, result);
+    // 编辑后锚点可能移动：防抖重读（后端按摘录重定位并回写校正）
+    annotations.refreshSoon(tab.tabId);
   }
 
   /** 确保单行已加载（编辑层光标定位/复制使用；返回加载后的文本）。
@@ -725,7 +769,8 @@
       <div class="spacer" style="height: {spacerTop}px"></div>
       {#each renderedRows as item (item.row)}
         {@const marked = markRow(item.text)}
-        <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow}>{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}<span class="txt">{marked.main}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
+        {@const ann = rowAnn(item.row)}
+        <div class="row" data-row={item.row} class:current={hlCurrent && item.row === currentRow}>{#if ann.bm}<span class="bmark" aria-hidden="true"></span>{/if}{#if showLn}<span class="ln" aria-hidden="true" style="width: calc({lnDigits}ch + 12px)">{lnLabel(item.row)}</span>{/if}<span class="txt">{#each splitHighlights(marked.main, item.row) as seg, i (i)}{#if seg.color}<span class="hl" style={`--hl-color: ${seg.color}`}>{seg.text}</span>{:else}{seg.text}{/if}{/each}{#if marked.trailing}<span class="ts">{marked.trailing}</span>{/if}{#if nlMark}<span class="nl" aria-hidden="true">¶</span>{/if}</span>{#if ann.todo || ann.note}<span class="nmark" class:todo={ann.todo} aria-hidden="true"></span>{/if}{#if guidesOn}{#each guidePositions(item.text) as col (col)}<span class="guide" aria-hidden="true" style="left: {col}ch"></span>{/each}{/if}</div>
       {/each}
       <div class="spacer" style="height: {spacerBottom}px"></div>
     {/if}
@@ -971,5 +1016,37 @@
   .filter-err {
     font-size: 12px;
     color: var(--danger, #c0392b);
+  }
+
+  /* 标注渲染（P2-3）：书签丝带 / 高亮 / 注释点；绝对定位、不参与布局与文本 */
+  .bmark {
+    position: absolute;
+    left: -8px;
+    top: 3px;
+    bottom: 3px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    pointer-events: none;
+  }
+
+  .hl {
+    background: color-mix(in srgb, var(--hl-color, var(--accent)) 30%, transparent);
+    border-radius: 2px;
+  }
+
+  .nmark {
+    position: absolute;
+    right: -10px;
+    top: 9px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    pointer-events: none;
+  }
+
+  .nmark.todo {
+    background: var(--warning, #8a5200);
   }
 </style>
