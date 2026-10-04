@@ -72,3 +72,4 @@ data/
 
 # 便携版打包输出（构建产物，不入库）
 portable-dist/
+tmp/
