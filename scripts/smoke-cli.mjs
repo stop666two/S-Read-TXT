@@ -7,7 +7,7 @@
 // 前置：npm run tauri build -- --debug --no-bundle（或 node scripts/dev.mjs build）
 // 说明：工作目录位于项目内 tmp/（已 gitignore）；SRT_NO_ELEVATION=1 仅供自动化稳定。
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -187,6 +187,13 @@ try {
     // 忽略关闭失败
   }
   killTree();
-  await delay(600);
-  rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 120 });
+  // WebView2 子进程随进程树回收需要时间：轮询删除，避免 EPERM 致套件在收尾崩溃
+  for (let attempt = 0; attempt < 40 && existsSync(work); attempt += 1) {
+    try {
+      rmSync(work, { recursive: true, force: true });
+    } catch {
+      // 仍被占用：下轮重试
+    }
+    if (existsSync(work)) await delay(250);
+  }
 }

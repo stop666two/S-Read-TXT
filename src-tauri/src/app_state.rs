@@ -167,6 +167,8 @@ pub enum AppStateError {
 pub struct TabInfo {
     /// 标签 id（单调递增）
     pub tab_id: u64,
+    /// 所属窗口 label（多窗口：`main` / `main-2`…）
+    pub owner: String,
     /// 文件绝对路径（规范化后）
     pub path: String,
     /// 文件名（标签展示用）
@@ -207,9 +209,14 @@ pub struct RowsPayload {
     pub rows: Vec<RowText>,
 }
 
+/// 主窗口 label（与 `tauri.conf.json` 主窗口 label 保持一致；多窗口下其余为 `main-2`、`main-3`…）。
+pub const MAIN_WINDOW: &str = "main";
+
 /// 单个标签的运行时状态（内部）。
 struct Tab {
     id: u64,
+    /// 所属窗口 label（多窗口各自独立标签组；默认主窗口 `"main"`）
+    owner: String,
     /// 未命名文件序号（`None` = 普通磁盘文件）
     untitled: Option<u32>,
     /// 只读会话（磁盘视图；编辑文档存在时由其供数）
@@ -225,15 +232,19 @@ struct Tab {
 }
 
 /// 应用运行状态。
+///
+/// 多窗口模型（P3-4）：标签表全局共享（tab_id 全局唯一），**展示顺序与活动标签
+/// 按窗口分区**（`orders` / `active` 以窗口 label 为键）；标签自身记录 `owner`。
 pub struct AppState {
     tabs: BTreeMap<u64, Tab>,
-    /// 标签展示顺序（tab_id 列表；拖拽排序修改）。
+    /// 各窗口标签展示顺序（window label → tab_id 列表；拖拽排序修改）。
     /// 与 BTreeMap 解耦以支持任意展示顺序；新标签追加到末尾。
-    order: Vec<u64>,
+    orders: BTreeMap<String, Vec<u64>>,
     next_tab_id: u64,
     /// 未命名文件序号（会话内单调递增；标签关闭不回收）
     untitled_seq: u32,
-    active_tab: Option<u64>,
+    /// 各窗口活动标签（window label → tab_id）
+    active: BTreeMap<String, Option<u64>>,
 }
 
 impl Default for AppState {
@@ -247,19 +258,20 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             tabs: BTreeMap::new(),
-            order: Vec::new(),
+            orders: BTreeMap::new(),
             next_tab_id: 1,
             untitled_seq: 0,
-            active_tab: None,
+            active: BTreeMap::new(),
         }
     }
 
-    /// 打开文件：命中已有标签则激活复用，否则新建标签。
+    /// 打开文件：命中**本窗口**已有标签则激活复用，否则新建标签（追加到本窗口末尾）。
     ///
     /// 返回：`(标签信息, 是否为复用已有标签)`。
-    /// 错误：文件不存在/过大（透传 `TextFileError`）；标签数达上限（`MaxTabs`）。
+    /// 错误：文件不存在/过大（透传 `TextFileError`）；本窗口标签数达上限（`MaxTabs`）。
     pub fn open_file(
         &mut self,
+        owner: &str,
         path: &Path,
         settings: &AppSettings,
     ) -> Result<(TabInfo, bool), AppStateError> {
@@ -267,12 +279,13 @@ impl AppState {
         if let Some(tab) = self
             .tabs
             .values()
-            .find(|tab| canonicalize_lossy(tab.session.path()) == canonical)
+            .find(|tab| tab.owner == owner && canonicalize_lossy(tab.session.path()) == canonical)
         {
-            self.active_tab = Some(tab.id);
+            self.active.insert(owner.to_string(), Some(tab.id));
             return Ok((tab_info(tab), true));
         }
-        if self.tabs.len() as u32 >= settings.max_tabs {
+        let owner_count = self.tabs.values().filter(|tab| tab.owner == owner).count();
+        if owner_count as u32 >= settings.max_tabs {
             return Err(AppStateError::MaxTabs {
                 limit: settings.max_tabs,
             });
@@ -283,6 +296,7 @@ impl AppState {
         self.next_tab_id += 1;
         let tab = Tab {
             id,
+            owner: owner.to_string(),
             untitled: None,
             session,
             edit: None,
@@ -292,8 +306,8 @@ impl AppState {
         };
         let info = tab_info(&tab);
         self.tabs.insert(id, tab);
-        self.order.push(id);
-        self.active_tab = Some(id);
+        self.orders.entry(owner.to_string()).or_default().push(id);
+        self.active.insert(owner.to_string(), Some(id));
         Ok((info, false))
     }
 
@@ -302,6 +316,7 @@ impl AppState {
     /// 以编辑模式打开并标记 `untitled`（保存时必须「另存为」）。
     pub fn open_untitled(
         &mut self,
+        owner: &str,
         data_dir: &Path,
         settings: &AppSettings,
     ) -> Result<TabInfo, AppStateError> {
@@ -315,7 +330,7 @@ impl AppState {
         bytes.extend_from_slice(encoding.bom());
         bytes.extend_from_slice(settings.file.new_eol.sequence().as_bytes());
         crate::storage::atomic::write_atomic(&path, &bytes)?;
-        let (info, _) = self.open_file(&path, settings)?;
+        let (info, _) = self.open_file(owner, &path, settings)?;
         let tab = self
             .tabs
             .get_mut(&info.tab_id)
@@ -530,8 +545,9 @@ impl AppState {
             Option<crate::textfile::encoding::FileEncoding>,
         );
         let mut readonly_jobs: Vec<ReadonlyJob> = Vec::new();
-        for (index, tab_id) in self.order.iter().enumerate() {
-            let Some(tab) = self.tabs.get(tab_id) else {
+        // 跨窗口全局操作：按窗口 label 字典序遍历全部标签（展示顺序仅决定结果排序）
+        for (index, tab_id) in self.all_tab_ids().into_iter().enumerate() {
+            let Some(tab) = self.tabs.get(&tab_id) else {
                 continue;
             };
             let path = tab.session.path().to_string_lossy().into_owned();
@@ -548,9 +564,9 @@ impl AppState {
                 let outcome = workspace_scan::scan_edit_doc(doc, &request, cap)?;
                 results.push((
                     index,
-                    *tab_id,
+                    tab_id,
                     WorkspaceFileResult {
-                        tab_id: *tab_id,
+                        tab_id,
                         name,
                         path,
                         editing: true,
@@ -562,7 +578,7 @@ impl AppState {
                     },
                 ));
             } else {
-                readonly_jobs.push((index, *tab_id, path, tab.session.encoding_override()));
+                readonly_jobs.push((index, tab_id, path, tab.session.encoding_override()));
             }
         }
         // 只读标签：独立打开句柄 + 受限并发扫描（编辑文档受锁保护，不参与并行）。
@@ -668,7 +684,7 @@ impl AppState {
         let mut files = Vec::new();
         let mut skipped = 0u32;
         let mut total_replaced = 0usize;
-        for tab_id in self.order.clone() {
+        for tab_id in self.all_tab_ids() {
             let Some(tab) = self.tabs.get_mut(&tab_id) else {
                 continue;
             };
@@ -1315,54 +1331,133 @@ impl AppState {
             .ok_or(AppStateError::NotEditing(tab_id))
     }
 
-    /// 关闭标签；若关闭的是活动标签，则活动标签回落为**展示顺序**的东侧相邻
-    /// （无东侧时回落西侧）。
+    /// 关闭标签；若关闭的是**所在窗口**的活动标签，则活动标签回落为展示顺序的
+    /// 东侧相邻（无东侧时回落西侧）。窗口标签组清空后移除其顺序/活动条目。
     ///
     /// 返回：`true` 表示确实关闭了一个标签。
     pub fn close(&mut self, tab_id: u64) -> bool {
-        let position = self.order.iter().position(|id| *id == tab_id);
-        let removed_tab = self.tabs.remove(&tab_id);
-        let removed = removed_tab.is_some();
-        if let Some(position) = position {
-            self.order.remove(position);
-        }
-        if let Some(tab) = removed_tab {
-            // 未命名临时文件：关闭即清理（尽力而为；目录空则一并删除）
-            if tab.untitled.is_some() {
-                let path = tab.session.path().to_path_buf();
-                let _ = std::fs::remove_file(&path);
-                if let Some(dir) = path.parent() {
-                    let _ = std::fs::remove_dir(dir);
-                }
+        let Some(tab) = self.tabs.remove(&tab_id) else {
+            return false;
+        };
+        let owner = tab.owner.clone();
+        // 未命名临时文件：关闭即清理（尽力而为；目录空则一并删除）
+        if tab.untitled.is_some() {
+            let path = tab.session.path().to_path_buf();
+            let _ = std::fs::remove_file(&path);
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::remove_dir(dir);
             }
         }
-        if removed && self.active_tab == Some(tab_id) {
-            // 移除后 position 恰指向原「东侧相邻」；无东侧则取西侧
-            let east = position.and_then(|index| self.order.get(index).copied());
-            self.active_tab = east.or_else(|| {
-                position
-                    .and_then(|index| index.checked_sub(1))
-                    .and_then(|index| self.order.get(index).copied())
-            });
-        }
-        removed
+        let position = self.detach_order(&owner, tab_id);
+        self.settle_after_detach(&owner, tab_id, position);
+        true
     }
 
-    /// 当前活动标签 id。
-    pub fn active_tab(&self) -> Option<u64> {
-        self.active_tab
+    /// 关闭某窗口的全部标签（窗口关闭流程）；返回被关闭的标签 id（按原展示顺序）。
+    pub fn close_window_tabs(&mut self, owner: &str) -> Vec<u64> {
+        let ids = self.orders.get(owner).cloned().unwrap_or_default();
+        for id in &ids {
+            let _ = self.close(*id);
+        }
+        self.orders.remove(owner);
+        self.active.remove(owner);
+        ids
+    }
+
+    /// 跨窗口移动标签（P3-4）：
+    /// - 目标窗口已打开同一文件 → **合并激活**已有标签（源标签关闭，返回 `true`）；
+    /// - 否则迁移：从源窗口顺序移除，改属目标窗口并插入 `to_index`（越界收敛末尾），
+    ///   目标活动标签设为该标签；源窗口活动按关闭规则回落。
+    pub fn move_tab(
+        &mut self,
+        tab_id: u64,
+        target_owner: &str,
+        to_index: usize,
+    ) -> Result<bool, AppStateError> {
+        let tab = self.tab(tab_id)?;
+        let source_owner = tab.owner.clone();
+        if source_owner == target_owner {
+            self.reorder(tab_id, to_index)?;
+            return Ok(false);
+        }
+        let canonical = canonicalize_lossy(tab.session.path());
+        let merged_into = self
+            .tabs
+            .values()
+            .find(|t| t.owner == target_owner && canonicalize_lossy(t.session.path()) == canonical)
+            .map(|t| t.id);
+        if let Some(existing) = merged_into {
+            let _ = self.close(tab_id);
+            self.active.insert(target_owner.to_string(), Some(existing));
+            return Ok(true);
+        }
+        let position = self.detach_order(&source_owner, tab_id);
+        if let Some(target_tab) = self.tabs.get_mut(&tab_id) {
+            target_tab.owner = target_owner.to_string();
+        }
+        let order = self.orders.entry(target_owner.to_string()).or_default();
+        let target = to_index.min(order.len());
+        order.insert(target, tab_id);
+        self.active.insert(target_owner.to_string(), Some(tab_id));
+        self.settle_after_detach(&source_owner, tab_id, position);
+        Ok(false)
+    }
+
+    /// 从窗口展示顺序移除标签；返回原位置（标签不在该窗口顺序中时返回 None）。
+    fn detach_order(&mut self, owner: &str, tab_id: u64) -> Option<usize> {
+        let order = self.orders.get_mut(owner)?;
+        let position = order.iter().position(|id| *id == tab_id)?;
+        order.remove(position);
+        Some(position)
+    }
+
+    /// 移除标签后的收尾：活动标签回落（东侧相邻 → 西侧）+ 空窗口条目清理。
+    fn settle_after_detach(&mut self, owner: &str, tab_id: u64, position: Option<usize>) {
+        if self.active.get(owner).copied().flatten() == Some(tab_id) {
+            let order = self.orders.get(owner).cloned().unwrap_or_default();
+            let east = position.and_then(|index| order.get(index).copied());
+            let west = position
+                .and_then(|index| index.checked_sub(1))
+                .and_then(|index| order.get(index).copied());
+            self.active.insert(owner.to_string(), east.or(west));
+        }
+        if self.orders.get(owner).is_some_and(|order| order.is_empty()) {
+            self.orders.remove(owner);
+            self.active.remove(owner);
+        }
+    }
+
+    /// 标签所属窗口 label（不存在返回 None）。
+    pub fn owner_of(&self, tab_id: u64) -> Option<String> {
+        self.tabs.get(&tab_id).map(|tab| tab.owner.clone())
+    }
+
+    /// 当前有标签组的窗口 label 列表（字典序）。
+    pub fn owners(&self) -> Vec<String> {
+        self.orders.keys().cloned().collect()
+    }
+
+    /// 全部窗口的标签 id 扁平列表（窗口 label 字典序；跨窗口全局操作使用）。
+    fn all_tab_ids(&self) -> Vec<u64> {
+        self.orders
+            .values()
+            .flat_map(|ids| ids.iter().copied())
+            .collect()
+    }
+
+    /// 指定窗口的当前活动标签 id。
+    pub fn active_tab(&self, owner: &str) -> Option<u64> {
+        self.active.get(owner).copied().flatten()
     }
 
     /// 设置活动标签（前端点击/快捷键选择同步到后端；标签不存在报错）。
     ///
-    /// 说明：后端活动标签用于关闭回落与会话语义，必须与前端选择保持一致。
+    /// 说明：后端活动标签用于关闭回落与会话语义，必须与前端选择保持一致；
+    /// 活动状态按标签所属窗口记录（调用方无需指定窗口）。
     pub fn set_active_tab(&mut self, tab_id: u64) -> Result<(), AppStateError> {
-        if self.tabs.contains_key(&tab_id) {
-            self.active_tab = Some(tab_id);
-            Ok(())
-        } else {
-            Err(AppStateError::TabNotFound(tab_id))
-        }
+        let owner = self.tab(tab_id)?.owner.clone();
+        self.active.insert(owner, Some(tab_id));
+        Ok(())
     }
 
     /// 单个标签信息（不存在返回 None）。
@@ -1370,30 +1465,36 @@ impl AppState {
         self.tabs.get(&tab_id).map(tab_info)
     }
 
-    /// 调整标签展示顺序（拖拽排序）。
+    /// 调整标签展示顺序（拖拽排序；在标签所属窗口内调整）。
     ///
     /// 参数：`tab_id` 被移动的标签；`to_index` 目标下标（0 起，按「移除后再插入」语义；
     /// 越界时收敛到末尾）。
     /// 错误：标签不存在（`TabNotFound`）。
     pub fn reorder(&mut self, tab_id: u64, to_index: usize) -> Result<(), AppStateError> {
-        let from = self
-            .order
+        let owner = self.tab(tab_id)?.owner.clone();
+        let order = self.orders.entry(owner).or_default();
+        let from = order
             .iter()
             .position(|id| *id == tab_id)
             .ok_or(AppStateError::TabNotFound(tab_id))?;
-        let value = self.order.remove(from);
-        let target = to_index.min(self.order.len());
-        self.order.insert(target, value);
+        let value = order.remove(from);
+        let target = to_index.min(order.len());
+        order.insert(target, value);
         Ok(())
     }
 
-    /// 全部标签信息（按展示顺序）。
-    pub fn tabs_info(&self) -> Vec<TabInfo> {
-        self.order
-            .iter()
-            .filter_map(|id| self.tabs.get(id))
-            .map(tab_info)
-            .collect()
+    /// 指定窗口的全部标签信息（按该窗口展示顺序）。
+    pub fn tabs_info(&self, owner: &str) -> Vec<TabInfo> {
+        self.orders
+            .get(owner)
+            .map(|order| {
+                order
+                    .iter()
+                    .filter_map(|id| self.tabs.get(id))
+                    .map(tab_info)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// 内部：取标签（不存在报错）。
@@ -1416,6 +1517,7 @@ fn tab_info(tab: &Tab) -> TabInfo {
     };
     TabInfo {
         tab_id: tab.id,
+        owner: tab.owner.clone(),
         path: session.path().to_string_lossy().into_owned(),
         name: file_name_of(session.path()),
         untitled: tab.untitled,
@@ -1467,12 +1569,14 @@ mod tests {
         let path = write_file(dir.path(), "a.txt", "第一行\n第二行\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, reused) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, reused) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         assert!(!reused);
         assert_eq!(info.name, "a.txt");
         assert_eq!(info.rows_total, 2);
         assert_eq!(info.encoding, "UTF-8");
-        assert_eq!(state.active_tab(), Some(info.tab_id));
+        assert_eq!(state.active_tab(MAIN_WINDOW), Some(info.tab_id));
     }
 
     /// 测试用批量序号配置（阿拉伯数字 / 全文 / 行首）。
@@ -1500,7 +1604,9 @@ mod tests {
         let path = write_file(dir.path(), "batch-a.txt", "aa\nbb\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         let config = test_batch_config();
         assert!(matches!(
             state.preview_batch_numbering(info.tab_id, &config),
@@ -1519,7 +1625,9 @@ mod tests {
         let path = write_file(dir.path(), "batch-b.txt", "aa\nbb\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         state
             .toggle_edit(info.tab_id, &settings)
             .expect("进入编辑失败");
@@ -1569,7 +1677,9 @@ mod tests {
         let path = write_file(dir.path(), "lines-a.txt", "b\na\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         let config = test_line_op_config(LineOp::Sort);
         assert!(matches!(
             state.preview_line_op(info.tab_id, &config),
@@ -1612,13 +1722,19 @@ mod tests {
         let second = write_file(dir.path(), "b.txt", "b\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info_a, _) = state.open_file(&first, &settings).expect("打开失败");
-        let (info_b, _) = state.open_file(&second, &settings).expect("打开失败");
-        let (info_a2, reused) = state.open_file(&first, &settings).expect("重开失败");
+        let (info_a, _) = state
+            .open_file(MAIN_WINDOW, &first, &settings)
+            .expect("打开失败");
+        let (info_b, _) = state
+            .open_file(MAIN_WINDOW, &second, &settings)
+            .expect("打开失败");
+        let (info_a2, reused) = state
+            .open_file(MAIN_WINDOW, &first, &settings)
+            .expect("重开失败");
         assert!(reused);
         assert_eq!(info_a2.tab_id, info_a.tab_id);
-        assert_eq!(state.tabs_info().len(), 2);
-        assert_eq!(state.active_tab(), Some(info_a.tab_id));
+        assert_eq!(state.tabs_info(MAIN_WINDOW).len(), 2);
+        assert_eq!(state.active_tab(MAIN_WINDOW), Some(info_a.tab_id));
         assert_ne!(info_b.tab_id, info_a.tab_id);
     }
 
@@ -1631,8 +1747,10 @@ mod tests {
         let mut state = AppState::new();
         let mut settings = AppSettings::default();
         settings.max_tabs = 1;
-        state.open_file(&first, &settings).expect("第一个应成功");
-        let result = state.open_file(&second, &settings);
+        state
+            .open_file(MAIN_WINDOW, &first, &settings)
+            .expect("第一个应成功");
+        let result = state.open_file(MAIN_WINDOW, &second, &settings);
         assert!(matches!(result, Err(AppStateError::MaxTabs { limit: 1 })));
     }
 
@@ -1645,12 +1763,18 @@ mod tests {
         let c = write_file(dir.path(), "c.txt", "c\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info_a, _) = state.open_file(&a, &settings).expect("打开 a 失败");
-        let (info_b, _) = state.open_file(&b, &settings).expect("打开 b 失败");
-        let (info_c, _) = state.open_file(&c, &settings).expect("打开 c 失败");
+        let (info_a, _) = state
+            .open_file(MAIN_WINDOW, &a, &settings)
+            .expect("打开 a 失败");
+        let (info_b, _) = state
+            .open_file(MAIN_WINDOW, &b, &settings)
+            .expect("打开 b 失败");
+        let (info_c, _) = state
+            .open_file(MAIN_WINDOW, &c, &settings)
+            .expect("打开 c 失败");
         assert_eq!(
             state
-                .tabs_info()
+                .tabs_info(MAIN_WINDOW)
                 .iter()
                 .map(|t| t.name.as_str())
                 .collect::<Vec<_>>(),
@@ -1661,7 +1785,7 @@ mod tests {
         state.reorder(info_c.tab_id, 0).expect("排序失败");
         assert_eq!(
             state
-                .tabs_info()
+                .tabs_info(MAIN_WINDOW)
                 .iter()
                 .map(|t| t.name.as_str())
                 .collect::<Vec<_>>(),
@@ -1672,7 +1796,7 @@ mod tests {
         state.reorder(info_a.tab_id, 99).expect("排序失败");
         assert_eq!(
             state
-                .tabs_info()
+                .tabs_info(MAIN_WINDOW)
                 .iter()
                 .map(|t| t.name.as_str())
                 .collect::<Vec<_>>(),
@@ -1683,7 +1807,7 @@ mod tests {
         state.reorder(info_b.tab_id, 1).expect("排序失败");
         assert_eq!(
             state
-                .tabs_info()
+                .tabs_info(MAIN_WINDOW)
                 .iter()
                 .map(|t| t.name.as_str())
                 .collect::<Vec<_>>(),
@@ -1705,14 +1829,20 @@ mod tests {
         let c = write_file(dir.path(), "c.txt", "c\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info_a, _) = state.open_file(&a, &settings).expect("打开 a 失败");
-        state.open_file(&b, &settings).expect("打开 b 失败");
-        let (info_c, _) = state.open_file(&c, &settings).expect("打开 c 失败");
+        let (info_a, _) = state
+            .open_file(MAIN_WINDOW, &a, &settings)
+            .expect("打开 a 失败");
+        state
+            .open_file(MAIN_WINDOW, &b, &settings)
+            .expect("打开 b 失败");
+        let (info_c, _) = state
+            .open_file(MAIN_WINDOW, &c, &settings)
+            .expect("打开 c 失败");
         // 展示顺序：c, a, b；活动 = c
         state.reorder(info_c.tab_id, 0).expect("排序失败");
         assert!(state.close(info_c.tab_id));
         // 按展示顺序东侧相邻 = a（若按 id 顺序会错误回落到 b）
-        assert_eq!(state.active_tab(), Some(info_a.tab_id));
+        assert_eq!(state.active_tab(MAIN_WINDOW), Some(info_a.tab_id));
     }
 
     /// 取行窗口：载荷字段与内容正确；未知标签报错。
@@ -1722,7 +1852,9 @@ mod tests {
         let path = write_file(dir.path(), "a.txt", "one\ntwo\nthree\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         let payload = state.rows(info.tab_id, 1, 2).expect("取行失败");
         assert_eq!(payload.start_row, 1);
         assert_eq!(payload.rows_total, 3);
@@ -1742,7 +1874,9 @@ mod tests {
         let path = write_file(dir.path(), "a.txt", "x\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         let payload = state
             .rows(info.tab_id, 0, MAX_ROWS_PER_FETCH + 1000)
             .expect("取行失败");
@@ -1757,11 +1891,15 @@ mod tests {
         let path_b = write_file(dir.path(), "b.txt", "b\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info_a, _) = state.open_file(&path_a, &settings).expect("打开失败");
-        let (info_b, _) = state.open_file(&path_b, &settings).expect("打开失败");
-        assert_eq!(state.active_tab(), Some(info_b.tab_id));
+        let (info_a, _) = state
+            .open_file(MAIN_WINDOW, &path_a, &settings)
+            .expect("打开失败");
+        let (info_b, _) = state
+            .open_file(MAIN_WINDOW, &path_b, &settings)
+            .expect("打开失败");
+        assert_eq!(state.active_tab(MAIN_WINDOW), Some(info_b.tab_id));
         state.set_active_tab(info_a.tab_id).expect("同步失败");
-        assert_eq!(state.active_tab(), Some(info_a.tab_id));
+        assert_eq!(state.active_tab(MAIN_WINDOW), Some(info_a.tab_id));
         assert!(state.set_active_tab(9999).is_err(), "不存在的标签应报错");
     }
 
@@ -1773,11 +1911,15 @@ mod tests {
         let path_b = write_file(dir.path(), "b.txt", "b\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info_a, _) = state.open_file(&path_a, &settings).expect("打开失败");
-        let (info_b, _) = state.open_file(&path_b, &settings).expect("打开失败");
+        let (info_a, _) = state
+            .open_file(MAIN_WINDOW, &path_a, &settings)
+            .expect("打开失败");
+        let (info_b, _) = state
+            .open_file(MAIN_WINDOW, &path_b, &settings)
+            .expect("打开失败");
         state.set_active_tab(info_b.tab_id).expect("同步失败");
         assert!(state.close(info_a.tab_id));
-        assert_eq!(state.active_tab(), Some(info_b.tab_id));
+        assert_eq!(state.active_tab(MAIN_WINDOW), Some(info_b.tab_id));
     }
 
     /// 关闭活动标签：回落东侧相邻；无东侧时回落西侧。
@@ -1789,14 +1931,20 @@ mod tests {
         let path_c = write_file(dir.path(), "c.txt", "c\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info_a, _) = state.open_file(&path_a, &settings).expect("打开失败");
-        let (info_b, _) = state.open_file(&path_b, &settings).expect("打开失败");
-        let (info_c, _) = state.open_file(&path_c, &settings).expect("打开失败");
+        let (info_a, _) = state
+            .open_file(MAIN_WINDOW, &path_a, &settings)
+            .expect("打开失败");
+        let (info_b, _) = state
+            .open_file(MAIN_WINDOW, &path_b, &settings)
+            .expect("打开失败");
+        let (info_c, _) = state
+            .open_file(MAIN_WINDOW, &path_c, &settings)
+            .expect("打开失败");
 
         state.set_active_tab(info_b.tab_id).expect("同步失败");
         assert!(state.close(info_b.tab_id));
         assert_eq!(
-            state.active_tab(),
+            state.active_tab(MAIN_WINDOW),
             Some(info_c.tab_id),
             "中间标签关闭应回落东侧"
         );
@@ -1804,7 +1952,7 @@ mod tests {
         state.set_active_tab(info_c.tab_id).expect("同步失败");
         assert!(state.close(info_c.tab_id));
         assert_eq!(
-            state.active_tab(),
+            state.active_tab(MAIN_WINDOW),
             Some(info_a.tab_id),
             "末位标签关闭应回落西侧"
         );
@@ -1817,15 +1965,17 @@ mod tests {
         let path = write_file(dir.path(), "a.txt", "中文\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         let updated = state
             .set_encoding(info.tab_id, Some(FileEncoding::Gb18030))
             .expect("切换失败");
         assert_eq!(updated.encoding, "GB18030");
         assert_eq!(updated.encoding_override.as_deref(), Some("GB18030"));
         assert!(state.close(info.tab_id));
-        assert_eq!(state.active_tab(), None);
-        assert!(state.tabs_info().is_empty());
+        assert_eq!(state.active_tab(MAIN_WINDOW), None);
+        assert!(state.tabs_info(MAIN_WINDOW).is_empty());
         assert!(!state.close(info.tab_id), "重复关闭应返回 false");
     }
 
@@ -1836,7 +1986,9 @@ mod tests {
         let path = write_file(dir.path(), "a.txt", "abc\ndef\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
 
         let toggled = state
             .toggle_edit(info.tab_id, &settings)
@@ -1881,7 +2033,9 @@ mod tests {
         let path = write_file(dir.path(), "a.txt", "abc\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         state
             .toggle_edit(info.tab_id, &settings)
             .expect("进入编辑失败");
@@ -1917,7 +2071,9 @@ mod tests {
         let path = write_file(dir.path(), "a.txt", "abc");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         state
             .toggle_edit(info.tab_id, &settings)
             .expect("进入编辑失败");
@@ -1972,7 +2128,9 @@ mod tests {
         let path = write_file(dir.path(), "a.txt", "abc");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         state
             .toggle_edit(info.tab_id, &settings)
             .expect("进入编辑失败");
@@ -2028,7 +2186,9 @@ mod tests {
         let path = write_file(dir.path(), "a.txt", "abc");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         state
             .toggle_edit(info.tab_id, &settings)
             .expect("进入编辑失败");
@@ -2059,7 +2219,9 @@ mod tests {
         let path = write_file(dir.path(), "a.txt", "中文\n");
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         state
             .toggle_edit(info.tab_id, &settings)
             .expect("进入编辑失败");
@@ -2087,7 +2249,9 @@ mod tests {
         let path = write_file(dir.path(), "long.txt", &long_line);
         let mut state = AppState::new();
         let settings = AppSettings::default();
-        let (info, _) = state.open_file(&path, &settings).expect("打开失败");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
         let info = state
             .toggle_edit(info.tab_id, &settings)
             .expect("超长行应可进入编辑");
@@ -2110,7 +2274,9 @@ mod tests {
         settings.max_file_size_mb = 1; // 只读阈值 1MB
         settings.hard_limit_mb = 4; // 硬上限 4MB
 
-        let (info, _) = state.open_file(&path, &settings).expect("应当只读打开");
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("应当只读打开");
         assert!(info.read_only, "2MB > 1MB 阈值应标记只读");
         assert!(matches!(
             state.toggle_edit(info.tab_id, &settings),
@@ -2123,7 +2289,7 @@ mod tests {
         strict.hard_limit_mb = 1;
         let mut fresh = AppState::new();
         let err = fresh
-            .open_file(&path, &strict)
+            .open_file(MAIN_WINDOW, &path, &strict)
             .expect_err("超过硬上限应被拒绝");
         assert!(matches!(
             err,
@@ -2146,7 +2312,7 @@ mod tests {
         let settings = AppSettings::default();
         let mut state = AppState::new();
         let info = state
-            .open_untitled(data_dir.path(), &settings)
+            .open_untitled(MAIN_WINDOW, data_dir.path(), &settings)
             .expect("新建未命名失败");
         assert!(info.untitled.is_some());
         let temp_path = PathBuf::from(&info.path);
@@ -2161,5 +2327,156 @@ mod tests {
         assert!(!temp_path.exists(), "另存为后临时文件应立即清理（N7 回归）");
         let info = state.tab_info(info.tab_id).expect("取标签信息失败");
         assert!(info.untitled.is_none(), "未命名标记应被清除");
+    }
+
+    /// P3-4：多窗口标签组隔离——各窗口独立列表/去重/活动，互不影响。
+    #[test]
+    fn window_partitions_are_isolated() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path_a = write_file(dir.path(), "a.txt", "a\n");
+        let path_b = write_file(dir.path(), "b.txt", "b\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+
+        let (info_a, _) = state
+            .open_file(MAIN_WINDOW, &path_a, &settings)
+            .expect("打开失败");
+        let (info_b, reused) = state
+            .open_file("main-2", &path_b, &settings)
+            .expect("打开失败");
+        assert!(!reused);
+
+        // 同一文件可在另一窗口再次打开（窗口间不去重）
+        let (info_a2, reused2) = state
+            .open_file("main-2", &path_a, &settings)
+            .expect("打开失败");
+        assert!(!reused2);
+        assert_ne!(info_a.tab_id, info_a2.tab_id);
+
+        // 列表隔离 + owner 字段
+        let main_tabs = state.tabs_info(MAIN_WINDOW);
+        assert_eq!(main_tabs.len(), 1);
+        assert_eq!(main_tabs[0].tab_id, info_a.tab_id);
+        assert_eq!(main_tabs[0].owner, MAIN_WINDOW);
+        let second_tabs = state.tabs_info("main-2");
+        assert_eq!(second_tabs.len(), 2);
+        assert_eq!(second_tabs[0].owner, "main-2");
+
+        // 活动标签按窗口隔离
+        assert_eq!(state.active_tab(MAIN_WINDOW), Some(info_a.tab_id));
+        assert_eq!(state.active_tab("main-2"), Some(info_a2.tab_id));
+        state.set_active_tab(info_b.tab_id).expect("同步失败");
+        assert_eq!(state.active_tab("main-2"), Some(info_b.tab_id));
+        assert_eq!(
+            state.active_tab(MAIN_WINDOW),
+            Some(info_a.tab_id),
+            "切换另一窗口活动标签不应影响主窗口"
+        );
+
+        // 同窗口去重仍然生效
+        let (again, reused3) = state
+            .open_file(MAIN_WINDOW, &path_a, &settings)
+            .expect("打开失败");
+        assert!(reused3);
+        assert_eq!(again.tab_id, info_a.tab_id);
+    }
+
+    /// P3-4：跨窗口移动标签（活动切换、插入位置、源窗口条目清理）。
+    #[test]
+    fn move_tab_between_windows() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let a = write_file(dir.path(), "a.txt", "a\n");
+        let b = write_file(dir.path(), "b.txt", "b\n");
+        let c = write_file(dir.path(), "c.txt", "c\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (ia, _) = state
+            .open_file(MAIN_WINDOW, &a, &settings)
+            .expect("打开失败");
+        let (ib, _) = state
+            .open_file(MAIN_WINDOW, &b, &settings)
+            .expect("打开失败");
+        let (ic, _) = state.open_file("main-2", &c, &settings).expect("打开失败");
+
+        state.set_active_tab(ib.tab_id).expect("同步失败");
+        let merged = state.move_tab(ia.tab_id, "main-2", 99).expect("移动失败");
+        assert!(!merged);
+        assert_eq!(state.owner_of(ia.tab_id).as_deref(), Some("main-2"));
+        let main_ids: Vec<u64> = state
+            .tabs_info(MAIN_WINDOW)
+            .iter()
+            .map(|tab| tab.tab_id)
+            .collect();
+        assert_eq!(main_ids, vec![ib.tab_id]);
+        let second_ids: Vec<u64> = state
+            .tabs_info("main-2")
+            .iter()
+            .map(|tab| tab.tab_id)
+            .collect();
+        assert_eq!(second_ids, vec![ic.tab_id, ia.tab_id]);
+        assert_eq!(state.active_tab("main-2"), Some(ia.tab_id));
+        assert_eq!(state.active_tab(MAIN_WINDOW), Some(ib.tab_id));
+
+        // 把 b 插到 main-2 首位；主窗口清空后条目移除
+        state.move_tab(ib.tab_id, "main-2", 0).expect("移动失败");
+        let second_ids: Vec<u64> = state
+            .tabs_info("main-2")
+            .iter()
+            .map(|tab| tab.tab_id)
+            .collect();
+        assert_eq!(second_ids, vec![ib.tab_id, ic.tab_id, ia.tab_id]);
+        assert_eq!(state.active_tab(MAIN_WINDOW), None);
+        assert!(state.tabs_info(MAIN_WINDOW).is_empty());
+        assert_eq!(state.owners(), vec!["main-2".to_string()]);
+    }
+
+    /// P3-4：移动到已打开同文件的窗口 → 合并激活已有标签。
+    #[test]
+    fn move_tab_merges_same_file_in_target() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let a = write_file(dir.path(), "a.txt", "a\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (ia_main, _) = state
+            .open_file(MAIN_WINDOW, &a, &settings)
+            .expect("打开失败");
+        let (ia_second, _) = state.open_file("main-2", &a, &settings).expect("打开失败");
+        assert_ne!(ia_main.tab_id, ia_second.tab_id);
+
+        let merged = state
+            .move_tab(ia_second.tab_id, MAIN_WINDOW, 0)
+            .expect("移动失败");
+        assert!(merged, "目标已开同一文件应合并");
+        assert!(state.tabs_info("main-2").is_empty());
+        assert_eq!(state.active_tab(MAIN_WINDOW), Some(ia_main.tab_id));
+        assert_eq!(state.owners(), vec![MAIN_WINDOW.to_string()]);
+        assert!(
+            state.owner_of(ia_second.tab_id).is_none(),
+            "合并后源标签应被关闭"
+        );
+    }
+
+    /// P3-4：关闭某窗口全部标签（窗口关闭流程）。
+    #[test]
+    fn close_window_tabs_cleans_partition() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let a = write_file(dir.path(), "a.txt", "a\n");
+        let b = write_file(dir.path(), "b.txt", "b\n");
+        let c = write_file(dir.path(), "c.txt", "c\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        state
+            .open_file(MAIN_WINDOW, &a, &settings)
+            .expect("打开失败");
+        let (ib, _) = state.open_file("main-2", &b, &settings).expect("打开失败");
+        let (ic, _) = state.open_file("main-2", &c, &settings).expect("打开失败");
+
+        let closed = state.close_window_tabs("main-2");
+        assert_eq!(closed, vec![ib.tab_id, ic.tab_id]);
+        assert!(state.tabs_info("main-2").is_empty());
+        assert_eq!(state.active_tab("main-2"), None);
+        assert!(state.owner_of(ib.tab_id).is_none());
+        assert_eq!(state.tabs_info(MAIN_WINDOW).len(), 1, "其他窗口不受影响");
+        assert_eq!(state.owners(), vec![MAIN_WINDOW.to_string()]);
     }
 }

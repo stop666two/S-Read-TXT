@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use s_read_txt::app_state::{AppState, AppStateError};
+use s_read_txt::app_state::{AppState, AppStateError, MAIN_WINDOW};
 use s_read_txt::settings::model::AppSettings;
 use s_read_txt::textfile::editing::edit_doc::{EditError, EditOp};
 use s_read_txt::textfile::editing::save::SaveError;
@@ -21,7 +21,9 @@ fn write_bytes(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
 
 /// 打开文件并返回标签 id（测试内均为新标签）。
 fn open_tab(state: &mut AppState, settings: &AppSettings, path: &Path) -> u64 {
-    let (info, reused) = state.open_file(path, settings).expect("打开失败");
+    let (info, reused) = state
+        .open_file(MAIN_WINDOW, path, settings)
+        .expect("打开失败");
     assert!(!reused, "测试用例内不应复用标签");
     info.tab_id
 }
@@ -490,14 +492,14 @@ fn max_tabs_boundary_open_close_middle() {
     let second = open_tab(&mut state, &settings, &paths[1]);
     open_tab(&mut state, &settings, &paths[2]);
     assert!(matches!(
-        state.open_file(&paths[3], &settings),
+        state.open_file(MAIN_WINDOW, &paths[3], &settings),
         Err(AppStateError::MaxTabs { limit: 3 })
     ));
 
     assert!(state.close(second));
     let fourth = open_tab(&mut state, &settings, &paths[3]);
-    assert_eq!(state.tabs_info().len(), 3);
-    assert_eq!(state.active_tab(), Some(fourth));
+    assert_eq!(state.tabs_info(MAIN_WINDOW).len(), 3);
+    assert_eq!(state.active_tab(MAIN_WINDOW), Some(fourth));
     assert!(state.tab_info(first).is_some());
 }
 

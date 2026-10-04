@@ -437,12 +437,16 @@ pub fn take_crash_flag() -> bool {
 }
 
 /// 命令：新建未命名文件（P3-2）：按 `file` 设置生成临时文件并以编辑模式打开。
+/// 多窗口（P3-4）：新标签归属调用窗口（`window.label()`，由 Tauri 自动注入）。
 #[tauri::command]
-pub fn new_file(state: State<'_, Mutex<AppState>>) -> Result<TabInfo, IpcError> {
+pub fn new_file(
+    window: tauri::WebviewWindow,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<TabInfo, IpcError> {
     let settings = current_app_settings();
     let (dir, _origin) = paths::resolve_data_dir();
     lock_state(&state)?
-        .open_untitled(&dir, &settings)
+        .open_untitled(window.label(), &dir, &settings)
         .map_err(Into::into)
 }
 
@@ -841,13 +845,19 @@ pub fn save_session(session: SessionState) -> Result<SessionState, IpcError> {
     })
 }
 
-/// 命令：打开文件（重复打开自动复用已有标签；首次打开成功时记录历史）。
+/// 命令：打开文件（重复打开自动复用**本窗口**已有标签；首次打开成功时记录历史）。
+/// 多窗口（P3-4）：新标签归属调用窗口（label 由 Tauri 自动注入）。
 #[tauri::command]
-pub fn open_file(path: String, state: State<'_, Mutex<AppState>>) -> Result<TabInfo, IpcError> {
+pub fn open_file(
+    window: tauri::WebviewWindow,
+    path: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<TabInfo, IpcError> {
     with_context(LogContext::request(), || {
         let (dir, _origin) = paths::resolve_data_dir();
         let settings = settings_store::load_app_settings(&dir);
-        let (info, reused) = lock_state(&state)?.open_file(Path::new(&path), &settings)?;
+        let (info, reused) =
+            lock_state(&state)?.open_file(window.label(), Path::new(&path), &settings)?;
         if !reused {
             let entry = HistoryEntry {
                 path: info.path.clone(),
@@ -929,35 +939,48 @@ pub struct TabsView {
     active_tab_id: Option<u64>,
 }
 
-/// 命令：列出全部标签（前端启动同步/恢复时使用）。
+/// 命令：列出**调用窗口**的标签（前端启动同步/恢复时使用；label 由 Tauri 自动注入）。
 #[tauri::command]
-pub fn list_tabs(state: State<'_, Mutex<AppState>>) -> Result<TabsView, IpcError> {
+pub fn list_tabs(
+    window: tauri::WebviewWindow,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<TabsView, IpcError> {
     with_context(LogContext::request(), || {
         let guard = lock_state(&state)?;
+        let owner = window.label();
         Ok(TabsView {
-            tabs: guard.tabs_info(),
-            active_tab_id: guard.active_tab(),
+            tabs: guard.tabs_info(owner),
+            active_tab_id: guard.active_tab(owner),
         })
     })
 }
 
-/// 命令：关闭标签并返回剩余标签视图。
+/// 命令：关闭标签并返回**其所属窗口**的剩余标签视图。
 ///
-/// 幂等：关闭不存在的标签不视为错误（返回当前视图，规则：可重试操作幂等）。
+/// 幂等：关闭不存在的标签不视为错误（返回调用窗口视图，规则：可重试操作幂等）。
 #[tauri::command]
-pub fn close_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabsView, IpcError> {
+pub fn close_tab(
+    window: tauri::WebviewWindow,
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<TabsView, IpcError> {
     with_context(LogContext::request(), || {
         let mut guard = lock_state(&state)?;
+        // 关闭后标签不在表中，无法再反查 owner —— 先取 owner，关闭失败则回退调用窗口
+        let owner = guard
+            .owner_of(tab_id)
+            .unwrap_or_else(|| window.label().to_string());
         let closed = guard.close(tab_id);
         let view = TabsView {
-            tabs: guard.tabs_info(),
-            active_tab_id: guard.active_tab(),
+            tabs: guard.tabs_info(&owner),
+            active_tab_id: guard.active_tab(&owner),
         };
         if closed {
             log::info!(
                 target: "sread::ipc",
-                "关闭标签：{}（剩余 {} 个）",
+                "关闭标签：{}（窗口 {}，剩余 {} 个）",
                 tab_id,
+                owner,
                 view.tabs.len()
             );
         }

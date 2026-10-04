@@ -39,6 +39,8 @@ export interface RowText {
 /** 标签信息（与 Rust app_state::TabInfo 对齐）。 */
 export interface TabInfo {
   tabId: number;
+  /** 所属窗口 label（多窗口 P3-4：`main` / `main-2`…） */
+  owner: string;
   path: string;
   name: string;
   /** 未命名标签序号（P3-2；新建文件专用） */
