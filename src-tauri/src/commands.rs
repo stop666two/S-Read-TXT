@@ -1296,6 +1296,20 @@ pub fn document_stats(
 
 // ---------- 标注（P2-3：书签/高亮/注释） ----------
 
+/// 命令：逻辑坐标 → 显示坐标（编辑态长行分段；供标注创建使用）。
+#[tauri::command]
+pub fn edit_display_pos(
+    tab_id: u64,
+    row: u64,
+    utf16: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(u64, u64), IpcError> {
+    with_context(LogContext::request(), || {
+        let guard = lock_state(&state)?;
+        guard.display_pos(tab_id, row, utf16).map_err(IpcError::from)
+    })
+}
+
 /// 命令：列出当前标签的标注（读取时自动按摘录重定位）。
 #[tauri::command]
 pub fn list_annotations(

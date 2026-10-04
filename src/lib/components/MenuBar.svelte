@@ -55,6 +55,9 @@
     onOpenRecent?: (entry: HistoryEntry) => void;
     /** 打开历史记录面板 */
     onOpenHistory?: () => void;
+  onToggleBookmark?: () => void;
+  onAnnotationsPanel?: () => void;
+  onClearAnnotations?: () => void;
     /** 打开设置窗口（文件菜单） */
     onSettings?: () => void;
     /** 是否存在活动标签（重新加载可用性） */
@@ -83,6 +86,9 @@
     recent = [],
     onOpenRecent,
     onOpenHistory,
+  onToggleBookmark,
+  onAnnotationsPanel,
+  onClearAnnotations,
     onWorkspaceFind,
     workspaceFindEnabled = true,
     onSettings,
@@ -99,6 +105,7 @@
   let copyAsOpen = $state(false);
   /** 清理子菜单展开态（P1-7）。 */
   let cleanupOpen = $state(false);
+  let annotOpen = $state(false);
 
   /** 切换菜单开合 */
   function toggle(name: MenuName): void {
@@ -235,6 +242,45 @@
       >
         <span>{t('menu.edit.lineOps')}</span>
       </button>
+      <div
+        class="submenu-wrap"
+        role="presentation"
+        onmouseenter={() => (annotOpen = true)}
+        onmouseleave={() => (annotOpen = false)}
+      >
+        <button
+          class="item"
+          aria-haspopup="menu"
+          aria-expanded={annotOpen}
+          onclick={() => (annotOpen = !annotOpen)}
+        >
+          <span>{t('menu.edit.annotations')}</span>
+          <span class="arrow">▸</span>
+        </button>
+        {#if annotOpen}
+          <div class="flyout" role="menu" aria-label={t('menu.edit.annotations')}>
+            <button class="item" onclick={() => run(() => onToggleBookmark?.())}>
+              <span>{t('menu.edit.toggleBookmark')}</span>
+            </button>
+            <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('highlightSelection'))}>
+              <span>{t('menu.edit.highlightSelection')}</span>
+            </button>
+            <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('addNote'))}>
+              <span>{t('menu.edit.addNote')}</span>
+            </button>
+            <button class="item" disabled={!editing} onclick={() => run(() => onEditorAction?.('addTodo'))}>
+              <span>{t('menu.edit.addTodo')}</span>
+            </button>
+            <div class="sep" role="separator"></div>
+            <button class="item" onclick={() => run(() => onAnnotationsPanel?.())}>
+              <span>{t('menu.edit.annotationsPanel')}</span>
+            </button>
+            <button class="item" onclick={() => run(() => onClearAnnotations?.())}>
+              <span>{t('menu.edit.clearAnnotations')}</span>
+            </button>
+          </div>
+        {/if}
+      </div>
       <button
         class="item"
         disabled={!editing}

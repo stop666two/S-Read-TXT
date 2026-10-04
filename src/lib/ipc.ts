@@ -1120,6 +1120,8 @@ export const ipc = {
   removeAnnotationNote: (tabId: number, id: number) =>
     invoke<FileAnnotations>('remove_note', { tabId, id }),
   clearAnnotations: (tabId: number) => invoke<FileAnnotations>('clear_annotations', { tabId }),
+  editDisplayPos: (tabId: number, row: number, utf16: number) =>
+    invoke<[number, number]>('edit_display_pos', { tabId, row, utf16 }),
   getDiskUsage: () => invoke<DiskUsageReport>('get_disk_usage'),
   clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
   setBackgroundFile: (path: string) => invoke<BackgroundEntry>('set_background_file', { path }),

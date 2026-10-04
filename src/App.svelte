@@ -15,6 +15,8 @@
   import DropOverlay from './lib/components/DropOverlay.svelte';
   import EmptyState from './lib/components/EmptyState.svelte';
   import HistoryPanel from './lib/components/HistoryPanel.svelte';
+  import AnnotationsPanel from './lib/components/AnnotationsPanel.svelte';
+  import { annotations } from './lib/state/annotations.svelte';
   import MenuBar from './lib/components/MenuBar.svelte';
   import Onboarding from './lib/components/Onboarding.svelte';
   import ReaderView from './lib/components/ReaderView.svelte';
@@ -71,6 +73,34 @@
   const dataDirIssue = $derived(dataDirStore.issue);
   /** 历史面板开关（工具栏 / 菜单 / 快捷键共用） */
   let historyOpen = $state(false);
+  let annotationsOpen = $state(false);
+  let annotClearOpen = $state(false);
+
+  /** 标注：切换书签（编辑态经编辑层；阅读态放在当前顶部行）。 */
+  function toggleBookmarkAnnotation(): void {
+    const tab = active;
+    if (!tab) return;
+    if (tab.editing) {
+      dispatchEditorAction('toggleBookmark');
+      return;
+    }
+    void annotations.addBookmark(tab.tabId, topRow ?? 0, 0).catch((error) => {
+      toasts.error(describeIpcError(toIpcError(error)));
+    });
+  }
+
+  /** 标注：清除本文件全部（ConfirmDialog 确认后执行）。 */
+  async function clearAnnotationsFlow(): Promise<void> {
+    annotClearOpen = false;
+    const tab = active;
+    if (!tab) return;
+    try {
+      await annotations.clear(tab.tabId);
+      toasts.show(t('annot.cleared'));
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
   /** 工作区查找与替换弹窗开关（编辑菜单入口） */
   let workspaceOpen = $state(false);
 
@@ -1183,6 +1213,9 @@
     recent={recentEntries}
     onOpenRecent={(entry) => void historyStore.openEntry(entry)}
     onOpenHistory={() => (historyOpen = true)}
+    onToggleBookmark={toggleBookmarkAnnotation}
+    onAnnotationsPanel={() => (annotationsOpen = true)}
+    onClearAnnotations={() => (annotClearOpen = true)}
     onWorkspaceFind={() => (workspaceOpen = true)}
     workspaceFindEnabled={appSettings?.find.multifileEnabled !== false}
     onSettings={() => void ipc.openSettings()}
@@ -1281,6 +1314,22 @@
 />
 {/if}
 <HistoryPanel open={historyOpen} onClose={() => (historyOpen = false)} />
+  <AnnotationsPanel
+    open={annotationsOpen}
+    tabId={active?.tabId ?? 0}
+    onClose={() => (annotationsOpen = false)}
+    onJump={(row) => {
+      if (active) jumpStore.request(active.tabId, row, 0, 0);
+    }}
+  />
+  <ConfirmDialog
+    open={annotClearOpen}
+    title={t('annot.clearTitle')}
+    message={t('annot.clearMessage')}
+    confirmLabel={t('annot.clear')}
+    onConfirm={() => void clearAnnotationsFlow()}
+    onCancel={() => (annotClearOpen = false)}
+  />
 {#if workspaceOpen}
   <WorkspaceFindDialog
     onClose={() => (workspaceOpen = false)}

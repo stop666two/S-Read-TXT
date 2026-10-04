@@ -277,6 +277,7 @@ fn main() {
             commands::search_workspace,
             commands::replace_workspace,
             commands::document_stats,
+            commands::edit_display_pos,
             commands::list_annotations,
             commands::add_bookmark,
             commands::remove_bookmark,

@@ -946,6 +946,16 @@ impl AppState {
         Ok((path, source))
     }
 
+    /// 逻辑坐标 → 显示坐标（编辑态长行分段映射；非编辑态或无长行时为恒等）。
+    /// 供前端创建标注（标注统一采用显示行坐标，与渲染/重定位一致）。
+    pub fn display_pos(&self, tab_id: u64, row: u64, utf16: u64) -> Result<(u64, u64), AppStateError> {
+        let tab = self.tab(tab_id)?;
+        match &tab.edit {
+            Some(doc) => Ok(doc.seg_of_row_utf16(row, utf16)),
+            None => Ok((row, utf16)),
+        }
+    }
+
     /// 列出当前标签的标注；按引用摘录在当前文档重定位（有校正则落盘）。
     pub fn list_annotations(
         &self,

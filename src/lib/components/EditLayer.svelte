@@ -9,7 +9,7 @@
 
   import { readText, writeHtml, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
-  import { describeIpcError, ipc, toIpcError, type BatchNumberingConfig, type BatchPreview, type ClipboardEntry, type EditApplied, type FindHit, type FindScope, type FindSettings, type ReplacePreview, type SearchMode } from '../ipc';
+  import { describeIpcError, ipc, toIpcError, type BatchNumberingConfig, type BatchPreview, type ClipboardEntry, type EditApplied, type FindHit, type FindScope, type FindSettings, type ReplacePreview, type SearchMode, type NoteKind } from '../ipc';
   import {
     clampPos,
     collapsed,
@@ -47,6 +47,8 @@
   import BatchNumberingDialog from './BatchNumberingDialog.svelte';
   import LineOpsDialog from './LineOpsDialog.svelte';
 import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
+import NoteDialog from './NoteDialog.svelte';
+import { annotations } from '../state/annotations.svelte';
   import type {
     AutoPairsSettings,
     CleanupSettings,
@@ -272,6 +274,7 @@ import ClipboardHistoryDialog from './ClipboardHistoryDialog.svelte';
 
   /** 行操作弹窗开关（P1-2） */
   let lineOpsOpen = $state(false);
+  let noteDialog = $state<{ kind: 'note' | 'todo' } | null>(null);
 /** 剪贴板历史弹窗与列表（P1-5）。 */
 let clipboardOpen = $state(false);
 let clipboardEntries = $state<ClipboardEntry[]>([]);
@@ -1822,6 +1825,85 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
   }
 
   /** 外部动作分发（菜单触发）。 */
+  /** 当前选区（逻辑坐标）；无有效文档时为 null。 */
+  function currentLogicalSelection(): { start: CaretPos; end: CaretPos } | null {
+    if (rowsTotal <= 0) return null;
+    try {
+      return orderedSelection(logicalSelection(selection));
+    } catch {
+      return null;
+    }
+  }
+
+  /** 书签：切换（同一显示行已有书签则移除）。 */
+  async function toggleBookmarkAnnotation(): Promise<void> {
+    const sel = currentLogicalSelection();
+    if (!sel) return;
+    try {
+      const [row, utf16] = await ipc.editDisplayPos(tabId, sel.end.row, sel.end.utf16);
+      const existing = annotations.forTab(tabId)?.bookmarks.find((b) => b.row === row);
+      if (existing) {
+        await annotations.removeBookmark(tabId, existing.id);
+        toasts.show(t('annot.bookmarkRemoved'));
+      } else {
+        await annotations.addBookmark(tabId, row, utf16);
+        toasts.show(t('annot.bookmarkAdded'));
+      }
+      focusEditorProxy();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 高亮：选中文本（限同一行）→ 高亮。 */
+  async function highlightSelectionAnnotation(): Promise<void> {
+    const sel = currentLogicalSelection();
+    if (!sel || sel.start.row !== sel.end.row || (sel.start.row === sel.end.row && sel.start.utf16 === sel.end.utf16)) {
+      toasts.show(t('annot.highlightSingleRow'));
+      return;
+    }
+    try {
+      const [startRow, startUtf16] = await ipc.editDisplayPos(tabId, sel.start.row, sel.start.utf16);
+      const [endRow, endUtf16] = await ipc.editDisplayPos(tabId, sel.end.row, sel.end.utf16);
+      if (startRow !== endRow) {
+        toasts.show(t('annot.highlightSingleRow'));
+        return;
+      }
+      await annotations.addHighlight(tabId, startRow, startUtf16, endUtf16);
+      toasts.show(t('annot.highlightAdded'));
+      focusEditorProxy();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 注释/待办：打开输入弹窗（确认后写入）。 */
+  function openNoteDialog(kind: 'note' | 'todo'): void {
+    if (rowsTotal <= 0) return;
+    noteDialog = { kind };
+  }
+
+  async function confirmNote(text: string): Promise<void> {
+    const pending = noteDialog;
+    noteDialog = null;
+    if (!pending) return;
+    const sel = currentLogicalSelection();
+    if (!sel) return;
+    try {
+      const [row, utf16] = await ipc.editDisplayPos(tabId, sel.start.row, sel.start.utf16);
+      let endUtf16: number | null = null;
+      if (sel.start.row === sel.end.row && sel.start.utf16 !== sel.end.utf16) {
+        const [endRow, end] = await ipc.editDisplayPos(tabId, sel.end.row, sel.end.utf16);
+        if (endRow === row) endUtf16 = end;
+      }
+      await annotations.addNote(tabId, row, utf16, endUtf16, text, pending.kind as NoteKind);
+      toasts.show(pending.kind === 'todo' ? t('annot.todoAdded') : t('annot.noteAdded'));
+      focusEditorProxy();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
   function handleAction(type: EditActionType): void {
     switch (type) {
       case 'undo':
@@ -1853,6 +1935,18 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
         break;
       case 'lineOps':
         lineOpsOpen = true;
+        break;
+      case 'toggleBookmark':
+        void toggleBookmarkAnnotation();
+        break;
+      case 'highlightSelection':
+        void highlightSelectionAnnotation();
+        break;
+      case 'addNote':
+        openNoteDialog('note');
+        break;
+      case 'addTodo':
+        openNoteDialog('todo');
         break;
       case 'clipboardHistory':
         void openClipboardHistory();
@@ -2242,6 +2336,13 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     };
   });
 </script>
+
+<NoteDialog
+  open={noteDialog !== null}
+  title={noteDialog?.kind === 'todo' ? t('menu.edit.addTodo') : t('menu.edit.addNote')}
+  onConfirm={(text) => void confirmNote(text)}
+  onCancel={() => (noteDialog = null)}
+/>
 
 <svelte:window onfocusin={handleFocusIn} />
 
