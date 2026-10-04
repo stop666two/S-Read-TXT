@@ -232,7 +232,7 @@ pub fn export_document_capped(
 /// 生成打印用 HTML（自动调起打印对话框；UTF-8 字符串）。
 ///
 /// 错误：内容超过 [`PRINT_MAX_BYTES`] → `TooLarge`（建议改用导出）。
-pub fn print_html(source: &dyn DocumentSource) -> Result<String, ExportError> {
+pub fn print_html(source: &dyn DocumentSource, auto_print: bool) -> Result<String, ExportError> {
     let mut buffer = Vec::new();
     let mut writer = CappedWriter::new(&mut buffer, PRINT_MAX_BYTES);
     let total = source.rows_total();
@@ -265,9 +265,14 @@ pub fn print_html(source: &dyn DocumentSource) -> Result<String, ExportError> {
         }
         row += rows.len() as u64;
     }
-    writer.write_chunk(
-        b"</pre><script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script></body></html>",
-    )?;
+    if auto_print {
+        writer.write_chunk(
+            b"</pre><script>window.addEventListener('load',function(){setTimeout(function(){window.print();},250);});</script></body></html>",
+        )?;
+    } else {
+        // 自动化测试路径（SRT_PRINT_NO_AUTO）：不自动弹系统打印对话框
+        writer.write_chunk(b"</pre></body></html>")?;
+    }
     writer.finish()?;
     Ok(String::from_utf8(buffer).unwrap_or_default())
 }
@@ -349,10 +354,13 @@ mod tests {
     }
 
     #[test]
-    fn print_html_has_auto_print() {
+    fn print_html_auto_print_is_optional() {
         let (_dir, session) = fixture("print me");
-        let html = print_html(&session).expect("打印 HTML");
+        let html = print_html(&session, true).expect("打印 HTML");
         assert!(html.contains("window.print()"));
+        assert!(html.contains("print me"));
+        let html = print_html(&session, false).expect("打印 HTML（无自动弹窗）");
+        assert!(!html.contains("window.print()"));
         assert!(html.contains("print me"));
     }
 }

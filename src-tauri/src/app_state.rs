@@ -335,9 +335,9 @@ impl AppState {
     }
 
     /// 生成打印 HTML（含自动调起打印脚本；内容超限报错）。
-    pub fn print_html(&self, tab_id: u64) -> Result<String, AppStateError> {
+    pub fn print_html(&self, tab_id: u64, auto_print: bool) -> Result<String, AppStateError> {
         let (_, source) = self.annotation_context(tab_id)?;
-        Ok(crate::export::print_html(source)?)
+        Ok(crate::export::print_html(source, auto_print)?)
     }
 
     /// 取文本窗口（`count` 受 [`MAX_ROWS_PER_FETCH`] 限制）。
@@ -880,6 +880,8 @@ impl AppState {
             .tabs
             .get_mut(&tab_id)
             .ok_or(AppStateError::TabNotFound(tab_id))?;
+        let was_untitled = tab.untitled.is_some();
+        let original_path = tab.session.path().to_path_buf();
         let doc = tab.edit.as_mut().ok_or(AppStateError::NotEditing(tab_id))?;
         let saved_encoding = target_encoding.unwrap_or_else(|| doc.encoding());
         let options = SaveOptions {
@@ -914,6 +916,13 @@ impl AppState {
         tab.session = session;
         tab.read_only = read_only;
         tab.untitled = None;
+        if was_untitled {
+            // 另存为成功后立即清理未命名临时文件（避免等到关闭标签）
+            let _ = std::fs::remove_file(&original_path);
+            if let Some(dir) = original_path.parent() {
+                let _ = std::fs::remove_dir(dir);
+            }
+        }
         Ok(outcome)
     }
 
@@ -2127,5 +2136,32 @@ mod tests {
         relaxed.hard_limit_mb = 8;
         let info = state.reload_tab(info.tab_id, &relaxed).expect("重载失败");
         assert!(!info.read_only, "阈值放宽后应可编辑");
+    }
+
+    /// P3-2：另存为成功后立即清理未命名临时文件。
+    #[test]
+    fn save_as_cleans_untitled_temp_file() {
+        let data_dir = tempfile::tempdir().expect("创建临时目录失败");
+        let target_dir = tempfile::tempdir().expect("创建目标目录失败");
+        let settings = AppSettings::default();
+        let mut state = AppState::new();
+        let info = state
+            .open_untitled(data_dir.path(), &settings)
+            .expect("新建未命名失败");
+        assert!(info.untitled.is_some());
+        let temp_path = PathBuf::from(&info.path);
+        assert!(temp_path.exists(), "临时文件应已生成");
+
+        let target = target_dir.path().join("saved.txt");
+        state
+            .save_edit_as(info.tab_id, &target, None, false, &settings)
+            .expect("另存为失败");
+
+        assert!(target.exists(), "目标文件应已生成");
+        assert!(!temp_path.exists(), "另存为后临时文件应立即清理（N7 回归）");
+        let info = state
+            .tab_info(info.tab_id)
+            .expect("取标签信息失败");
+        assert!(info.untitled.is_none(), "未命名标记应被清除");
     }
 }

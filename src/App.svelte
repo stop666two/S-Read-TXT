@@ -682,6 +682,11 @@ let outlineOpen = $state(false);
   /** 打开保存弹窗（编辑态；编码询问走弹窗，默认保持当前编码） */
   function openSaveDialog(): void {
     if (!active?.editing) return;
+    // 未命名标签（P3-2）：保存入口重定向到另存为（先选路径，再走编码询问）
+    if (active.untitled != null) {
+      void saveAsFlow();
+      return;
+    }
     void askSave(active.tabId);
   }
 

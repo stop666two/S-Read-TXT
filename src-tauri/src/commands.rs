@@ -453,13 +453,16 @@ pub fn export_text(
 }
 
 /// 命令：打开打印窗口（data URL 承载转义 HTML，页面加载后自动调起系统打印）。
+/// 注意：必须是 async —— 同步命令在主线程执行，调 `run_on_main_thread` 会自锁（实测挂起）。
 #[tauri::command]
-pub fn print_document(
+pub async fn print_document(
     app: tauri::AppHandle,
     tab_id: u64,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), IpcError> {
-    let html = match lock_state(&state)?.print_html(tab_id) {
+    // 自动化测试路径（SRT_PRINT_NO_AUTO）：不自动弹系统打印对话框
+    let auto_print = std::env::var_os("SRT_PRINT_NO_AUTO").is_none();
+    let html = match lock_state(&state)?.print_html(tab_id, auto_print) {
         Ok(html) => html,
         Err(s_read_txt::app_state::AppStateError::Export(
             s_read_txt::export::ExportError::TooLarge { .. },
@@ -479,11 +482,25 @@ pub fn print_document(
     let parsed = url
         .parse::<tauri::Url>()
         .map_err(|err| IpcError::new(CODE_IO, format!("打印窗口 URL 无效：{err}")))?;
-    tauri::WebviewWindowBuilder::new(&app, "print-preview", tauri::WebviewUrl::External(parsed))
+    // 必须在主线程创建窗口：从命令线程同步 build 会阻塞（实测挂起）
+    let app_for_window = app.clone();
+    app.run_on_main_thread(move || {
+        if let Some(existing) = tauri::Manager::get_webview_window(&app_for_window, "print-preview") {
+            let _ = existing.close();
+        }
+        let result = tauri::WebviewWindowBuilder::new(
+            &app_for_window,
+            "print-preview",
+            tauri::WebviewUrl::External(parsed),
+        )
         .title("S-Read-TXT 打印")
         .inner_size(820.0, 920.0)
-        .build()
-        .map_err(|err| IpcError::new(CODE_IO, format!("无法打开打印窗口：{err}")))?;
+        .build();
+        if let Err(err) = result {
+            log::error!(target: "sread::print", "打印窗口创建失败：{err}");
+        }
+    })
+    .map_err(|err| IpcError::new(CODE_IO, format!("无法调度打印窗口：{err}")))?;
     Ok(())
 }
 

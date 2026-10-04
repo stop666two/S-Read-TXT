@@ -16,7 +16,8 @@ rust-version = "1.77.2"
 #   `tauri build` 由 CLI 自动启用；裸 `cargo build`/`cargo test` 不会——产物被打回开发语义，
 #   启动后显示「localhost 拒绝连接」。固化此 feature 后，任何方式的编译产物都可独立运行。
 #   代价：`tauri dev`（HMR 开发服务器）不适用于本项目（本项目流程 = tauri build + CDP 验证）。
-tauri = { version = "=2.12.1", features = ["custom-protocol", "image-png"] }
+# webview-data-url：允许以 data: URL 创建打印预览窗口（P3-2 打印功能依赖）。
+tauri = { version = "=2.12.1", features = ["custom-protocol", "image-png", "webview-data-url"] }
 # 原生文件/目录对话框（打开文件、选择数据目录、消息框）
 tauri-plugin-dialog = "=2.8.1"
 # 序列化/反序列化：IPC 载荷、配置、历史、会话
