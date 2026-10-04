@@ -151,11 +151,11 @@
         }
       }}
     >
-      <span class="name">{tab.name}</span>
+      <span class="name">{tab.untitled != null ? t('untitled.name', { n: tab.untitled }) : tab.name}</span>
       <button
         class="close"
         title={t('tabBar.closeHint')}
-        aria-label={t('tabBar.closeAria', { name: tab.name })}
+        aria-label={t('tabBar.closeAria', { name: tab.untitled != null ? t('untitled.name', { n: tab.untitled }) : tab.name })}
         onclick={(event) => {
           event.stopPropagation();
           onClose(tab.tabId);

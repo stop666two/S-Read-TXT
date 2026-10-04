@@ -692,7 +692,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
       .restoreSnapshot(tabId, request.name)
       .then(async (result) => {
         await applyResult(async () => result);
-        toasts.show('snapshot.restoreDone');
+        toasts.show(t('snapshot.restoreDone'));
       })
       .catch((error) => toasts.error(describeIpcError(error)));
   });

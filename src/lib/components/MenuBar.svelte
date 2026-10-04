@@ -60,6 +60,9 @@
   snapshotEditing?: boolean;
   onSnapshotNow?: () => void;
   onSnapshotHistory?: () => void;
+  onNewFile?: () => void;
+  onExport?: () => void;
+  onPrint?: () => void;
   /** 切换打字机模式 */
   onToggleTypewriter?: () => void;
   /** 番茄钟进行中（影响菜单项文案） */
@@ -120,6 +123,9 @@
   snapshotEditing,
   onSnapshotNow,
   onSnapshotHistory,
+  onNewFile,
+  onExport,
+  onPrint,
   pomodoroOn,
   onTogglePomodoro,
     onFontIncrease,
@@ -193,7 +199,10 @@
   {#if openMenu === 'file'}
     <div class="dropdown" role="menu" style="left: 4px">
       <button class="item" onclick={() => run(onOpenFile)}><span>{t('menu.file.open')}</span><span class="hint">Ctrl+O</span></button>
+<button class="item" onclick={() => run(onNewFile)}><span>{t('menu.file.new')}</span></button>
       <button class="item" disabled={!hasTab} onclick={() => run(onReload)}><span>{t('menu.file.reload')}</span></button>
+<button class="item" disabled={!hasTab} onclick={() => run(onExport)}><span>{t('menu.file.export')}</span></button>
+<button class="item" disabled={!hasTab} onclick={() => run(onPrint)}><span>{t('menu.file.print')}</span></button>
 <button class="item" disabled={!versionHistoryEnabled || !snapshotEditing} onclick={() => run(onSnapshotNow)}><span>{t('menu.file.snapshotNow')}</span></button>
 <button class="item" disabled={!versionHistoryEnabled || !hasTab} onclick={() => run(onSnapshotHistory)}><span>{t('menu.file.versionHistory')}</span></button>
       <div class="separator"></div>

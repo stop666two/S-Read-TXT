@@ -41,6 +41,8 @@ export interface TabInfo {
   tabId: number;
   path: string;
   name: string;
+  /** 未命名标签序号（P3-2；新建文件专用） */
+  untitled?: number;
   encoding: string;
   encodingOverride: string | null;
   /** 是否处于编辑模式（编辑文档已创建且模式开关为开） */
@@ -1144,6 +1146,9 @@ export const ipc = {
     invoke<boolean>('delete_snapshot', { tabId, name }),
   markCleanExit: () => invoke<void>('mark_clean_exit'),
   takeCrashFlag: () => invoke<boolean>('take_crash_flag'),
+  newFile: () => invoke<TabInfo>('new_file'),
+  exportText: (tabId: number, path: string) => invoke<number>('export_text', { tabId, path }),
+  printDocument: (tabId: number) => invoke<void>('print_document', { tabId }),
   /** 剪贴板历史（读取最新列表）。 */
   listClipboardHistory: () => invoke<ClipboardEntry[]>('list_clipboard_history'),
   /** 记录一次复制到历史（空文本/禁用时后端 no-op；返回最新列表）。 */

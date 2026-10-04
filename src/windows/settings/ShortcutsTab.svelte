@@ -54,7 +54,7 @@
         shortcuts: next,
       });
       effective = updated.shortcuts.bindings;
-      toasts.show('快捷键已保存');
+      toasts.show(t('shortcut.saved'));
       await emitTo('main', 'srt://settings-changed', { kind: 'shortcuts' });
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));

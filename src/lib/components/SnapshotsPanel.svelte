@@ -72,7 +72,7 @@
     busy = true;
     try {
       const created = await ipc.createSnapshot(tabId);
-      toasts.show(created ? 'snapshot.created' : 'snapshot.unchanged');
+      toasts.show(t(created ? 'snapshot.created' : 'snapshot.unchanged'));
       await reload();
     } catch (error) {
       toasts.error(toIpcError(error).message);
@@ -87,7 +87,7 @@
     if (!target || tabId === null) return;
     try {
       await ipc.deleteSnapshot(tabId, target.name);
-      toasts.show('snapshot.deleted');
+      toasts.show(t('snapshot.deleted'));
       await reload();
     } catch (error) {
       toasts.error(toIpcError(error).message);

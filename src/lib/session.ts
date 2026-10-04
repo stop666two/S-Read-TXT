@@ -38,7 +38,9 @@ export async function collectSession(): Promise<SessionState> {
     schemaVersion: 1,
     window: windowState,
     activeTabIndex: activeIndex >= 0 ? activeIndex : 0,
-    tabs: tabs.tabs.map((tab) => ({
+    tabs: tabs.tabs
+      .filter((tab) => tab.untitled == null)
+      .map((tab) => ({
       path: tab.path,
       encoding: tab.encodingOverride ?? null,
       scrollRow: scrollMemory.get(tab.tabId) ?? 0,

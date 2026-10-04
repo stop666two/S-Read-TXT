@@ -501,7 +501,11 @@ let outlineOpen = $state(false);
   }
 
   /** 窗口标题（自定义标题栏 + document.title：文件名 - 应用名） */
-  const windowTitle = $derived(active ? `${active.name} - S-Read-TXT` : 'S-Read-TXT');
+  const windowTitle = $derived(
+    active
+      ? `${active.untitled != null ? t('untitled.name', { n: active.untitled }) : active.name} - S-Read-TXT`
+      : 'S-Read-TXT',
+  );
 
   // 同步 document.title（任务栏/Alt-Tab 名称）
   $effect(() => {
@@ -713,6 +717,11 @@ let outlineOpen = $state(false);
     force: boolean,
   ): Promise<boolean> {
     if (!tabId) return false;
+    // 未命名标签（P3-2）：保存重定向到另存为；关闭链路会因未保存而中止，用户完成另存为后需再次关闭
+    if (active?.tabId === tabId && active.untitled != null) {
+      await saveAsFlow();
+      return false;
+    }
     try {
       const result = await ipc.saveTab(tabId, encoding, backup, force);
       tabs.update(result.tab);
@@ -780,7 +789,7 @@ let outlineOpen = $state(false);
     let filePath: string | null = null;
     try {
       filePath = await save({
-        defaultPath: tab.path,
+        defaultPath: tab.untitled != null ? `${t('untitled.name', { n: tab.untitled })}.txt` : tab.path,
         filters: [
           { name: t('app.filter.text'), extensions: ['txt', 'log', 'md'] },
           { name: t('app.filter.all'), extensions: ['*'] },
@@ -793,6 +802,59 @@ let outlineOpen = $state(false);
     }
     if (!filePath) return;
     saveRequest = { tabId: tab.tabId, targetPath: filePath, resolve: () => {} };
+  }
+
+  /** 新建文件（P3-2）：后端生成未命名文件并以编辑模式打开 */
+  async function newFileFlow(): Promise<void> {
+    try {
+      await ipc.newFile();
+      tabs.applyView(await ipc.listTabs());
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 导出…（P3-2）：格式由扩展名推断，不改变标签状态 */
+  async function exportFlow(): Promise<void> {
+    const tab = active;
+    if (!tab) return;
+    const suggested = tab.name.replace(/\.[^.]+$/, '');
+    let filePath: string | null = null;
+    try {
+      filePath = await save({
+        defaultPath: `${suggested}.html`,
+        filters: [
+          { name: 'HTML', extensions: ['html', 'htm'] },
+          { name: 'JSON', extensions: ['json'] },
+          { name: 'CSV', extensions: ['csv'] },
+          { name: 'Markdown', extensions: ['md'] },
+          { name: 'TXT', extensions: ['txt'] },
+          { name: t('export.filterAll'), extensions: ['*'] },
+        ],
+      });
+    } catch (error) {
+      toasts.error(t('export.failed', { message: String(error) }));
+      return;
+    }
+    if (!filePath) return;
+    try {
+      const bytes = await ipc.exportText(tab.tabId, filePath);
+      toasts.show(t('export.done', { bytes }));
+    } catch (error) {
+      toasts.error(t('export.failed', { message: describeIpcError(toIpcError(error)) }));
+    }
+  }
+
+  /** 打印…（P3-2）：打开打印窗口，由页面自动调起系统打印 */
+  async function printFlow(): Promise<void> {
+    const tab = active;
+    if (!tab) return;
+    try {
+      await ipc.printDocument(tab.tabId);
+      toasts.show(t('print.opened'));
+    } catch (error) {
+      toasts.error(t('print.failed', { message: describeIpcError(toIpcError(error)) }));
+    }
   }
 
   /** 重新加载待确认（脏标签） */
@@ -1433,7 +1495,7 @@ onMount(() => {
     void ipc
       .takeCrashFlag()
       .then((crashed) => {
-        if (crashed && appSettings?.file.versionHistory) toasts.show('snapshot.crashToast');
+        if (crashed && appSettings?.file.versionHistory) toasts.show(t('snapshot.crashToast'));
       })
       .catch(() => {});
   });
@@ -1501,6 +1563,9 @@ onMount(() => {
   snapshotEditing={active?.editing ?? false}
   onSnapshotNow={() => void snapshotNow()}
   onSnapshotHistory={() => (snapshotsOpen = true)}
+  onNewFile={() => void newFileFlow()}
+  onExport={() => void exportFlow()}
+  onPrint={() => void printFlow()}
           onFoldAll={foldAll}
           onFoldNone={foldNone}
     pomodoroOn={pomodoroOn}
