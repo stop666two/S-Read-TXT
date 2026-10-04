@@ -5,17 +5,17 @@
 //   C3 「打开剪贴板中的路径」→ 打开剪贴板文件
 //   C4 截图
 // 前置：npm run tauri build -- --debug --no-bundle（或 node scripts/dev.mjs build）
+// 说明：工作目录位于项目内 tmp/（已 gitignore）；SRT_NO_ELEVATION=1 仅供自动化稳定。
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createClient, delay, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
+import { createClient, delay, dismissOnboarding, findTarget, waitForValue } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exe = resolve(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe');
-const work = join(tmpdir(), `srt-cli-${Date.now()}`);
+const work = join(root, 'tmp', `e2e-cli-${Date.now()}`);
 const dataDir = join(work, 'data');
 mkdirSync(work, { recursive: true });
 mkdirSync(dataDir, { recursive: true });
@@ -30,6 +30,7 @@ const port = 9600 + Math.floor(Math.random() * 300);
 const env = {
   ...process.env,
   SRT_DATA_DIR: dataDir,
+  SRT_NO_ELEVATION: '1',
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
 };
 
@@ -94,13 +95,15 @@ function killTree() {
 }
 
 try {
-  const target = await waitForValue(async () => findTarget(port, null), 30_000, 400);
-  client = await createClient(target.webSocketDebuggerUrl ?? target);
+  const wsUrl = await waitForValue(() => findTarget(port, null), 30_000, 400);
+  client = await createClient(wsUrl);
   await waitForValue(
     () => evalJs('Boolean(window.__srt && document.querySelector(\'.menu-bar\'))'),
     30_000,
     400,
   );
+  // 全新数据目录首启会出现使用向导模态：真实鼠标点击菜单前必须关闭（否则点击被遮挡）。
+  await dismissOnboarding(evalJs);
 
   // C1 启动参数自动打开
   const tabs1 = await waitForValue(async () => {
