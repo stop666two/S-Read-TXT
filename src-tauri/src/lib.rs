@@ -16,6 +16,7 @@
 //! - `textfile`：读取引擎（mmap/编码/稀疏索引/文本窗口）
 //! - `time_util`：RFC 3339 时间工具
 
+pub mod annotations;
 pub mod app_state;
 pub mod background;
 pub mod clipboard_history;
