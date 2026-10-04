@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `14` | `14` | 配置格式版本（当前 v14；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `15` | `14` | 配置格式版本（当前 v15；启动自动迁移旧版，见 §2.7） |
 | `display.lineNumbers` | boolean | `true`/`false` | `false` | 显示行号（显示行序号，1 基；P2-2） |
 | `display.relativeLineNumbers` | boolean | `true`/`false` | `false` | 相对行号（相对编辑光标 / 阅读顶部行） |
 | `display.highlightCurrentLine` | boolean | `true`/`false` | `true` | 高亮当前行 |
@@ -80,6 +80,15 @@
 | `editor.cleanup.trailingWhitespace` | boolean | `true`/`false` | `true` | 「一键清理」包含：删除行尾空白 |
 | `editor.cleanup.collapseBlankLines` | boolean | `true`/`false` | `true` | 「一键清理」包含：合并重复空行 |
 | `editor.cleanup.trailingNewline` | boolean | `true`/`false` | `true` | 「一键清理」包含：统一末尾换行 |
+| `file.newEncoding` | string | 8 种编码名 | `UTF-8` | 新建文件默认编码（P3-1；新建功能在 P3-2 提供）|
+| `file.newEol` | string | `lf`/`crlf`/`cr` | `lf` | 新建文件默认换行 |
+| `file.autosaveIntervalSec` | number | 5–600 | `30` | 自动保存（快照式）间隔（秒）|
+| `file.autosaveWriteBack` | boolean | `true`/`false` | `false` | 自动保存是否写回原文件 |
+| `file.snapshotKeep` | number | 1–1000 | `50` | 快照保留份数上限 |
+| `file.snapshotMaxMB` | number | 10–4096 | `200` | 单文件快照容量上限（MB）|
+| `file.versionHistory` | boolean | `true`/`false` | `true` | 版本历史开关 |
+| `file.associations` | string[] | 扩展名（≤32 × 16 字） | `[".txt"]` | 关联扩展名（P3-3 注册）|
+| `file.recentLimit` | number | 0–200 | `20` | 「最近打开」显示条数；0 隐藏 |
 | `find.caseSensitive` | boolean | `true`/`false` | `false` | 查找默认区分大小写（F-01） |
 | `find.wholeWord` | boolean | `true`/`false` | `false` | 查找默认全词匹配（`\b` 边界；F-02） |
 | `find.wrapAround` | boolean | `true`/`false` | `true` | 循环查找：到文末从文首继续（F-05） |
@@ -98,7 +107,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `14` | `14` | 配置格式版本（当前 v14；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `15` | `14` | 配置格式版本（当前 v15；启动自动迁移旧版，见 §2.7） |
 | `theme` | string | `system` / `light` / `dark` / `eye-green` / `paper-cream` / `high-contrast` / `minimal-gray` / 用户主题 id | `system` | 主题 id；`system` 跟随系统明暗解析；用户主题来自 `data/themes/<id>.json`（导入生成） |
 | `themeAnimEnabled` | boolean | `true`/`false` | `true` | 主题切换过渡动画（尊重系统「减少动态效果」） |
 | `themeAnimMs` | number | 0–10000 整数 | `200` | 主题过渡时长（ms；0 = 无过渡） |
@@ -135,7 +144,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `14` | `14` | 配置格式版本（当前 v14；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `15` | `14` | 配置格式版本（当前 v15；启动自动迁移旧版，见 §2.7） |
 | `bindings` | object | 动作 id → 组合键字符串 | 见下表 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
 
 组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`）。
@@ -302,3 +311,9 @@
 
 - 全部依赖锁定精确版本：`package.json` 无 `^`/`~`（`.npmrc` 已设 `save-exact=true`）；`Cargo.toml` 使用 `=` 前缀。
 - 锁文件（`package-lock.json`、`Cargo.lock`）必须提交且不手动修改。
+
+### 2.11 `snapshots/` 与 `clean-exit.json`（快照 / 版本历史 / 退出标记；P3-1）
+
+- 目录：`data/snapshots/<路径 FNV-1a 键>/<毫秒时间戳>-<序号>.snap`；单文件独立子目录。
+- 生成：内容与最新快照逐字节相同则跳过；超出 `file.snapshotKeep` 份数或 `file.snapshotMaxMB` 容量时删除最旧；原子写。
+- `clean-exit.json`：正常退出流程写入的标记文件；启动时若标记缺失且版本历史开启，提示「上次异常退出」（可从版本历史恢复）。

@@ -444,3 +444,10 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 前端：folds.ts 纯函数（13 测试）；ReaderView 视图行通道（过滤∩折叠）、折叠标记（CSS 伪元素三角）、大纲数据与面包屑（bcTopRow 随顶部行更新）；OutlinePanel（查看→大纲）；MenuBar/App 接线。
 - 修复：程序化跳转后顶部行/面包屑/状态栏行号不刷新（applyInitialScroll 完成后补报 reportTopRow）；折叠标记仅分屏路径出现（滚动/编辑行模板补齐）。
 - smoke-outline 13/13（并入 verify-all 44 步）；回归 edit 12/12、filter 13/13；截图 phase-p2-outline.png。
+
+### P3-1 快照与版本历史（完成）
+- 设置 v15 `app.file` 9 项（自动保存 5–600s 默认 30；写回默认关；快照份数 1–1000 默认 50；容量 10–4096MB 默认 200；最近打开 0–200 默认 20）；注册表新分组进入设置「常规」页。
+- 后端：`snapshots.rs`（FNV 路径键 / 双上限 prune / 原子写 / 与最新逐字节去重）+ 6 命令（list/create/restore/delete/mark_clean_exit/take_crash_flag）；`save.rs` 抽出 `document_bytes/encode_into`；`edit_doc.rs` 抽出 `replace_all_content_utf8` 并新增 `restore_from_snapshot_bytes`（单撤销步）。
+- 前端：SnapshotsPanel（恢复走 EditLayer applyResult）；App 自动保存定时、crash 一次性提示、`markCleanExit` 接入三条干净退出路径（修正首版误命中防抖保存）；恢复仅编辑态可用。
+- 验证：cargo **435（407 lib+15+2+6+5）**；svelte-check 0/0；vitest 115；smoke-snapshots **8/8**（S1 编辑变脏 → S2/S3 快照最新在上 → S4 恢复旧快照与 Ctrl+Z → S5 删除确认 → S6 文件落盘 → S7 截图 `p3-snapshots.png`）。
+- 后续：P3-2 新建文件（消费 `file.newEncoding/newEol`）、导出与打印。

@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 427（399 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 115；E2E 35 套 ≈563 项；verify-all 44 步。
+- 计数口径：Rust 435（399 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 115；E2E 35 套 ≈571 项；verify-all 45 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -156,3 +156,4 @@
 - 2026-10-04 设置自定义化 S1–S4：数值范围大幅放宽（24 常量）；字体自由输入+datalist；颜色校验扩展（hsl/rgb 系+注入防线）；主题编辑器+智能配色（palette 对比度达标+语义色固定）+AI 占位；页边距四向×阅读/编辑两套（设置 v12）；修复设置广播乱序回跳；smoke-settings 57/57。
 - 2026-10-04 P2-3：书签/高亮/注释（annotations.rs 摘录锚点重定位；10 命令 + edit_display_pos；行内高亮/丝带/标记渲染；标注面板；设置持久化 data/annotations/；修复空色高亮不渲染真实缺陷；smoke-annotations 11/11 并入 verify-all（现 42 步））。
 - 2026-10-03 P2-6：大纲/折叠/面包屑（设置 v14；outline_items/fold_regions 命令；smoke-outline 13 项；修复程序化跳转顶部行滞后与折叠标记缺滚动路径）。
+- 2026-10-04 P3-1：快照与版本历史（设置 v15 `app.file` 9 项；`snapshots.rs` 双上限存储与 6 命令；写盘原语统一 `document_bytes/encode_into`；前端自动保存/异常退出提示/快照面板与「文件→保存快照/版本历史…」；smoke-snapshots 8/8 并入 verify-all（现 45 步））。

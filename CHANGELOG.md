@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+### P3-1（快照 / 版本历史；schema v15）
+
+- 新增：自动保存（快照式）与版本历史（`file.versionHistory`/`file.autosaveIntervalSec`/`file.autosaveWriteBack`/`file.snapshotKeep`/`file.snapshotMaxMB`；`data/snapshots/` 双上限、逐字节去重、原子写）；
+- 新增：快照面板（立即快照 / 恢复（单撤销步）/ 删除）与「文件 → 保存快照 / 版本历史…」入口；
+- 新增：异常退出检测（`clean-exit.json`；启动提示可从版本历史恢复未保存内容）；
+- 新增：文件设置节（`file.newEncoding`/`file.newEol`/`file.associations`/`file.recentLimit`；「最近打开」条数随 `recentLimit`）；
+- 新增命令：`list_snapshots`/`create_snapshot`/`restore_snapshot`/`delete_snapshot`/`mark_clean_exit`/`take_crash_flag`；
+
 ### P2-6（大纲 / 折叠 / 面包屑）
 
 - 新增：折叠（V-08，`display.folding`：off/indent/heading/regex；与过滤共用视图行通道，单折叠/折叠全部/展开全部，头部行标记）；
