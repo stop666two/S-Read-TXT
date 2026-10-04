@@ -41,7 +41,8 @@ writeFileSync(join(dataDir, 'settings.json.bak'), Buffer.alloc(BACKUP_BYTES, 0x6
 writeFileSync(join(dataDir, 'reader.json.corrupt-1'), Buffer.alloc(CORRUPT_BYTES, 0x63));
 writeFileSync(join(dataDir, 'settings.json'), '{"schemaVersion":2}\n');
 
-const port = 9950 + Math.floor(Math.random() * 150);
+// 端口段避开 Windows 保留区间 10008–10107（HNS/Hyper-V 排除段；落入则 WebView2 调试端口绑定失败、CDP 永不出现）
+const port = 9600 + Math.floor(Math.random() * 250);
 const child = spawn(exe, [], {
   env: {
     ...process.env,

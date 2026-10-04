@@ -22,7 +22,8 @@ const dataDir = join(work, 'data');
 mkdirSync(dataDir, { recursive: true });
 // 预置当前 schema 版本（避免迁移噪音；界面断言只看默认值）
 writeFileSync(join(dataDir, 'settings.json'), JSON.stringify({ schemaVersion: 2 }), 'utf8');
-const port = 10100 + Math.floor(Math.random() * 300);
+// 端口段避开 Windows 保留区间 10008–10107（HNS/Hyper-V 排除段）
+const port = 9800 + Math.floor(Math.random() * 150);
 
 const child = spawn(exe, [], {
   env: {

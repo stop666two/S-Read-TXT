@@ -505,7 +505,16 @@ async function main() {
       return value === 'need' ? value : null;
     }, 5000);
     check('F22b 选取历史回填查询', picked === 'need', String(picked));
-    await evalJs(`(document.querySelector('[data-find-history]')?.click(), true)`);
+    // F22b 选取历史项后面板可能已自动收起：先按需打开，并等「清空」按钮渲染就绪再点击
+    // （避免开关竞态：面板已开时再点开关会把它关上，导致清空点击落空——曾致 F22c 偶发失败）
+    const panelOpen = await evalJs(`document.querySelector('[data-find-history-clear]') !== null`);
+    if (!panelOpen) {
+      await evalJs(`(document.querySelector('[data-find-history]')?.click(), true)`);
+      await waitForValue(
+        async () => ((await evalJs(`document.querySelector('[data-find-history-clear]') !== null`)) ? true : null),
+        3000,
+      );
+    }
     await evalJs(`(document.querySelector('[data-find-history-clear]')?.click(), true)`);
     const historyEmpty = await waitForValue(async () => {
       const text = await evalJs(`document.querySelector('.history-panel')?.textContent ?? ''`);

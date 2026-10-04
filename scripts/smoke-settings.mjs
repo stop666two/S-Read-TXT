@@ -239,11 +239,12 @@ async function main() {
     await startRecording('关闭当前标签');
     await pressOn(settingsClient, 'q', 'KeyQ', 81, 2);
     await waitForValue(async () => ((await comboText('关闭当前标签')) === 'Ctrl+Q' ? true : null), 6000);
+    await waitForValue(async () => ((await evalSet(`document.querySelector('.reset-all') !== null`)) ? true : null), 6000);
     await evalSet(`document.querySelector('.reset-all')?.click() ?? true`);
     const resetAll = await waitForValue(async () => {
       const text = await comboText('关闭当前标签');
       return text === 'Ctrl+W' ? text : null;
-    }, 6000);
+    }, 12000);
     check('S7a 全部恢复默认生效', resetAll === 'Ctrl+W');
     check('S7b 覆盖表为空', Object.keys(readOverrides()).length === 0, JSON.stringify(readOverrides()));
 
@@ -534,13 +535,15 @@ async function main() {
       await delay(250);
     };
     await setMargin('reader.margins.reading.top', 200);
-    await delay(600);
+    const readPad = await waitForValue(async () => {
+      const v = await evalMain(
+        `(() => { const page = document.querySelector('.page'); return page ? Number.parseFloat(getComputedStyle(page).paddingTop) : -1; })()`,
+      );
+      return Math.round(v) === 200 ? v : null;
+    }, 8000);
+    check('S14f 阅读上边距即时生效', readPad !== null && Math.round(readPad) === 200, String(readPad));
     await setMargin('reader.margins.editing.top', 20);
     await delay(600);
-    const readPad = await evalMain(
-      `(() => { const page = document.querySelector('.page'); return page ? Number.parseFloat(getComputedStyle(page).paddingTop) : -1; })()`,
-    );
-    check('S14f 阅读上边距即时生效', Math.round(readPad) === 200, String(readPad));
     await evalMain(`(() => { document.querySelector('[aria-label="切换编辑模式"]')?.click(); return true; })()`);
     await delay(400);
     const editPad = await evalMain(

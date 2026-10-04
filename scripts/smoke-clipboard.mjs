@@ -35,7 +35,8 @@ mkdirSync(dataDir, { recursive: true });
 const samplePath = join(workDir, 'clip.txt');
 const SAMPLE = 'alpha\nbeta\ngamma';
 writeFileSync(samplePath, SAMPLE, 'utf8');
-const port = 10100 + Math.floor(Math.random() * 300);
+// 端口段避开 Windows 保留区间 10008–10107（HNS/Hyper-V 排除段）
+const port = 9400 + Math.floor(Math.random() * 250);
 
 let passed = 0;
 let failed = 0;
