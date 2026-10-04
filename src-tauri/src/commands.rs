@@ -14,6 +14,7 @@ use std::sync::{Mutex, MutexGuard};
 use serde::Serialize;
 use tauri::{Emitter, State};
 
+use s_read_txt::annotations::{FileAnnotations, NoteKind};
 use s_read_txt::app_state::{AppState, RowsPayload, TabInfo};
 use s_read_txt::background::{self, BackgroundEntry};
 use s_read_txt::clipboard_history as clipboard_store;
@@ -1289,6 +1290,153 @@ pub fn document_stats(
     with_context(LogContext::request(), || {
         lock_state(&state)?
             .document_stats(tab_id, s_read_txt::stats::STATS_MAX_CHARS)
+            .map_err(IpcError::from)
+    })
+}
+
+// ---------- 标注（P2-3：书签/高亮/注释） ----------
+
+/// 命令：列出当前标签的标注（读取时自动按摘录重定位）。
+#[tauri::command]
+pub fn list_annotations(
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FileAnnotations, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        lock_state(&state)?
+            .list_annotations(&dir, tab_id)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：添加书签。
+#[tauri::command]
+pub fn add_bookmark(
+    tab_id: u64,
+    row: u64,
+    utf16: u64,
+    label: Option<String>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FileAnnotations, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        lock_state(&state)?
+            .add_bookmark(&dir, tab_id, row, utf16, label)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：删除书签。
+#[tauri::command]
+pub fn remove_bookmark(
+    tab_id: u64,
+    id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FileAnnotations, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        lock_state(&state)?
+            .remove_bookmark(&dir, tab_id, id)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：添加高亮（区间半开）。
+#[tauri::command]
+pub fn add_highlight(
+    tab_id: u64,
+    row: u64,
+    start_utf16: u64,
+    end_utf16: u64,
+    color: Option<String>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FileAnnotations, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        lock_state(&state)?
+            .add_highlight(&dir, tab_id, row, start_utf16, end_utf16, color)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：删除高亮。
+#[tauri::command]
+pub fn remove_highlight(
+    tab_id: u64,
+    id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FileAnnotations, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        lock_state(&state)?
+            .remove_highlight(&dir, tab_id, id)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：添加注释 / 待办 / 行内批注。
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn add_note(
+    tab_id: u64,
+    row: u64,
+    utf16: u64,
+    end_utf16: Option<u64>,
+    text: String,
+    kind: NoteKind,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FileAnnotations, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        lock_state(&state)?
+            .add_note(&dir, tab_id, row, utf16, end_utf16, text, kind)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：更新注释文本与完成状态。
+#[tauri::command]
+pub fn update_note(
+    tab_id: u64,
+    id: u64,
+    text: Option<String>,
+    done: Option<bool>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FileAnnotations, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        lock_state(&state)?
+            .update_note(&dir, tab_id, id, text, done)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：删除注释。
+#[tauri::command]
+pub fn remove_note(
+    tab_id: u64,
+    id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FileAnnotations, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        lock_state(&state)?
+            .remove_note(&dir, tab_id, id)
+            .map_err(IpcError::from)
+    })
+}
+
+/// 命令：清空当前标签全部标注。
+#[tauri::command]
+pub fn clear_annotations(
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FileAnnotations, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        lock_state(&state)?
+            .clear_annotations(&dir, tab_id)
             .map_err(IpcError::from)
     })
 }

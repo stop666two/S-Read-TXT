@@ -94,6 +94,7 @@ pub struct WorkspaceReplaceResponse {
     /// 因只读/未进入编辑态而跳过的标签数
     pub skipped: u32,
 }
+use crate::annotations::{self, FileAnnotations};
 use crate::textfile::source::DocumentSource;
 use crate::textfile::window::RowText;
 
@@ -927,6 +928,164 @@ impl AppState {
             .iter()
             .filter_map(|row| tab.session.rows(*row, 1).into_iter().next())
             .collect())
+    }
+
+    // ---------- 标注（P2-3：书签/高亮/注释） ----------
+
+    /// 当前标签的标注数据源：返回（源文件路径，文档来源；编辑优先）。
+    fn annotation_context(
+        &self,
+        tab_id: u64,
+    ) -> Result<(String, &dyn DocumentSource), AppStateError> {
+        let tab = self.tab(tab_id)?;
+        let source: &dyn DocumentSource = match &tab.edit {
+            Some(doc) => doc,
+            None => &tab.session,
+        };
+        let path = source.path().to_string_lossy().into_owned();
+        Ok((path, source))
+    }
+
+    /// 列出当前标签的标注；按引用摘录在当前文档重定位（有校正则落盘）。
+    pub fn list_annotations(
+        &self,
+        dir: &Path,
+        tab_id: u64,
+    ) -> Result<FileAnnotations, AppStateError> {
+        let (path, source) = self.annotation_context(tab_id)?;
+        let mut data = annotations::load(dir, &path);
+        if annotations::resolve_against(&mut data, source) {
+            annotations::save(dir, &mut data)?;
+        }
+        Ok(data)
+    }
+
+    /// 添加书签（重复位置返回既有项）。
+    pub fn add_bookmark(
+        &self,
+        dir: &Path,
+        tab_id: u64,
+        row: u64,
+        utf16: u64,
+        label: Option<String>,
+    ) -> Result<FileAnnotations, AppStateError> {
+        let (path, source) = self.annotation_context(tab_id)?;
+        let mut data = annotations::load(dir, &path);
+        annotations::add_bookmark(&mut data, source, row, utf16, label);
+        annotations::save(dir, &mut data)?;
+        Ok(data)
+    }
+
+    /// 删除书签（按 id）。
+    pub fn remove_bookmark(
+        &self,
+        dir: &Path,
+        tab_id: u64,
+        id: u64,
+    ) -> Result<FileAnnotations, AppStateError> {
+        let (path, _source) = self.annotation_context(tab_id)?;
+        let mut data = annotations::load(dir, &path);
+        if annotations::remove_bookmark(&mut data, id) {
+            annotations::save(dir, &mut data)?;
+        }
+        Ok(data)
+    }
+
+    /// 添加高亮（区间半开；相同区间去重）。
+    pub fn add_highlight(
+        &self,
+        dir: &Path,
+        tab_id: u64,
+        row: u64,
+        start_utf16: u64,
+        end_utf16: u64,
+        color: Option<String>,
+    ) -> Result<FileAnnotations, AppStateError> {
+        let (path, source) = self.annotation_context(tab_id)?;
+        let mut data = annotations::load(dir, &path);
+        annotations::add_highlight(&mut data, source, row, start_utf16, end_utf16, color);
+        annotations::save(dir, &mut data)?;
+        Ok(data)
+    }
+
+    /// 删除高亮（按 id）。
+    pub fn remove_highlight(
+        &self,
+        dir: &Path,
+        tab_id: u64,
+        id: u64,
+    ) -> Result<FileAnnotations, AppStateError> {
+        let (path, _source) = self.annotation_context(tab_id)?;
+        let mut data = annotations::load(dir, &path);
+        if annotations::remove_highlight(&mut data, id) {
+            annotations::save(dir, &mut data)?;
+        }
+        Ok(data)
+    }
+
+    /// 添加注释 / 待办 / 行内批注。
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_note(
+        &self,
+        dir: &Path,
+        tab_id: u64,
+        row: u64,
+        utf16: u64,
+        end_utf16: Option<u64>,
+        text: String,
+        kind: annotations::NoteKind,
+    ) -> Result<FileAnnotations, AppStateError> {
+        let (path, source) = self.annotation_context(tab_id)?;
+        let mut data = annotations::load(dir, &path);
+        annotations::add_note(&mut data, source, row, utf16, end_utf16, text, kind);
+        annotations::save(dir, &mut data)?;
+        Ok(data)
+    }
+
+    /// 更新注释文本与完成状态。
+    pub fn update_note(
+        &self,
+        dir: &Path,
+        tab_id: u64,
+        id: u64,
+        text: Option<String>,
+        done: Option<bool>,
+    ) -> Result<FileAnnotations, AppStateError> {
+        let (path, _source) = self.annotation_context(tab_id)?;
+        let mut data = annotations::load(dir, &path);
+        if annotations::update_note(&mut data, id, text, done) {
+            annotations::save(dir, &mut data)?;
+        }
+        Ok(data)
+    }
+
+    /// 删除注释（按 id）。
+    pub fn remove_note(
+        &self,
+        dir: &Path,
+        tab_id: u64,
+        id: u64,
+    ) -> Result<FileAnnotations, AppStateError> {
+        let (path, _source) = self.annotation_context(tab_id)?;
+        let mut data = annotations::load(dir, &path);
+        if annotations::remove_note(&mut data, id) {
+            annotations::save(dir, &mut data)?;
+        }
+        Ok(data)
+    }
+
+    /// 清空当前标签全部标注。
+    pub fn clear_annotations(
+        &self,
+        dir: &Path,
+        tab_id: u64,
+    ) -> Result<FileAnnotations, AppStateError> {
+        let (path, _source) = self.annotation_context(tab_id)?;
+        let mut data = annotations::load(dir, &path);
+        if annotations::clear_all(&mut data) {
+            annotations::save(dir, &mut data)?;
+        }
+        Ok(data)
     }
 
     /// 文档级文本统计（P2-1 状态栏 v2）：编辑文档优先，否则只读会话。
