@@ -25,8 +25,8 @@ use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
     IpcError, CODE_BACKGROUND_INVALID, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING,
     CODE_INVALID_EOL, CODE_INVALID_POSITION, CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED,
-    CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET,
-    CODE_SNAPSHOT_INVALID, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
+    CODE_PRINT_TOO_LARGE, CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT,
+    CODE_SETTINGS_RESET, CODE_SNAPSHOT_INVALID, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -428,6 +428,63 @@ pub fn mark_clean_exit() -> Result<(), IpcError> {
 pub fn take_crash_flag() -> bool {
     let (dir, _origin) = paths::resolve_data_dir();
     !s_read_txt::snapshots::take_clean_exit(&dir)
+}
+
+/// 命令：新建未命名文件（P3-2）：按 `file` 设置生成临时文件并以编辑模式打开。
+#[tauri::command]
+pub fn new_file(state: State<'_, Mutex<AppState>>) -> Result<TabInfo, IpcError> {
+    let settings = current_app_settings();
+    let (dir, _origin) = paths::resolve_data_dir();
+    lock_state(&state)?
+        .open_untitled(&dir, &settings)
+        .map_err(Into::into)
+}
+
+/// 命令：导出当前标签（含未保存编辑）到指定路径；格式由扩展名推断。
+#[tauri::command]
+pub fn export_text(
+    tab_id: u64,
+    path: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<u64, IpcError> {
+    lock_state(&state)?
+        .export_text(tab_id, Path::new(&path))
+        .map_err(Into::into)
+}
+
+/// 命令：打开打印窗口（data URL 承载转义 HTML，页面加载后自动调起系统打印）。
+#[tauri::command]
+pub fn print_document(
+    app: tauri::AppHandle,
+    tab_id: u64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), IpcError> {
+    let html = match lock_state(&state)?.print_html(tab_id) {
+        Ok(html) => html,
+        Err(s_read_txt::app_state::AppStateError::Export(
+            s_read_txt::export::ExportError::TooLarge { .. },
+        )) => {
+            return Err(IpcError::new(
+                CODE_PRINT_TOO_LARGE,
+                "内容过大，无法打印；请改用「导出」",
+            ))
+        }
+        Err(err) => return Err(err.into()),
+    };
+    if let Some(existing) = tauri::Manager::get_webview_window(&app, "print-preview") {
+        let _ = existing.close();
+    }
+    let encoded = fonts::base64_encode(html.as_bytes());
+    let url = format!("data:text/html;charset=utf-8;base64,{encoded}");
+    let parsed = url
+        .parse::<tauri::Url>()
+        .map_err(|err| IpcError::new(CODE_IO, format!("打印窗口 URL 无效：{err}")))?;
+    tauri::WebviewWindowBuilder::new(&app, "print-preview", tauri::WebviewUrl::External(parsed))
+        .title("S-Read-TXT 打印")
+        .inner_size(820.0, 920.0)
+        .build()
+        .map_err(|err| IpcError::new(CODE_IO, format!("无法打开打印窗口：{err}")))?;
+    Ok(())
 }
 
 /// 命令：过滤扫描（P1-4，只读会话；返回命中显示行号供阅读态虚拟化）。

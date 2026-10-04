@@ -79,6 +79,12 @@ pub const CODE_MULTIFILE_DISABLED: &str = "MULTIFILE_DISABLED";
 pub const CODE_OUTLINE_INVALID: &str = "OUTLINE_INVALID";
 /// 快照/版本历史操作失败
 pub const CODE_SNAPSHOT_INVALID: &str = "SNAPSHOT_INVALID";
+/// 未命名文件必须先另存为（P3-2）
+pub const CODE_UNTITLED_NEEDS_PATH: &str = "UNTITLED_NEEDS_PATH";
+/// 导出内容超限（P3-2）
+pub const CODE_EXPORT_TOO_LARGE: &str = "EXPORT_TOO_LARGE";
+/// 打印内容超限（P3-2；建议改用导出）
+pub const CODE_PRINT_TOO_LARGE: &str = "PRINT_TOO_LARGE";
 /// 字体格式不支持
 pub const CODE_FONT_UNSUPPORTED: &str = "FONT_UNSUPPORTED";
 /// 字体文件过大
@@ -245,6 +251,13 @@ impl From<AppStateError> for IpcError {
             AppStateError::Batch(err) => err.into(),
             AppStateError::Outline(err) => err.into(),
             AppStateError::Snapshot(err) => err.into(),
+    AppStateError::UntitledNeedsPath(_) => Self::new(CODE_UNTITLED_NEEDS_PATH, err.to_string()),
+    AppStateError::Export(err) => match err {
+        crate::export::ExportError::TooLarge { .. } => {
+            Self::new(CODE_EXPORT_TOO_LARGE, err.to_string())
+        }
+        _ => Self::new(CODE_IO, err.to_string()),
+    },
             AppStateError::Filter(err) => err.into(),
             AppStateError::LineOp(err) => err.into(),
             AppStateError::Save(err) => err.into(),

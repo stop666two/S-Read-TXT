@@ -115,6 +115,17 @@ impl FileEncoding {
             FileEncoding::Windows1252 => encoding_rs::WINDOWS_1252,
         }
     }
+
+    /// 新建文件时写入的 BOM（仅 UTF-16 需要；其余返回空）。
+    ///
+    /// 用途：P3-2 新建文件（无内容文件靠 BOM 保证自动检测可识别编码）。
+    pub fn bom(self) -> &'static [u8] {
+        match self {
+            FileEncoding::Utf16Le => &BOM_UTF16LE,
+            FileEncoding::Utf16Be => &BOM_UTF16BE,
+            _ => &[],
+        }
+    }
 }
 
 /// 检测文件编码（顺序见模块说明）。

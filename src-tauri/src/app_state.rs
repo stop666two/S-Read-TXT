@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::export::{ExportError, ExportFormat};
 use crate::settings::model::AppSettings;
 use crate::textfile::editing::batch::{
     BatchError, BatchNumberingConfig, BatchNumberingOutcome, BatchPreview,
@@ -131,6 +132,12 @@ pub enum AppStateError {
     /// 快照与版本历史错误（透传）
     #[error(transparent)]
     Snapshot(#[from] crate::snapshots::SnapshotError),
+    /// 未命名文件需先「另存为」确定路径（P3-2）
+    #[error("未命名文件需先另存为再保存")]
+    UntitledNeedsPath(u64),
+    /// 导出与打印错误（透传）
+    #[error(transparent)]
+    Export(#[from] ExportError),
     /// 过滤视图错误（透传）
     #[error(transparent)]
     Filter(#[from] FilterError),
@@ -164,6 +171,8 @@ pub struct TabInfo {
     pub path: String,
     /// 文件名（标签展示用）
     pub name: String,
+    /// 未命名文件序号（`None` = 普通文件；`Some(n)` 时前端显示「未命名 n」）
+    pub untitled: Option<u32>,
     /// 当前生效编码（标签名，如 `UTF-8`）
     pub encoding: String,
     /// 手动编码（`None` = 自动检测）
@@ -201,6 +210,8 @@ pub struct RowsPayload {
 /// 单个标签的运行时状态（内部）。
 struct Tab {
     id: u64,
+    /// 未命名文件序号（`None` = 普通磁盘文件）
+    untitled: Option<u32>,
     /// 只读会话（磁盘视图；编辑文档存在时由其供数）
     session: FileSession,
     /// 编辑文档（首次进入编辑模式时创建；保留到保存/重载/关闭）
@@ -220,6 +231,8 @@ pub struct AppState {
     /// 与 BTreeMap 解耦以支持任意展示顺序；新标签追加到末尾。
     order: Vec<u64>,
     next_tab_id: u64,
+    /// 未命名文件序号（会话内单调递增；标签关闭不回收）
+    untitled_seq: u32,
     active_tab: Option<u64>,
 }
 
@@ -236,6 +249,7 @@ impl AppState {
             tabs: BTreeMap::new(),
             order: Vec::new(),
             next_tab_id: 1,
+            untitled_seq: 0,
             active_tab: None,
         }
     }
@@ -269,6 +283,7 @@ impl AppState {
         self.next_tab_id += 1;
         let tab = Tab {
             id,
+            untitled: None,
             session,
             edit: None,
             editing: false,
@@ -280,6 +295,49 @@ impl AppState {
         self.order.push(id);
         self.active_tab = Some(id);
         Ok((info, false))
+    }
+
+    /// 新建未命名文件（P3-2）：在 `data/untitled/` 生成临时文件
+    /// （按 `file.newEncoding` 写入 BOM、按 `file.newEol` 写入首个换行），
+    /// 以编辑模式打开并标记 `untitled`（保存时必须「另存为」）。
+    pub fn open_untitled(
+        &mut self,
+        data_dir: &Path,
+        settings: &AppSettings,
+    ) -> Result<TabInfo, AppStateError> {
+        let seq = self.untitled_seq + 1;
+        let dir = data_dir.join("untitled");
+        std::fs::create_dir_all(&dir)?;
+        let path = dir.join(format!("untitled-{seq}.txt"));
+        let encoding = FileEncoding::from_label(&settings.file.new_encoding)
+            .unwrap_or(FileEncoding::Utf8);
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(encoding.bom());
+        bytes.extend_from_slice(settings.file.new_eol.sequence().as_bytes());
+        crate::storage::atomic::write_atomic(&path, &bytes)?;
+        let (info, _) = self.open_file(&path, settings)?;
+        let tab = self
+            .tabs
+            .get_mut(&info.tab_id)
+            .ok_or(AppStateError::TabNotFound(info.tab_id))?;
+        tab.untitled = Some(seq);
+        self.untitled_seq = seq;
+        self.toggle_edit(info.tab_id, settings)?;
+        self.tab_info(info.tab_id)
+            .ok_or(AppStateError::TabNotFound(info.tab_id))
+    }
+
+    /// 导出当前标签（含未保存编辑）到 `target`（格式由扩展名推断）。
+    pub fn export_text(&self, tab_id: u64, target: &Path) -> Result<u64, AppStateError> {
+        let format = ExportFormat::from_path(target).ok_or(ExportError::Unsupported)?;
+        let (_, source) = self.annotation_context(tab_id)?;
+        Ok(crate::export::export_document(source, target, format)?)
+    }
+
+    /// 生成打印 HTML（含自动调起打印脚本；内容超限报错）。
+    pub fn print_html(&self, tab_id: u64) -> Result<String, AppStateError> {
+        let (_, source) = self.annotation_context(tab_id)?;
+        Ok(crate::export::print_html(source)?)
     }
 
     /// 取文本窗口（`count` 受 [`MAX_ROWS_PER_FETCH`] 限制）。
@@ -788,6 +846,9 @@ impl AppState {
             .tabs
             .get_mut(&tab_id)
             .ok_or(AppStateError::TabNotFound(tab_id))?;
+        if tab.untitled.is_some() {
+            return Err(AppStateError::UntitledNeedsPath(tab_id));
+        }
         let doc = tab.edit.as_mut().ok_or(AppStateError::NotEditing(tab_id))?;
         let options = SaveOptions {
             target_encoding: target_encoding.unwrap_or_else(|| doc.encoding()),
@@ -852,6 +913,7 @@ impl AppState {
         tab.edit = reopened;
         tab.session = session;
         tab.read_only = read_only;
+        tab.untitled = None;
         Ok(outcome)
     }
 
@@ -1250,9 +1312,20 @@ impl AppState {
     /// 返回：`true` 表示确实关闭了一个标签。
     pub fn close(&mut self, tab_id: u64) -> bool {
         let position = self.order.iter().position(|id| *id == tab_id);
-        let removed = self.tabs.remove(&tab_id).is_some();
+        let removed_tab = self.tabs.remove(&tab_id);
+        let removed = removed_tab.is_some();
         if let Some(position) = position {
             self.order.remove(position);
+        }
+        if let Some(tab) = removed_tab {
+            // 未命名临时文件：关闭即清理（尽力而为；目录空则一并删除）
+            if tab.untitled.is_some() {
+                let path = tab.session.path().to_path_buf();
+                let _ = std::fs::remove_file(&path);
+                if let Some(dir) = path.parent() {
+                    let _ = std::fs::remove_dir(dir);
+                }
+            }
         }
         if removed && self.active_tab == Some(tab_id) {
             // 移除后 position 恰指向原「东侧相邻」；无东侧则取西侧
@@ -1336,6 +1409,7 @@ fn tab_info(tab: &Tab) -> TabInfo {
         tab_id: tab.id,
         path: session.path().to_string_lossy().into_owned(),
         name: file_name_of(session.path()),
+        untitled: tab.untitled,
         encoding: session.encoding().label().to_string(),
         encoding_override: session
             .encoding_override()
