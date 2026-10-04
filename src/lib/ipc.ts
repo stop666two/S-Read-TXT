@@ -492,9 +492,24 @@ export interface AppSettings {
   find: FindSettings;
   /** 状态栏显示设置（P2-1 起） */
   status: StatusSettings;
+  /** 显示选项（P2-2 起） */
+  display: DisplaySettings;
   /** 正则设置（P1-6 起） */
   regex: RegexSettings;
   startup: StartupSettings;
+}
+
+/** 显示选项（与 Rust `DisplaySettings` 对应，P2-2）。 */
+export interface DisplaySettings {
+  lineNumbers: boolean;
+  relativeLineNumbers: boolean;
+  highlightCurrentLine: boolean;
+  wordWrap: boolean;
+  ruler: boolean;
+  rulerPosition: number;
+  indentGuides: boolean;
+  invisible: string[];
+  scrollbarMarkers: boolean;
 }
 
 /** 排版配置（与 Rust `TypographySettings` 对应）。 */

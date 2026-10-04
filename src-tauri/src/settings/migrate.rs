@@ -70,6 +70,7 @@ const STEPS: &[(u32, MigrationStep)] = &[
     (7, v7_to_v8),
     (8, v8_to_v9),
     (9, v9_to_v10),
+    (10, v10_to_v11),
 ];
 
 /// v7 → v8：新增 `editor.insert` / `editor.autoPairs` / `editor.cleanup` 字段（serde default 补齐）。
@@ -85,6 +86,9 @@ fn v9_to_v10(value: &mut Value) {
         object.remove("statusBar");
     }
 }
+
+/// v10 → v11：新增 `display` 节（字段补齐由 serde default 处理）。
+fn v10_to_v11(_value: &mut Value) {}
 
 /// v1 → v2：字段补齐式迁移（无结构变换）。
 fn v1_to_v2(_value: &mut Value) {}

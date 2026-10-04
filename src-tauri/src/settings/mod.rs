@@ -16,6 +16,7 @@
 
 pub mod bundle;
 pub mod defaults;
+pub mod display;
 pub mod editor;
 pub mod migrate;
 pub mod model;

@@ -18,7 +18,8 @@ use crate::settings::status::CountMode;
 /// v8：新增辅助编辑设置节（editor.insert / autoPairs / cleanup，P1-7）。
 /// v9：新增查找多文件开关与并发数（find.multifile*，P1-8）。
 /// v10：新增状态栏显示与交互设置节（status，P2-1）。
-pub const SCHEMA_VERSION: u32 = 10;
+/// v11：新增显示选项设置节（display，P2-2）。
+pub const SCHEMA_VERSION: u32 = 11;
 
 // ---------- settings.json ----------
 
@@ -250,6 +251,29 @@ pub const STATUS_TAB_WIDTH_RANGE: (u32, u32) = (1, 16);
 pub const DEFAULT_STATUS_EMPTY_SELECTION: &str = "未选择";
 /// 未选择提示最大字符数
 pub const STATUS_EMPTY_SELECTION_MAX_CHARS: usize = 16;
+
+// ---------- 显示选项（display，P2-2） ----------
+
+/// 显示行号默认关
+pub const DEFAULT_DISPLAY_LINE_NUMBERS: bool = false;
+/// 相对行号默认关
+pub const DEFAULT_DISPLAY_RELATIVE_LINE_NUMBERS: bool = false;
+/// 高亮当前行默认开
+pub const DEFAULT_DISPLAY_HIGHLIGHT_CURRENT_LINE: bool = true;
+/// 自动换行默认开
+pub const DEFAULT_DISPLAY_WORD_WRAP: bool = true;
+/// 标尺默认关
+pub const DEFAULT_DISPLAY_RULER: bool = false;
+/// 标尺默认位置（px，相对正文列左缘）
+pub const DEFAULT_DISPLAY_RULER_POSITION: u32 = 80;
+/// 标尺位置允许范围（px，闭区间）
+pub const DISPLAY_RULER_POSITION_RANGE: (u32, u32) = (0, 1000);
+/// 缩进参考线默认关
+pub const DEFAULT_DISPLAY_INDENT_GUIDES: bool = false;
+/// 不可见字符标记白名单（id 列表）
+pub const DISPLAY_INVISIBLE_IDS: &[&str] = &["space", "tab", "newline", "trailingSpace"];
+/// 滚动条标记默认开
+pub const DEFAULT_DISPLAY_SCROLLBAR_MARKERS: bool = true;
 
 // ---------- shortcuts.json ----------
 

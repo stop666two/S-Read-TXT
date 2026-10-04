@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::settings::defaults;
+use crate::settings::display::DisplaySettings;
 use crate::settings::editor::EditorSettings;
 use crate::settings::status::StatusSettings;
 
@@ -296,6 +297,8 @@ pub struct AppSettings {
     pub locale: Language,
     /// 状态栏显示与交互（P2-1）
     pub status: StatusSettings,
+    /// 显示选项（行号/高亮/标尺/不可见字符等，P2-2）
+    pub display: DisplaySettings,
     /// 启动行为
     pub startup: StartupSettings,
     /// 编辑器默认值（行操作等）
@@ -319,6 +322,7 @@ impl Default for AppSettings {
             show_onboarding: defaults::DEFAULT_SHOW_ONBOARDING,
             locale: defaults::DEFAULT_LOCALE,
             status: StatusSettings::default(),
+            display: DisplaySettings::default(),
             startup: StartupSettings::default(),
             editor: EditorSettings::default(),
             find: FindSettings::default(),

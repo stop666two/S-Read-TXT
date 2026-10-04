@@ -155,7 +155,7 @@ import DiskSection from './DiskSection.svelte';
     <DataSection />
         {/if}
       {:else if tab === 'typography'}
-        <RegistryPage groups={['reader.basic', 'reader.typography', 'app.status']} {query} />
+        <RegistryPage groups={['reader.basic', 'reader.typography', 'app.status', 'app.display']} {query} />
       {:else if tab === 'editor'}
         <RegistryPage groups={['app.editor.lines', 'app.editor.multiCursor', 'app.editor.clipboard', 'app.editor.insert', 'app.editor.autoPairs', 'app.editor.cleanup', 'app.find', 'app.regex']} {query} />
       {:else if tab === 'shortcuts'}

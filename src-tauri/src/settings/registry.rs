@@ -593,6 +593,60 @@ pub const SPECS: &[SettingSpec] = &[
         group: "app.status",
         kind: SettingKind::Text { max_len: 16 },
     },
+    // ---------- settings.json：显示选项（P2-2） ----------
+    SettingSpec {
+        id: "app.display.lineNumbers",
+        group: "app.display",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.display.relativeLineNumbers",
+        group: "app.display",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.display.highlightCurrentLine",
+        group: "app.display",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.display.wordWrap",
+        group: "app.display",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.display.ruler",
+        group: "app.display",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.display.rulerPosition",
+        group: "app.display",
+        kind: SettingKind::Number {
+            min: defaults::DISPLAY_RULER_POSITION_RANGE.0 as f64,
+            max: defaults::DISPLAY_RULER_POSITION_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.display.indentGuides",
+        group: "app.display",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.display.invisible",
+        group: "app.display",
+        kind: SettingKind::StringList {
+            max_items: 4,
+            max_chars: 16,
+            allowed: Some(defaults::DISPLAY_INVISIBLE_IDS),
+        },
+    },
+    SettingSpec {
+        id: "app.display.scrollbarMarkers",
+        group: "app.display",
+        kind: SettingKind::Bool,
+    },
     // ---------- shortcuts.json ----------
     SettingSpec {
         id: "shortcuts.bindings",

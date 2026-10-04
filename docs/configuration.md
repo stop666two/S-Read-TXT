@@ -24,7 +24,16 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `10` | `10` | 配置格式版本（当前 v10；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `11` | `11` | 配置格式版本（当前 v11；启动自动迁移旧版，见 §2.7） |
+| `display.lineNumbers` | boolean | `true`/`false` | `false` | 显示行号（显示行序号，1 基；P2-2） |
+| `display.relativeLineNumbers` | boolean | `true`/`false` | `false` | 相对行号（相对编辑光标 / 阅读顶部行） |
+| `display.highlightCurrentLine` | boolean | `true`/`false` | `true` | 高亮当前行 |
+| `display.wordWrap` | boolean | `true`/`false` | `true` | 自动换行（关 = 水平滚动） |
+| `display.ruler` | boolean | `true`/`false` | `false` | 显示标尺 |
+| `display.rulerPosition` | number | `0`–`1000` | `80` | 标尺位置（px，相对正文列左缘） |
+| `display.indentGuides` | boolean | `true`/`false` | `false` | 缩进参考线 |
+| `display.invisible` | string[] | `space`/`tab`/`newline`/`trailingSpace` 子集 | `[]` | 不可见字符标记 |
+| `display.scrollbarMarkers` | boolean | `true`/`false` | `true` | 滚动条标记（搜索 / 书签 / 修改） |
 | `logLevel` | string | `error`/`warn`/`info`/`debug` | `info` | 日志详细级别；环境变量可覆盖 |
 | `maxFileSizeMB` | number | 1–2048 整数 | `100` | 只读阈值：超过此大小以只读模式打开（可浏览、不可编辑；状态栏显示「只读」、编辑入口禁用并提示） |
 | `hardLimitMB` | number | 100–16384 整数 | `2048` | 硬上限：超过此大小直接拒绝打开（沿用逐字提示「很抱歉，文件过大无法打开，可以在设置里面调整。」）；低于只读阈值时自动修正为只读阈值 |
@@ -171,7 +180,7 @@
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v10）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节）：
+**schema 版本（当前 v11）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`）：
 
 | 情况 | 行为 |
 |---|---|

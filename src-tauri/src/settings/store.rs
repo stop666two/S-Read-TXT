@@ -12,6 +12,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::settings::defaults;
+use crate::settings::display::DisplaySettings;
 use crate::settings::editor::EditorSettings;
 use crate::settings::model::AppSettings;
 use crate::settings::reader::ReaderSettings;
@@ -156,6 +157,29 @@ fn normalize_app(settings: &mut AppSettings) {
     let (min_days, max_days) = defaults::HISTORY_RETENTION_DAYS_RANGE;
     settings.history.retention_days = settings.history.retention_days.clamp(min_days, max_days);
     normalize_status(&mut settings.status);
+    normalize_display(&mut settings.display);
+}
+
+/// 显示选项归一：标尺位置钳制、不可见标记白名单/去重。
+fn normalize_display(settings: &mut DisplaySettings) {
+    let (min_pos, max_pos) = defaults::DISPLAY_RULER_POSITION_RANGE;
+    settings.ruler_position = settings.ruler_position.clamp(min_pos, max_pos);
+    let mut marks: Vec<String> = Vec::new();
+    for raw in std::mem::take(&mut settings.invisible) {
+        let id = raw.trim().to_string();
+        if id.is_empty() {
+            continue;
+        }
+        if !defaults::DISPLAY_INVISIBLE_IDS.contains(&id.as_str()) {
+            log::warn!("不可见字符标记包含未知取值，已忽略：{id}");
+            continue;
+        }
+        if marks.contains(&id) {
+            continue;
+        }
+        marks.push(id);
+    }
+    settings.invisible = marks;
 }
 
 /// 状态栏归一：显示项白名单/去重/回退默认、计数模式、宽度钳制、提示文案截断。
@@ -684,6 +708,18 @@ mod tests {
             defaults::DEFAULT_FIRST_LINE_INDENT
         );
         assert!(loaded.typography.smooth_scroll);
+    }
+
+    /// 显示选项归一：标尺位置钳制 + 不可见标记白名单去重。
+    #[test]
+    fn display_normalizes_on_load() {
+        let dir = data_dir();
+        let raw = r#"{ "schemaVersion": 11, "display": { "rulerPosition": 5000, "invisible": ["space", "space", "bogus"] } }"#;
+        std::fs::write(app_settings_path(dir.path()), raw).expect("写入失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded.display.ruler_position, 1000);
+        assert_eq!(loaded.display.invisible, vec!["space".to_string()]);
+        assert!(loaded.display.word_wrap);
     }
 
     /// 空主题 id 回退默认（system）。
