@@ -7,7 +7,7 @@
 // 前置：npm run tauri build -- --debug --no-bundle
 // 退出码：0 = 全部通过；1 = 存在失败。
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -17,7 +17,8 @@ import { fileURLToPath } from 'node:url';
 const args = process.argv.slice(2);
 const exeArg = args.indexOf('--exe');
 const portArg = args.indexOf('--port');
-const PORT = portArg >= 0 ? Number(args[portArg + 1]) : 9222;
+// 随机端口：避免固定端口与残留实例/其他套件冲突
+const PORT = portArg >= 0 ? Number(args[portArg + 1]) : 9200 + Math.floor(Math.random() * 400);
 const EXE = resolve(
   exeArg >= 0 ? args[exeArg + 1] : join('src-tauri', 'target', 'debug', 's-read-txt.exe'),
 );
@@ -44,6 +45,10 @@ const workDir = join(root, 'tmp', `e2e-basics-${Date.now()}`);
 const dataDir = join(workDir, 'data');
 rmSync(workDir, { recursive: true, force: true });
 mkdirSync(dataDir, { recursive: true });
+
+// 预清场：残留实例会触发单实例转发导致本次启动秒退（连接错对象）
+spawnSync('taskkill', ['/IM', 's-read-txt.exe', '/T', '/F'], { stdio: 'ignore' });
+await delay(500);
 
 const child = spawn(EXE, [], {
   env: {
