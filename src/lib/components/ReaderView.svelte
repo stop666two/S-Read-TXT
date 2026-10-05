@@ -65,6 +65,8 @@
   snapshotRestore?: { name: string; seq: number } | null;
   /** 折叠指令（菜单折叠全部/展开全部；seq 去重） */
   foldCommand?: { kind: 'all' | 'none'; seq: number } | null;
+  /** 折叠状态变化回调（用户操作后触发；用于调度会话保存） */
+  onFoldsChanged?: () => void;
   /** 时间戳插入设置（透传编辑层；未就绪为 null） */
   insertSettings?: InsertSettings | null;
   /** 括号匹配/自动缩进设置（透传编辑层；未就绪为 null） */
@@ -87,7 +89,7 @@
     activePane?: boolean;
   }
   let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, readingSettings,
-    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll, onBreadcrumbJump, snapshotRestore, foldCommand = null, activePane = true }: Props = $props();
+    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll, onBreadcrumbJump, snapshotRestore, foldCommand = null, activePane = true, onFoldsChanged }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -406,12 +408,17 @@
         : new Set();
     applyFoldChange();
     saveFoldsFor(tab.tabId);
+    onFoldsChanged?.();
   });
 
-  /** 折叠切换后保持顶部行稳定并重排 */
+  /** 折叠切换后保持顶部行稳定并重排（视图行集变化必须先清缓存，否则显示行键残留旧映射）。 */
   function applyFoldChange(): void {
     const topDisplay = heights.rowAtOffset(contentScrollTop(), viewRowsTotal());
     const anchorRow = viewRows ? (viewRows[Math.min(topDisplay, viewRows.length - 1)] ?? 0) : topDisplay;
+    cache.clear();
+    heights.clear();
+    inflight.clear();
+    lastPercent = -1;
     refreshWindow();
     void untrack(() => applyInitialScroll(anchorRow, viewRowsTotal()));
   }
@@ -424,6 +431,7 @@
     foldedRows = next;
     applyFoldChange();
     saveFoldsFor(tab.tabId);
+    onFoldsChanged?.();
   }
 
   function viewRowsTotal(): number {

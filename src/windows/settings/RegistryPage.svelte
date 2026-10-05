@@ -17,7 +17,7 @@ import StringListRow from './parts/StringListRow.svelte';
   import BackgroundRow from './parts/BackgroundRow.svelte';
   import SliderRow from './parts/SliderRow.svelte';
   import ToggleRow from './parts/ToggleRow.svelte';
-  import { buildPatch, getSettingValue } from './registry-util';
+  import { getSettingValue } from './registry-util';
   import { settings } from './store.svelte';
 
   interface Props {
@@ -132,20 +132,20 @@ import StringListRow from './parts/StringListRow.svelte';
     void settings.resetScope(scope);
   }
 
-  /** 提交新值（app 段与 reader 段分别走对应保存通道） */
+  /** 提交新值（app 段与 reader 段分别走对应保存通道；补丁由 store 基于最新挂起态构建） */
   function commit(spec: SettingSpec, value: unknown): void {
     if (!snapshot) return;
     if (spec.id.startsWith('app.')) {
-      void settings.saveApp(buildPatch(snapshot.app, spec.id, value));
+      void settings.saveAppField(spec.id, value);
     } else {
-      void settings.saveReaderNow(buildPatch(snapshot.reader, spec.id, value));
+      void settings.saveReaderField(spec.id, value);
     }
   }
 
   /** 拖动实时预览（仅 reader 数值项；节流落盘，主窗口即时生效） */
   function live(spec: SettingSpec, value: unknown): void {
     if (!snapshot || !spec.id.startsWith('reader.')) return;
-    settings.saveReaderLive(buildPatch(snapshot.reader, spec.id, value));
+    settings.saveReaderLiveField(spec.id, value);
   }
 
   /** 滑块步进：整数项 1；小数项（行高）0.05 */

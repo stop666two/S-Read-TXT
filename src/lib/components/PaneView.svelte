@@ -68,6 +68,8 @@
     onTopRow: (row: number) => void;
     onSelectionStats: (stats: TextStats | null) => void;
     onCaretInfo: (info: { row: number; column: number }) => void;
+    /** 折叠状态变化（激活栏上报；用于调度会话保存） */
+    onFoldsChanged?: () => void;
     /** 单栏空态内容（窗口欢迎页；多栏空栏使用内置占位） */
     children?: Snippet;
   }
@@ -109,6 +111,7 @@
     onTopRow,
     onSelectionStats,
     onCaretInfo,
+    onFoldsChanged,
     children,
   }: Props = $props();
 
@@ -164,6 +167,7 @@
         {onBreadcrumbJump}
         snapshotRestore={active ? snapshotRestore : null}
         foldCommand={active ? foldCommand : null}
+        onFoldsChanged={active ? onFoldsChanged : undefined}
         {layoutKey}
         activePane={active}
       />

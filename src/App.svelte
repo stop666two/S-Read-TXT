@@ -454,8 +454,15 @@ let outlineOpen = $state(false);
   /** 会话恢复：逐个打开上次的标签（缺失/失败经 Toast 跳过）、补齐编码覆盖与编辑态，
    *  按设置恢复滚动/光标/折叠；恢复期间由 sessionReady 门控自动保存。 */
   async function restoreSession(): Promise<void> {
+    // 启动设置直读最新快照：避免依赖 appSettings 异步装载时序（恢复早于设置就绪时会误用默认值）
+    let startup = appSettings?.startup ?? null;
+    try {
+      if (!startup) startup = (await ipc.getSettings()).app.startup;
+    } catch {
+      // 读取失败：按默认继续（恢复静默降级）
+    }
     // 总开关关闭：不恢复标签内容（窗口数量与几何由启动层按布局设置恢复）
-    if (appSettings?.startup.restoreSession === false) return;
+    if (startup?.restoreSession === false) return;
     let session: WindowSession | null = null;
     try {
       session = await ipc.getSession();
@@ -463,7 +470,7 @@ let outlineOpen = $state(false);
       if (import.meta.env.DEV) console.error('[app] 读取会话失败', error);
     }
     try {
-      const restore = appSettings?.startup.restoreItems ?? {
+      const restore = startup?.restoreItems ?? {
         caret: false,
         scroll: true,
         folds: false,
@@ -1468,11 +1475,15 @@ let outlineOpen = $state(false);
     refreshDocStats(tabId);
   });
 
-  /** 切换标签时清空选区/光标残留（仅 tabId 变化触发；顶部行由阅读区首帧上报覆盖，勿清以避免竞态）。 */
+  /** 切换标签时清空选区/光标残留（仅 tabId 变化触发；顶部行由阅读区首帧上报覆盖，勿清以避免竞态）。
+   *  恢复期间跳过：会话恢复会先 seed 光标、切标签后由编辑层挂载上报，清空会覆盖刚恢复的值。 */
   $effect(() => {
     void activeTabId;
-    selectionStats = null;
-    caretInfo = null;
+    if (!sessionReady) return;
+    untrack(() => {
+      selectionStats = null;
+      caretInfo = null;
+    });
   });
 
   /** 排版变更键（传给 ReaderView 触发行高失效重排；值变化即重排） */
@@ -2195,7 +2206,14 @@ onMount(() => {
       if (pane === tabs.activePane) selectionStats = stats;
     }}
     onCaretInfo={(info) => {
-      if (pane === tabs.activePane) caretInfo = info;
+      if (pane === tabs.activePane) {
+        caretInfo = info;
+        // 光标位置随会话持久化：变化后调度一次保存（防抖）
+        scheduleSessionSave();
+      }
+    }}
+    onFoldsChanged={() => {
+      if (pane === tabs.activePane) scheduleSessionSave();
     }}
   >
     <EmptyState

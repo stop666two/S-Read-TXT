@@ -18,6 +18,7 @@ import {
   type SettingsSnapshot,
   type ThemeSummary,
 } from '../../lib/ipc';
+import { buildPatch } from './registry-util';
 import { toasts } from '../../lib/state/toasts.svelte';
 
 class SettingsStore {
@@ -33,28 +34,62 @@ class SettingsStore {
     }
   }
 
-  /** 保存主配置补丁（修改即存） */
+  /** 保存主配置补丁（修改即存；基于挂起态合并，避免快速连点时旧快照回灌覆盖） */
   async saveApp(patch: Partial<AppSettings>): Promise<void> {
     if (!this.snapshot) return;
-    await this.persist({ app: { ...this.snapshot.app, ...patch }, kind: 'app' });
+    const base = this.pendingApp ?? this.snapshot.app;
+    this.pendingApp = { ...base, ...patch };
+    await this.persist({ app: this.pendingApp, kind: 'app' });
   }
 
-  /** 保存阅读排版补丁（修改即存） */
+  /** 按设置项 id 保存主配置字段（补丁在 store 内基于最新挂起态构建，快速连点不丢改动）。 */
+  async saveAppField(id: string, value: unknown): Promise<void> {
+    if (!this.snapshot) return;
+    const base = this.pendingApp ?? this.snapshot.app;
+    this.pendingApp = buildPatch(base, id, value);
+    await this.persist({ app: this.pendingApp, kind: 'app' });
+  }
+
+  /** 按设置项 id 保存阅读排版字段（语义同 saveAppField）。 */
+  async saveReaderField(id: string, value: unknown): Promise<void> {
+    if (!this.snapshot) return;
+    const base = this.pendingReader ?? this.snapshot.reader;
+    this.pendingReader = buildPatch(base, id, value);
+    await this.persist({ reader: this.pendingReader, kind: 'reader' });
+  }
+
+  /** 保存阅读排版补丁（修改即存；语义同 saveApp） */
   async saveReader(patch: Partial<ReaderSettings>): Promise<void> {
     if (!this.snapshot) return;
-    await this.persist({ reader: { ...this.snapshot.reader, ...patch }, kind: 'reader' });
+    const base = this.pendingReader ?? this.snapshot.reader;
+    this.pendingReader = { ...base, ...patch };
+    await this.persist({ reader: this.pendingReader, kind: 'reader' });
   }
 
-  /** 拖动实时预览：立即更新本地快照，并按 140ms 节流落盘（主窗口经广播实时生效）。 */
+  /** 拖动实时预览（按字段）：立即更新挂起态与本地快照，并按 140ms 节流落盘。 */
   private liveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  saveReaderLive(patch: Partial<ReaderSettings>): void {
+  saveReaderLiveField(id: string, value: unknown): void {
     if (!this.snapshot) return;
-    this.snapshot = { ...this.snapshot, reader: { ...this.snapshot.reader, ...patch } };
+    const base = this.pendingReader ?? this.snapshot.reader;
+    this.pendingReader = buildPatch(base, id, value);
+    this.snapshot = { ...this.snapshot, reader: this.pendingReader };
     if (this.liveTimer !== null) return;
     this.liveTimer = setTimeout(() => {
       this.liveTimer = null;
-      if (this.snapshot) void this.persist({ reader: this.snapshot.reader, kind: 'reader' });
+      if (this.pendingReader) void this.persist({ reader: this.pendingReader, kind: 'reader' });
+    }, 140);
+  }
+
+  saveReaderLive(patch: Partial<ReaderSettings>): void {
+    if (!this.snapshot) return;
+    const base = this.pendingReader ?? this.snapshot.reader;
+    this.pendingReader = { ...base, ...patch };
+    this.snapshot = { ...this.snapshot, reader: this.pendingReader };
+    if (this.liveTimer !== null) return;
+    this.liveTimer = setTimeout(() => {
+      this.liveTimer = null;
+      if (this.pendingReader) void this.persist({ reader: this.pendingReader, kind: 'reader' });
     }, 140);
   }
 
@@ -68,25 +103,34 @@ class SettingsStore {
   }
 
   /** 内部：合并保存并广播（shortcuts 始终带上当前生效表，避免覆盖）。
-   *  并发保护：快速连续修改（如拖动字号滑块）时仅采纳**最后一次**请求的响应，
-   *  防止较旧快照回灌覆盖更新值。 */
+   *  并发保护：快速连续修改时以挂起态累积合并，仅采纳**最后一次**请求的响应，
+   *  防止较旧快照回灌覆盖更新值（如快速连点两个开关导致前一个被回退）。 */
   private saveSeq = 0;
+  private pendingApp: AppSettings | null = null;
+  private pendingReader: ReaderSettings | null = null;
   private async persist(change: {
     app?: AppSettings;
     reader?: ReaderSettings;
     kind: 'app' | 'reader';
   }): Promise<void> {
     if (!this.snapshot) return;
+    if (change.app) this.pendingApp = change.app;
+    if (change.reader) this.pendingReader = change.reader;
     const seq = ++this.saveSeq;
     try {
       const updated = await ipc.saveSettings({
-        app: change.app ?? this.snapshot.app,
-        reader: change.reader ?? this.snapshot.reader,
+        app: this.pendingApp ?? this.snapshot.app,
+        reader: this.pendingReader ?? this.snapshot.reader,
         shortcuts: this.snapshot.shortcuts.bindings as Record<string, string>,
       });
       if (seq !== this.saveSeq) return;
       this.snapshot = updated;
+      this.pendingApp = null;
+      this.pendingReader = null;
     } catch (error) {
+      // 失败清理挂起态，避免后续补丁持续携带失败值
+      this.pendingApp = null;
+      this.pendingReader = null;
       toasts.error(describeIpcError(toIpcError(error)));
     }
   }
