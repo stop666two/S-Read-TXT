@@ -21,6 +21,7 @@ pub mod app_state;
 pub mod background;
 pub mod cli;
 pub mod clipboard_history;
+pub mod diff;
 pub mod elevation;
 pub mod export;
 pub mod find_history;
