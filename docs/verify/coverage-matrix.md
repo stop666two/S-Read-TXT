@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 444（416 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 115；E2E 38 套 ≈592 项；verify-all 47 步。
+- 计数口径：Rust 457（429 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 115；E2E 39 套 ≈611 项；verify-all 48 步。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -29,6 +29,7 @@
 | smoke-annotations | 11 | 标注（P2-3）：阅读态书签 / 编辑态高亮·注释·待办 / 面板分区·勾选 / 重启持久化 / 编辑后锚点重定位 / 清除 / 截图 |
 | smoke-shortcuts | 30 | 快捷键：固定键/循环/翻页/全屏/录制/持久化/模态挂起 |
 | smoke-tabs | 10 | 多标签：顺序/中键/拖拽/菜单/上限/溢出滚轮/拖拽取消 |
+| smoke-windows | 19 | 多窗口：建窗/独立标签组/标签颜色持久化/跨窗菜单移动/拖出并窗（拖影+插入指示）/桌面落点成新窗/Esc 取消/关窗会话遗忘/重启恢复 |
 | smoke-history | 13 | 历史：面板/搜索/进度/删除/清空/最近打开/**长列表虚拟滚动** |
 | smoke-session | 11 | 会话：窗口几何/标签/编码/滚动恢复/缺失跳过 |
 | smoke-datadir | 15 | 数据目录：弹窗/重定向/日志落位/只读 ACL 修复助手 |
@@ -167,3 +168,4 @@
 - 2026-10-04 P3-3：命令行/单实例/粘贴路径/文件关联（cli.rs 参数清洗 + 待开队列 + `srt://cli-open` 事件；单实例插件首位注册；菜单「打开剪贴板中的路径」；安装器注册 .txt/.log）；smoke-cli 7/7 并入 verify-all（现 47 步）；补录 smoke-snapshots / smoke-p32 至套件清单与命令证据行。
 - 2026-10-04 P3-3 收尾修复：cargo test 0xC0000139 根治（`build.rs` 为测试目标补注 Common-Controls v6 清单）；滚动取行抗丢包（看门狗/退避/大行自适应批次）；smoke-settings-io 断言同步 v15；smoke-scroll 4/4、smoke-longline 9/9、smoke-history 13/13、smoke-clipboard 19/19；复跑验证见 docs/verify/latest.md。
 - 2026-10-04 夜终轮（46/47）：smoke-find 27/27、smoke-settings 57/57、smoke-disk 6/6（根因=Windows 保留端口段 10008–10107 吞 WebView2 调试端口，端口段已避开）；smoke-uninstall 因用户临时拒绝 UAC（套件需提权运行安装包，脚本头注明 ELEVATION_REQUIRED）被解释排除，非回归。
+- 2026-10-04/05 P3-4：多窗口（按窗口状态分区、new_window、关闭语义两阶段协议、会话 v2、CLI 定向）、标签颜色（8 色 + 主题感知色条 + 持久化）、跨窗移动与完整原生拖放（拖影窗/命中测试/桌面落点）；smoke-windows 19/19 并入 verify-all（现 48 步）；Rust 457；命令新增 set_tab_color/list_windows/move_tab_to_window/begin_tab_drag/drag_move/drag_end。

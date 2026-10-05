@@ -477,3 +477,19 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 自检基建修复：smoke-disk/clipboard/settings-v2 端口段避开 Windows 保留区间 10008–10107（WebView2 调试端口无法绑定曾致 smoke-disk 必然超时）；find/settings 判定改轮询式。
 - 测试基线：Rust **444**；vitest 115；svelte-check 0/0；E2E **38 套 ≈592 项**；verify-all **47 步**。
 - 下一切片：P3-4 多窗口（计划 `docs/plan/2026-10-04-p34-multiwindow-plan.md`；维护者已定：完整原生拖放 + 标签颜色；从任务 1 AppState 按窗口分区开始）。
+
+### P3-4 多窗口、标签颜色与跨窗口拖放（完成）
+- 实现（按 grill 裁定与 `docs/plan/2026-10-04-p34-multiwindow-plan.md` 任务 1-10，分提交存档）：
+  - 任务 1-2（4cd97d8）：AppState 按窗口分区（`Tab.owner`、`orders`/`active` 以窗口 label 为键、`move_tab`/`close_window_tabs`）；`new_file`/`open_file`/`list_tabs` 注入 Tauri `WebviewWindow` 取 label；
+  - 任务 3（3ec3083）：`new_window`（label `main-2`…、级联 +32、可选几何）、快捷键 `newWindow=Ctrl+Shift+N`（动作表 16 项）、标签栏右侧「新建标签/新建窗口」按钮、能力白名单 `main*`；
+  - 任务 4（521d47c）：`quit.rs` 两阶段「退出所有窗口」协议（请求/就绪/取消事件）、逐窗关闭语义、最后窗口干净退出改由窗口销毁事件裁决（消除并发竞态）；
+  - 任务 5（cc5e893）：会话 v2 按窗口 read-modify-write（`windows[]`/`focusedLabel`；v1 自动迁移；启动恢复窗口数/几何/标签）；
+  - 任务 6（34e45df）：CLI 转发定向最后聚焦窗口（事件仅作唤醒、队列原子排空防双开）；
+  - 任务 7（db90db9）：标签颜色（8 色 + 清除、右键色板菜单、主题感知左色条、会话持久化、`INVALID_COLOR` 校验）；
+  - 任务 8（56511ae）：跨窗口移动（`list_windows` 菜单通道、同文件合并激活、源窗视图返回 + 目标窗事件刷新）；
+  - 任务 9（c411e1f）：完整原生拖放（`tab_drag.rs` 会话、拖影窗点击穿透/置顶/无边框、指针捕获越界接管、命中测试按后创建者在上、桌面落点新建窗口、`Esc` 取消、拖回精确插入）；
+  - 任务 10：smoke-windows E2E 19/19 并入 verify-all（48 步）+ 文档收口。
+- 验收证据（真断言探针，已随任务删除，结论保留于提交信息与 CHANGELOG）：关闭语义 12/12、会话 v2 14/14、CLI 定向 6/6、颜色 9/9、跨窗移动 11/11、拖放 11/11；套件：smoke-windows 19/19、smoke-tabs 10/10、smoke-session 11/11、smoke-cli 7/7、smoke-migrate 13/13、smoke-datadir 15/15。
+- 测试基线：Rust **457**（429 lib + 15 对抗 + 2 提权助手 + 6 统计流 + 5 集成）；vitest 115；svelte-check 0/0；E2E **39 套 ≈611 项**；verify-all **48 步**（smoke-uninstall 仍按用户 UAC 策略以 `--exclude` 排除）。
+- 本阶段教训：PowerShell 改写文本会破坏 UTF-8（一律用 edit/write 工具）；CDP `Input.dispatchMouseEvent` 不会钳制越界坐标（拖出行为可自动化）；首启引导遮罩会拦截真实指针（E2E 必须先 `dismissOnboarding`）；`plugin:window|set_position` 的 value 须为 `{ Physical: { x, y } }` 枚举形状；`cargo build` 产物是 dev 语义不可实测（须 tauri CLI 构建）。
+- 下一切片：P3-5 分屏（D52 剩余：窗口内 ≤4 栏）；随后 P3-6、P3-7 会话扩展（`restoreItems` 多选项）。

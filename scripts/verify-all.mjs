@@ -102,6 +102,7 @@ const steps = [
   { name: 'E2E 数据目录迁移（smoke-migrate）', cmd: 'node scripts/smoke-migrate.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 快捷键（smoke-shortcuts）', cmd: 'node scripts/smoke-shortcuts.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 多标签（smoke-tabs）', cmd: 'node scripts/smoke-tabs.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 多窗口（smoke-windows）', cmd: 'node scripts/smoke-windows.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 历史记录（smoke-history）', cmd: 'node scripts/smoke-history.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 会话恢复（smoke-session）', cmd: 'node scripts/smoke-session.mjs', cwd: root, env: process.env, timeout: 900_000 },
   { name: 'E2E 数据目录引导（smoke-datadir）', cmd: 'node scripts/smoke-datadir.mjs', cwd: root, env: process.env, timeout: 600_000 },
