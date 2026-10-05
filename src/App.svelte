@@ -501,7 +501,10 @@ let outlineOpen = $state(false);
 
   /** 阅读区滚动容器（虚拟滚动；无文件打开时为 null） */
   function readerElement(): HTMLElement | null {
-    return document.querySelector<HTMLElement>('.reader');
+    return (
+      document.querySelector<HTMLElement>('[data-pane-active="true"] .reader') ??
+      document.querySelector<HTMLElement>('.reader')
+    );
   }
 
   /** 翻页（阅读态）：约一屏（留 3 行重叠）；平滑动画可经设置关闭 */
@@ -1363,7 +1366,7 @@ let outlineOpen = $state(false);
     let last = performance.now();
     const step = (now: number): void => {
       if (!autoScrollOn) return;
-      const el = document.querySelector<HTMLElement>('.reader');
+      const el = readerElement();
       if (!el) {
         autoScrollOn = false;
         return;

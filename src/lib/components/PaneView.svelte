@@ -155,6 +155,7 @@
         snapshotRestore={active ? snapshotRestore : null}
         foldCommand={active ? foldCommand : null}
         {layoutKey}
+        activePane={active}
       />
     {:else if compact}
       <div class="pane-empty">

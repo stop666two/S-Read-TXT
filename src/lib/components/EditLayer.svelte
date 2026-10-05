@@ -71,6 +71,8 @@ import { annotations } from '../state/annotations.svelte';
     rowsTotal: number;
     /** 渲染版本号（文本到达/测量变化时驱动叠加层重算） */
     revision: number;
+    /** 是否为激活栏（默认 true；非激活栏不参与 focusin 抢焦点） */
+    paneActive?: boolean;
     /** 快照恢复请求（seq 去重，由父组件触发） */
     snapshotRestore?: { name: string; seq: number } | null;
     /** 已渲染行节点查询 */
@@ -108,6 +110,7 @@ import { annotations } from '../state/annotations.svelte';
     tabId,
     rowsTotal,
     revision,
+    paneActive = true,
     rowNode,
     rowText,
     rowMeta,
@@ -2276,6 +2279,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
   /** 焦点守卫：编辑中点击工具栏/菜单/状态栏后，把键盘焦点归还输入代理。
    *  弹窗、菜单组、标签（保持键盘导航）与输入代理自身不抢焦点。 */
   function handleFocusIn(event: FocusEvent): void {
+    if (!paneActive) return;
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (

@@ -81,9 +81,11 @@
     displaySettings?: DisplaySettings | null;
     /** 编辑态光标所在显示行（0 基；当前行高亮/相对行号参照；阅读态忽略） */
     editCaretRow?: number | null;
+    /** 是否为激活栏（默认 true；多栏时非激活栏的编辑层不抢焦点） */
+    activePane?: boolean;
   }
   let { tab, onPercent, onEditApplied, editorAction, layoutKey, lineDefaults, multiCursor, findSettings, readingSettings,
-    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll, onBreadcrumbJump, snapshotRestore, foldCommand = null }: Props = $props();
+    pageTurn = null, insertSettings, autoPairs, cleanupSettings, onTopRow, onSelectionStats, onCaretInfo, displaySettings, editCaretRow, onUserScroll, onBreadcrumbJump, snapshotRestore, foldCommand = null, activePane = true }: Props = $props();
 
   /** 可视区上下额外渲染行数（预取缓冲） */
   const OVERSCAN = 30;
@@ -1180,6 +1182,7 @@
         tabId={tab.tabId}
         rowsTotal={tab.rowsTotal}
         revision={version}
+        paneActive={activePane}
         rowNode={rowNodeOf}
         rowText={(row) => cache.get(row)?.text}
         rowMeta={(row) => {
