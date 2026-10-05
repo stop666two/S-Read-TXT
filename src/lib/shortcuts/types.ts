@@ -5,6 +5,7 @@
 /** 可自定义快捷键的动作 id（与后端默认表保持一致，顺序即设置界面的展示顺序）。 */
 export type ShortcutAction =
   | 'openFile'
+  | 'newWindow'
   | 'save'
   | 'saveAs'
   | 'toggleEdit'
@@ -23,6 +24,7 @@ export type ShortcutAction =
 /** 动作展示顺序（设置界面行顺序）。 */
 export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
   'openFile',
+  'newWindow',
   'save',
   'saveAs',
   'toggleEdit',
@@ -44,6 +46,7 @@ import type { MessageKey } from '../i18n/zh-CN';
 /** 动作名称消息键（设置界面经 t() 展示；语言切换即时生效）。 */
 export const SHORTCUT_LABEL_KEYS: Record<ShortcutAction, MessageKey> = {
   openFile: 'shortcut.openFile',
+  newWindow: 'shortcut.newWindow',
   save: 'shortcut.save',
   saveAs: 'shortcut.saveAs',
   toggleEdit: 'shortcut.toggleEdit',

@@ -9,7 +9,7 @@
 //! 线程模型：由 IPC 层以 `Mutex<AppState>` 托管（`commands.rs`）；
 //! 本模块为纯逻辑，可独立单元测试。
 //!
-//! 阶段说明：索引构建目前为同步（100MB 量级几十毫秒）；「后台构建 + 惰性恢复」
+//! 说明：索引构建目前为同步（100MB 量级几十毫秒）；「后台构建 + 惰性恢复」
 //! 属后续优化项（见设计文档 §4.1），接口保持不变。
 
 use std::collections::BTreeMap;
@@ -233,7 +233,7 @@ struct Tab {
 
 /// 应用运行状态。
 ///
-/// 多窗口模型（P3-4）：标签表全局共享（tab_id 全局唯一），**展示顺序与活动标签
+/// 多窗口模型：标签表全局共享（tab_id 全局唯一），**展示顺序与活动标签
 /// 按窗口分区**（`orders` / `active` 以窗口 label 为键）；标签自身记录 `owner`。
 pub struct AppState {
     tabs: BTreeMap<u64, Tab>,
@@ -1364,7 +1364,7 @@ impl AppState {
         ids
     }
 
-    /// 跨窗口移动标签（P3-4）：
+    /// 跨窗口移动标签：
     /// - 目标窗口已打开同一文件 → **合并激活**已有标签（源标签关闭，返回 `true`）；
     /// - 否则迁移：从源窗口顺序移除，改属目标窗口并插入 `to_index`（越界收敛末尾），
     ///   目标活动标签设为该标签；源窗口活动按关闭规则回落。
@@ -2329,7 +2329,7 @@ mod tests {
         assert!(info.untitled.is_none(), "未命名标记应被清除");
     }
 
-    /// P3-4：多窗口标签组隔离——各窗口独立列表/去重/活动，互不影响。
+    /// 多窗口标签组隔离——各窗口独立列表/去重/活动，互不影响。
     #[test]
     fn window_partitions_are_isolated() {
         let dir = tempfile::tempdir().expect("创建临时目录失败");
@@ -2381,7 +2381,7 @@ mod tests {
         assert_eq!(again.tab_id, info_a.tab_id);
     }
 
-    /// P3-4：跨窗口移动标签（活动切换、插入位置、源窗口条目清理）。
+    /// 跨窗口移动标签（活动切换、插入位置、源窗口条目清理）。
     #[test]
     fn move_tab_between_windows() {
         let dir = tempfile::tempdir().expect("创建临时目录失败");
@@ -2430,7 +2430,7 @@ mod tests {
         assert_eq!(state.owners(), vec!["main-2".to_string()]);
     }
 
-    /// P3-4：移动到已打开同文件的窗口 → 合并激活已有标签。
+    /// 移动到已打开同文件的窗口 → 合并激活已有标签。
     #[test]
     fn move_tab_merges_same_file_in_target() {
         let dir = tempfile::tempdir().expect("创建临时目录失败");
@@ -2456,7 +2456,7 @@ mod tests {
         );
     }
 
-    /// P3-4：关闭某窗口全部标签（窗口关闭流程）。
+    /// 关闭某窗口全部标签（窗口关闭流程）。
     #[test]
     fn close_window_tabs_cleans_partition() {
         let dir = tempfile::tempdir().expect("创建临时目录失败");

@@ -272,6 +272,7 @@ export const en: Record<MessageKey, string> = {
   'outline.empty': 'No chapters found (adjust outline patterns in settings)',
   'menu.file.snapshotNow': 'Save snapshot',
   'menu.file.new': 'New file',
+  'menu.file.newWindow': 'New window',
   'menu.file.pastePath': 'Open path from clipboard',
   'cli.pasteEmpty': 'Clipboard contains no usable path',
   'menu.file.export': 'Export…',
@@ -335,6 +336,10 @@ export const en: Record<MessageKey, string> = {
   'tabBar.aria': 'Open files',
   'tabBar.closeHint': 'Close tab (Ctrl+W)',
   'tabBar.closeAria': 'Close {name}',
+  'tabBar.newTabHint': 'New tab',
+  'tabBar.newTabAria': 'New tab',
+  'tabBar.newWindowHint': 'New window (Ctrl+Shift+N)',
+  'tabBar.newWindowAria': 'New window',
 
   // ---------- Tab context menu ----------
   'tabMenu.aria': 'Tab actions',
@@ -417,6 +422,7 @@ export const en: Record<MessageKey, string> = {
 
   // ---------- Shortcut action names ----------
   'shortcut.openFile': 'Open file',
+  'shortcut.newWindow': 'New window',
   'shortcut.save': 'Save',
   'shortcut.saveAs': 'Save as',
   'shortcut.toggleEdit': 'Toggle edit mode',

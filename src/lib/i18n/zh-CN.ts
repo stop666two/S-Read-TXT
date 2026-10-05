@@ -264,6 +264,7 @@ export const zhCN = {
   'outline.empty': '未找到章节（可在设置中调整大纲正则）',
   'menu.file.snapshotNow': '保存快照',
   'menu.file.new': '新建文件',
+  'menu.file.newWindow': '新建窗口',
   'menu.file.pastePath': '打开剪贴板中的路径',
   'cli.pasteEmpty': '剪贴板中没有可用路径',
   'menu.file.export': '导出…',
@@ -327,6 +328,10 @@ export const zhCN = {
   'tabBar.aria': '打开的文件',
   'tabBar.closeHint': '关闭标签（Ctrl+W）',
   'tabBar.closeAria': '关闭 {name}',
+  'tabBar.newTabHint': '新建标签',
+  'tabBar.newTabAria': '新建标签',
+  'tabBar.newWindowHint': '新建窗口（Ctrl+Shift+N）',
+  'tabBar.newWindowAria': '新建窗口',
 
   // ---------- 标签右键菜单 ----------
   'tabMenu.aria': '标签操作',
@@ -406,6 +411,7 @@ export const zhCN = {
 
   // ---------- 快捷键动作名（设置界面） ----------
   'shortcut.openFile': '打开文件',
+  'shortcut.newWindow': '新建窗口',
   'shortcut.save': '保存',
   'shortcut.saveAs': '另存为',
   'shortcut.toggleEdit': '切换编辑模式',

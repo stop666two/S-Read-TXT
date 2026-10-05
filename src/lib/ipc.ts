@@ -39,7 +39,7 @@ export interface RowText {
 /** 标签信息（与 Rust app_state::TabInfo 对齐）。 */
 export interface TabInfo {
   tabId: number;
-  /** 所属窗口 label（多窗口 P3-4：`main` / `main-2`…） */
+  /** 所属窗口 label（多窗口：`main` / `main-2`…） */
   owner: string;
   path: string;
   name: string;
@@ -1151,6 +1151,14 @@ export const ipc = {
   /** 取走命令行/单实例待打开文件（P3-3）。 */
   takeCliFiles: () => invoke<string[]>('take_cli_files'),
   newFile: () => invoke<TabInfo>('new_file'),
+  /** 新建主窗口；可选物理坐标与尺寸（缺省级联偏移/1100×760）；返回新窗口 label。 */
+  newWindow: (options?: { x?: number; y?: number; width?: number; height?: number }) =>
+    invoke<string>('new_window', {
+      x: options?.x ?? null,
+      y: options?.y ?? null,
+      width: options?.width ?? null,
+      height: options?.height ?? null,
+    }),
   exportText: (tabId: number, path: string) => invoke<number>('export_text', { tabId, path }),
   printDocument: (tabId: number) => invoke<void>('print_document', { tabId }),
   /** 剪贴板历史（读取最新列表）。 */

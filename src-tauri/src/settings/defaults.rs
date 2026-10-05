@@ -363,6 +363,7 @@ pub const FILE_RECENT_LIMIT_RANGE: (u32, u32) = (0, 200);
 /// 注：`Ctrl+1`~`9` 跳转标签为固定键，不在此表中（不参与自定义）。
 pub const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("openFile", "Ctrl+O"),
+    ("newWindow", "Ctrl+Shift+N"),
     ("save", "Ctrl+S"),
     ("saveAs", "Ctrl+Shift+S"),
     ("toggleEdit", "Ctrl+E"),
@@ -404,7 +405,7 @@ mod tests {
     fn default_bindings_are_unique_and_wellformed() {
         assert_eq!(
             DEFAULT_BINDINGS.len(),
-            15,
+            16,
             "默认动作数量变化须同步引擎与文档"
         );
         let mut actions: BTreeSet<&str> = BTreeSet::new();

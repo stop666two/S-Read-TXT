@@ -12,12 +12,18 @@ export function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** 轮询等待（直到返回值真值或超时；超时返回最后取值，供断言展示）。 */
+/** 轮询等待（直到返回值真值或超时；超时返回最后取值，供断言展示）。
+ *  轮询期间的单次异常（如页面导航中 document 未就绪）按「未就绪」继续重试，
+ *  避免瞬时状态击穿整个套件；超时仍未就绪由调用方断言给出清晰失败。 */
 export async function waitForValue(fn, timeoutMs = 4000, interval = 150) {
   const deadline = Date.now() + timeoutMs;
   let value;
   for (;;) {
-    value = await fn();
+    try {
+      value = await fn();
+    } catch {
+      value = undefined;
+    }
     if (value || Date.now() >= deadline) return value;
     await delay(interval);
   }

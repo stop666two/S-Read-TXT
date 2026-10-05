@@ -456,6 +456,9 @@ let outlineOpen = $state(false);
       case 'openFile':
         openFile();
         break;
+      case 'newWindow':
+        void newWindowFlow();
+        break;
       case 'save':
         if (active?.editing) openSaveDialog();
         break;
@@ -815,6 +818,15 @@ let outlineOpen = $state(false);
     try {
       await ipc.newFile();
       tabs.applyView(await ipc.listTabs());
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 新建窗口：后端创建新的主窗口（级联偏移）；新窗口自行完成启动同步 */
+  async function newWindowFlow(): Promise<void> {
+    try {
+      await ipc.newWindow();
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
     }
@@ -1329,8 +1341,11 @@ let outlineOpen = $state(false);
     await tabs.openPath(firstLine);
   }
 
-  // P3-3 命令行/单实例：启动队列排空 + 运行期转发监听（事件与队列叠加不丢失）。
+  // 命令行/单实例：启动队列排空 + 运行期转发监听（事件与队列叠加不丢失）。
+  // 多窗口下仅主窗口消费，避免其余窗口重复打开；定向到目标窗口的转发后续收敛。
+  const isMainWindow = getCurrentWindow().label === 'main';
   onMount(() => {
+    if (!isMainWindow) return;
     let unlistenCli: (() => void) | undefined;
     void ipc
       .takeCliFiles()
@@ -1603,6 +1618,7 @@ onMount(() => {
   onSnapshotNow={() => void snapshotNow()}
   onSnapshotHistory={() => (snapshotsOpen = true)}
   onNewFile={() => void newFileFlow()}
+  onNewWindow={() => void newWindowFlow()}
               onPastePathOpen={() => void pastePathOpen()}
   onExport={() => void exportFlow()}
   onPrint={() => void printFlow()}
@@ -1652,6 +1668,8 @@ onMount(() => {
   onCloseOthers={(tabId) => void closeOtherTabs(tabId)}
   onCloseAll={() => void closeAllTabs()}
   onReorder={reorderTab}
+  onNewTab={() => void newFileFlow()}
+  onNewWindow={() => void newWindowFlow()}
 />
   <div class="work-area" class:with-bg={bgActive}>
     {#if bgActive && bgDataUrl}

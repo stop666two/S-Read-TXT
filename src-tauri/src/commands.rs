@@ -436,8 +436,8 @@ pub fn take_crash_flag() -> bool {
     !s_read_txt::snapshots::take_clean_exit(&dir)
 }
 
-/// 命令：新建未命名文件（P3-2）：按 `file` 设置生成临时文件并以编辑模式打开。
-/// 多窗口（P3-4）：新标签归属调用窗口（`window.label()`，由 Tauri 自动注入）。
+/// 命令：新建未命名文件：按 `file` 设置生成临时文件并以编辑模式打开。
+/// 新标签归属调用窗口（`window.label()`，由 Tauri 自动注入）。
 #[tauri::command]
 pub fn new_file(
     window: tauri::WebviewWindow,
@@ -448,6 +448,85 @@ pub fn new_file(
     lock_state(&state)?
         .open_untitled(window.label(), &dir, &settings)
         .map_err(Into::into)
+}
+
+/// 命令：新建主窗口。
+///
+/// 参数（均可选）：`x`/`y` 新窗口左上角**物理坐标**（缺省 = 相对调用窗口级联 +32px）；
+/// `width`/`height` 初始内尺寸（缺省 1100×760，与主窗口一致）。
+/// 返回：新窗口 label（`main-2`、`main-3`…，取最小可用序号）。
+#[tauri::command]
+pub async fn new_window(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    x: Option<f64>,
+    y: Option<f64>,
+    width: Option<f64>,
+    height: Option<f64>,
+) -> Result<String, IpcError> {
+    with_context(LogContext::request(), || {
+        let label = next_window_label(&app);
+        let new_window = tauri::WebviewWindowBuilder::new(
+            &app,
+            &label,
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .title("S-Read-TXT")
+        .inner_size(width.unwrap_or(1100.0), height.unwrap_or(760.0))
+        .min_inner_size(720.0, 480.0)
+        .decorations(false)
+        .visible(false)
+        .build()
+        .map_err(|err| IpcError::new(CODE_IO, format!("新建窗口失败：{err}")))?;
+        // 初始位置：显式坐标优先；否则相对来源窗口级联偏移 +32px。
+        let (init_x, init_y) = match (x, y) {
+            (Some(px), Some(py)) => (px.round() as i32, py.round() as i32),
+            _ => match window.outer_position() {
+                Ok(position) => (position.x + 32, position.y + 32),
+                Err(_) => (120, 120),
+            },
+        };
+        if let Err(err) = new_window.set_position(tauri::PhysicalPosition::new(init_x, init_y)) {
+            log::warn!(target: "sread::ipc", "新建窗口定位失败：{err}");
+        }
+        // 图标与主题背景（与主窗口启动装配一致；失败不阻塞窗口使用）。
+        let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))
+            .ok()
+            .or_else(|| app.default_window_icon().cloned());
+        if let Some(icon) = icon {
+            let _ = new_window.set_icon(icon);
+        }
+        let (dir, _origin) = paths::resolve_data_dir();
+        let theme = theme::resolve_theme(
+            &dir,
+            &settings_store::load_reader_settings(&dir).theme_id,
+        )
+        .ok();
+        let color = theme
+            .as_ref()
+            .map(crate::theme_background_color)
+            .unwrap_or(tauri::window::Color(0xFA, 0xF9, 0xF7, 0xFF));
+        let _ = new_window.set_background_color(Some(color));
+        new_window
+            .show()
+            .map_err(|err| IpcError::new(CODE_IO, format!("显示新窗口失败：{err}")))?;
+        log::info!(target: "sread::ipc", "已新建窗口：{label}");
+        Ok(label)
+    })
+}
+
+/// 生成下一个可用的主窗口 label（`main-2`、`main-3`…；已存在则递增）。
+fn next_window_label(app: &tauri::AppHandle) -> String {
+    use tauri::Manager;
+    let existing = app.webview_windows();
+    let mut index = 2u32;
+    loop {
+        let label = format!("main-{index}");
+        if !existing.contains_key(&label) {
+            return label;
+        }
+        index += 1;
+    }
 }
 
 /// 命令：导出当前标签（含未保存编辑）到指定路径；格式由扩展名推断。
@@ -846,7 +925,7 @@ pub fn save_session(session: SessionState) -> Result<SessionState, IpcError> {
 }
 
 /// 命令：打开文件（重复打开自动复用**本窗口**已有标签；首次打开成功时记录历史）。
-/// 多窗口（P3-4）：新标签归属调用窗口（label 由 Tauri 自动注入）。
+/// 新标签归属调用窗口（label 由 Tauri 自动注入）。
 #[tauri::command]
 pub fn open_file(
     window: tauri::WebviewWindow,

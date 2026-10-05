@@ -220,6 +220,7 @@ fn main() {
             commands::get_app_info,
             commands::data_dir_status,
             commands::take_cli_files,
+            commands::new_window,
             commands::set_data_dir,
             commands::get_settings,
             commands::save_settings,

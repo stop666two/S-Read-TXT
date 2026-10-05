@@ -379,10 +379,10 @@ try {
     shortcutBundle = null;
   }
   chk(
-    'E11 快捷键导出（格式字段 + 15 项）',
+    'E11 快捷键导出（格式字段 + 16 项）',
     typeof shortcutExportBytes === 'number' &&
       shortcutBundle?.bundleVersion === 1 &&
-      Object.keys(shortcutBundle?.bindings ?? {}).length === 15,
+      Object.keys(shortcutBundle?.bindings ?? {}).length === 16,
     `bytes=${shortcutExportBytes} keys=${shortcutBundle ? Object.keys(shortcutBundle.bindings).length : 'null'}`,
   );
 

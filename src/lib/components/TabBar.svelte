@@ -23,8 +23,12 @@
     onCloseAll: () => void;
     /** 拖拽排序（toIndex = 移除后插入下标语义） */
     onReorder: (tabId: number, toIndex: number) => void;
+    /** 新建标签（标签栏右侧按钮） */
+    onNewTab?: () => void;
+    /** 新建窗口（标签栏右侧按钮） */
+    onNewWindow?: () => void;
   }
-  let { tabs, activeId, onSelect, onClose, onCloseOthers, onCloseAll, onReorder }: Props = $props();
+  let { tabs, activeId, onSelect, onClose, onCloseOthers, onCloseAll, onReorder, onNewTab, onNewWindow }: Props = $props();
 
   /** 右键菜单状态（null = 关闭；坐标为视口像素） */
   let menu = $state<{ x: number; y: number; tabId: number } | null>(null);
@@ -36,6 +40,8 @@
 
   /** 标签栏滚动容器 */
   let bar = $state<HTMLElement | null>(null);
+  /** 标签栏外壳（承载滚轮监听与右侧按钮定位） */
+  let shell = $state<HTMLElement | null>(null);
   /** 拖拽后抑制 click（避免排序完又触发选择——选择本身无害，但会抢焦点） */
   let suppressClick = false;
 
@@ -101,23 +107,26 @@
     onSelect(tabId);
   }
 
-  // 溢出滚动：纵向滚轮映射为横向滚动（常见于多标签场景）
+  // 溢出滚动：纵向滚轮映射为横向滚动（常见于多标签场景）。
+  // 监听挂在标签栏外壳上：悬停在右侧按钮区时滚轮同样滚动标签条。
   $effect(() => {
+    const host = shell;
     const el = bar;
-    if (!el) return;
+    if (!host || !el) return;
     const onWheel = (event: WheelEvent): void => {
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       el.scrollLeft += event.deltaY;
       event.preventDefault();
     };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+    host.addEventListener('wheel', onWheel, { passive: false });
+    return () => host.removeEventListener('wheel', onWheel);
   });
 </script>
 
 <svelte:window onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={onPointerUp} />
 
-<div class="tab-bar" role="tablist" aria-label={t('tabBar.aria')} bind:this={bar}>
+<div class="tab-shell" bind:this={shell}>
+  <div class="tab-bar" role="tablist" aria-label={t('tabBar.aria')} bind:this={bar}>
   {#each tabs as tab (tab.tabId)}
     <div
       class="tab"
@@ -168,6 +177,29 @@
   {#if dropLineLeft !== null}
     <div class="drop-line" style="left: {dropLineLeft}px"></div>
   {/if}
+  </div>
+  <div class="bar-actions">
+    <button
+      class="bar-btn"
+      type="button"
+      title={t('tabBar.newTabHint')}
+      aria-label={t('tabBar.newTabAria')}
+      data-tab-new
+      onclick={() => onNewTab?.()}
+    >
+      <Icon name="plus" size={14} />
+    </button>
+    <button
+      class="bar-btn"
+      type="button"
+      title={t('tabBar.newWindowHint')}
+      aria-label={t('tabBar.newWindowAria')}
+      data-window-new
+      onclick={() => onNewWindow?.()}
+    >
+      <Icon name="window" size={14} />
+    </button>
+  </div>
 </div>
 
 {#if menu}
@@ -187,6 +219,7 @@
     display: flex;
     align-items: stretch;
     height: var(--h-tabbar);
+    padding-right: 62px;
     background: var(--chrome);
     border-bottom: 1px solid var(--line);
     user-select: none;
@@ -275,5 +308,41 @@
     width: 2px;
     background: var(--accent);
     pointer-events: none;
+  }
+
+  .tab-shell {
+    position: relative;
+    height: var(--h-tabbar);
+  }
+
+  .bar-actions {
+    position: absolute;
+    top: 0;
+    right: 4px;
+    height: var(--h-tabbar);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-left: 6px;
+    background: var(--chrome);
+    border-left: 1px solid var(--line);
+  }
+
+  .bar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 22px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: default;
+  }
+
+  .bar-btn:hover {
+    background: var(--hover);
+    color: var(--ink);
   }
 </style>
