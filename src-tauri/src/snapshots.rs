@@ -236,11 +236,34 @@ pub fn take_clean_exit(data_dir: &Path) -> bool {
     }
 }
 
+/// 数据目录中是否存在任何可恢复快照（任意源文件子目录下的合法 `.snap` 文件）。
+pub fn has_any(data_dir: &Path) -> bool {
+    let root = data_dir.join(SNAPSHOTS_DIR);
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        if !entry.metadata().map(|meta| meta.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let Ok(files) = std::fs::read_dir(entry.path()) else {
+            continue;
+        };
+        for file in files.flatten() {
+            let name = file.file_name().to_string_lossy().into_owned();
+            if is_valid_name(&name) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Write;
 
-    use super::{create, delete, list, mark_clean_exit, read, take_clean_exit};
+    use super::{create, delete, has_any, list, mark_clean_exit, read, take_clean_exit};
     use crate::textfile::editing::edit_doc::EditDoc;
 
     fn open_doc(dir: &std::path::Path, contents: &[u8]) -> (std::path::PathBuf, EditDoc) {
@@ -320,5 +343,18 @@ mod tests {
         mark_clean_exit(temp.path()).expect("标记失败");
         assert!(take_clean_exit(temp.path()));
         assert!(!take_clean_exit(temp.path()));
+    }
+
+    /// 可恢复快照探测：空目录 false；有快照 true；非法名与根下散文件不计入。
+    #[test]
+    fn has_any_detects_recoverable_snapshots() {
+        let temp = tempfile::tempdir().expect("临时目录失败");
+        assert!(!has_any(temp.path()));
+        std::fs::create_dir_all(temp.path().join("snapshots")).expect("建目录失败");
+        std::fs::write(temp.path().join("snapshots").join("junk.snap"), b"x").expect("写文件失败");
+        assert!(!has_any(temp.path()));
+        let (path, doc) = open_doc(temp.path(), b"hello\n");
+        create(temp.path(), &path.to_string_lossy(), &doc, 50, 200).expect("创建失败");
+        assert!(has_any(temp.path()));
     }
 }

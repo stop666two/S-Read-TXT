@@ -433,11 +433,12 @@ pub fn mark_clean_exit() -> Result<(), IpcError> {
         .map_err(|err| IpcError::new(CODE_IO, format!("写入退出标记失败：{err}")))
 }
 
-/// 命令：消费「干净退出」标记；返回 `true` 表示上次异常退出（崩溃恢复提示用）。
+/// 命令：消费「干净退出」标记；返回 `true` 表示上次异常退出**且存在可恢复快照**。
 #[tauri::command]
 pub fn take_crash_flag() -> bool {
     let (dir, _origin) = paths::resolve_data_dir();
-    !s_read_txt::snapshots::take_clean_exit(&dir)
+    let crashed = !s_read_txt::snapshots::take_clean_exit(&dir);
+    crashed && s_read_txt::snapshots::has_any(&dir)
 }
 
 /// 解析调用窗口的目标栏位键：显式 pane 属于本窗口时采用，否则回落默认栏 `#1`。
