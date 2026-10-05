@@ -51,6 +51,8 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import { EMPTY_GROUP } from './lib/state/tabs-groups';
   import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type TextStats, type ThemeSummary, type WindowOption, type WindowSession, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
+  import { foldMemory } from './lib/reader/fold-memory';
+  import { caretMemory } from './lib/edit/caret-memory';
   import { saveSessionNow, setSessionLayout } from './lib/session';
   import { computeDropHit } from './lib/tab-dnd';
   import { dataDirStore } from './lib/state/data-dir.svelte';
@@ -450,9 +452,9 @@ let outlineOpen = $state(false);
   }
 
   /** 会话恢复：逐个打开上次的标签（缺失/失败经 Toast 跳过）、补齐编码覆盖与编辑态，
-   *  恢复滚动锚点与活动标签；恢复期间由 sessionReady 门控自动保存。 */
+   *  按设置恢复滚动/光标/折叠；恢复期间由 sessionReady 门控自动保存。 */
   async function restoreSession(): Promise<void> {
-    // 启动行为设置：关闭「恢复上次会话」时直接进入空状态
+    // 总开关关闭：不恢复标签内容（窗口数量与几何由启动层按布局设置恢复）
     if (appSettings?.startup.restoreSession === false) return;
     let session: WindowSession | null = null;
     try {
@@ -461,6 +463,12 @@ let outlineOpen = $state(false);
       if (import.meta.env.DEV) console.error('[app] 读取会话失败', error);
     }
     try {
+      const restore = appSettings?.startup.restoreItems ?? {
+        caret: false,
+        scroll: true,
+        folds: false,
+        layout: true,
+      };
       const panes = Array.isArray(session?.panes)
         ? session.panes.filter((item) => item.pane.startsWith(`${windowLabel}#`))
         : [];
@@ -472,39 +480,63 @@ let outlineOpen = $state(false);
       }
       if (panes.length === 0) {
         // v2 旧切片（后端已迁移，理论不再出现）：并入首栏恢复
-        await restorePaneTabs(`${windowLabel}#1`, legacyTabs, session.activeTabIndex ?? 0, true);
+        await restorePaneTabs(`${windowLabel}#1`, legacyTabs, session.activeTabIndex ?? 0, true, restore, []);
         return;
       }
-      // 应用布局（后端已净化；此处再防御性校验叶子与栏位集合一致）
-      const sessionLayout = session.layout ?? null;
-      const layoutKeys = sessionLayout ? collectLeaves(sessionLayout) : [];
-      const paneSet = new Set(panes.map((item) => item.pane));
-      const layoutOk =
-        sessionLayout !== null &&
-        layoutKeys.length === paneSet.size &&
-        layoutKeys.every((key) => paneSet.has(key));
-      layout = layoutOk ? sessionLayout : leaf(panes[0].pane);
-      const restoredKeys = collectLeaves(layout);
-      const focused =
-        session.focusedPane && paneSet.has(session.focusedPane)
-          ? session.focusedPane
-          : restoredKeys[0];
-      // 逐栏恢复标签（含编码/编辑态/颜色）；先种子滚动位置再应用视图
-      for (const paneSession of panes) {
-        await restorePaneTabs(paneSession.pane, paneSession.tabs, paneSession.activeTabIndex, false);
+      const clipped: string[] = [];
+      if (restore.layout === false) {
+        // 布局关：合并为单栏——各栏标签按原顺序并入首栏（无损失）
+        const first = panes[0].pane;
+        layout = leaf(first);
+        const merged = panes.flatMap((item) => item.tabs);
+        const activeIndex = panes[0].activeTabIndex ?? 0;
+        await restorePaneTabs(first, merged, activeIndex, true, restore, clipped);
+        tabs.setActivePane(first);
+      } else {
+        // 应用布局（后端已净化；此处再防御性校验叶子与栏位集合一致）
+        const sessionLayout = session.layout ?? null;
+        const layoutKeys = sessionLayout ? collectLeaves(sessionLayout) : [];
+        const paneSet = new Set(panes.map((item) => item.pane));
+        const layoutOk =
+          sessionLayout !== null &&
+          layoutKeys.length === paneSet.size &&
+          layoutKeys.every((key) => paneSet.has(key));
+        layout = layoutOk ? sessionLayout : leaf(panes[0].pane);
+        const restoredKeys = collectLeaves(layout);
+        const focused =
+          session.focusedPane && paneSet.has(session.focusedPane)
+            ? session.focusedPane
+            : restoredKeys[0];
+        // 逐栏恢复标签（含编码/编辑态/颜色与位置锚点）
+        for (const paneSession of panes) {
+          await restorePaneTabs(
+            paneSession.pane,
+            paneSession.tabs,
+            paneSession.activeTabIndex,
+            false,
+            restore,
+            clipped,
+          );
+        }
+        tabs.setActivePane(focused);
       }
-      tabs.setActivePane(focused);
+      if (clipped.length > 0) {
+        // 越界裁剪：聚合一次提示，避免逐标签刷屏
+        toasts.show(t('app.session.positionClipped', { count: clipped.length }));
+      }
     } finally {
       sessionReady = true;
     }
   }
 
-  /** 恢复单个栏位的标签（含编码/编辑态/颜色与活动下标）。 */
+  /** 恢复单个栏位的标签（含编码/编辑态/颜色、滚动与光标/折叠锚点、活动下标）。 */
   async function restorePaneTabs(
     pane: string,
     items: NonNullable<WindowSession['tabs']>,
     activeIndex: number,
     initialPane: boolean,
+    restore: { caret: boolean; scroll: boolean; folds: boolean; layout: boolean },
+    clipped: string[],
   ): Promise<void> {
     const seeds: { tabId: number; row: number }[] = [];
     for (const item of items) {
@@ -527,6 +559,15 @@ let outlineOpen = $state(false);
             // 颜色恢复失败（调色板变化等）：忽略，不影响其余标签
           }
         }
+        if (restore.caret && item.caretRow != null) {
+          // 光标越界：裁剪到最后一行并计入聚合提示
+          const row = Math.min(item.caretRow, Math.max(0, info.rowsTotal - 1));
+          if (row !== item.caretRow) clipped.push(item.path);
+          caretMemory.seed(info.tabId, { row, utf16: item.caretCol ?? 0 });
+        }
+        if (restore.folds && item.folds && item.folds.length > 0) {
+          foldMemory.seed(info.tabId, item.folds);
+        }
         seeds.push({ tabId: info.tabId, row: item.scrollRow });
       } catch (error) {
         const payload = toIpcError(error);
@@ -535,6 +576,7 @@ let outlineOpen = $state(false);
     }
     // 先预热滚动锚点再应用视图：活动标签首次渲染即可恢复到记录位置
     for (const seed of seeds) {
+      if (!restore.scroll) continue;
       // 进度记忆关闭：不恢复历史位置（会话仍保存窗口与标签）
       if (readerSettings?.reading.progressMemory !== false) {
         scrollMemory.seed(seed.tabId, seed.row);

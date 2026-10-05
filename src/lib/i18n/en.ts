@@ -500,6 +500,7 @@ export const en: Record<MessageKey, string> = {
   'app.dataDir.stillUnwritable': 'The selected directory is still not writable. Please retry',
   'app.dataDir.readOnlyRun': 'History, settings and session data will not be saved in this run',
   'app.session.restoreFailed': 'Could not restore "{path}": {reason}',
+  'app.session.positionClipped': '{count} tab(s) were located past the end of the file and moved to the last line',
   'app.editReadOnlyHint':
     'File exceeds the read-only threshold and was opened read-only; editing is unavailable (adjustable in settings)',
   'app.openReadOnlyHint':

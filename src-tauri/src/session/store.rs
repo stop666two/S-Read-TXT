@@ -2,9 +2,9 @@
 //!
 //! 策略：
 //! - 载入：缺失/损坏 → 默认会话（损坏文件备份 `.corrupt-<纳秒>`）；随后归一；
-//! - 归一：v1 单窗口 → v2 多窗口 → v3 分栏；版本对齐；窗口尺寸越界回退默认；
+//! - 归一：v1 单窗口 → v2 多窗口 → v3 分栏 → v4 光标/折叠锚点；版本对齐；窗口尺寸越界回退默认；
 //!   剔除空 label / 空路径标签；重复 label 去重；栏位净化（键去重、上限、下标收敛）；
-//!   布局树校验（叶子必须与栏位集合一致，否则按栏位重建默认布局）；焦点校验；
+//!   布局树校验（叶子必须与栏位集合一致，否则按栏位重建默认布局）；焦点校验；折叠锚点净化；
 //! - 保存：按窗口合并写入（read-modify-write，多窗口互不覆盖）；原子落盘。
 
 use std::collections::HashSet;
@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 
 use crate::session::model::{
     PaneLayout, PaneSession, PaneSplitDir, SessionState, WindowSession, WindowState,
-    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, MAX_PANES, MAX_WINDOW_DIMENSION,
-    MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, SESSION_SCHEMA_VERSION,
+    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, MAX_PANES, MAX_SESSION_FOLDS,
+    MAX_WINDOW_DIMENSION, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, SESSION_SCHEMA_VERSION,
 };
 use crate::storage::json_io;
 
@@ -141,6 +141,13 @@ fn normalize(state: &mut SessionState) {
                     } else {
                         Some(trimmed)
                     };
+                }
+                if !tab.path.is_empty() {
+                    // 折叠锚点防御：去重、排序、剔除零长，条数限幅
+                    tab.folds.retain(|span| span.len > 0);
+                    tab.folds.sort_by_key(|span| span.start_row);
+                    tab.folds.dedup_by_key(|span| span.start_row);
+                    tab.folds.truncate(MAX_SESSION_FOLDS);
                 }
                 !tab.path.is_empty()
             });
@@ -293,10 +300,7 @@ mod tests {
     fn tab(path: &str) -> SessionTab {
         SessionTab {
             path: path.to_string(),
-            encoding: None,
-            scroll_row: 0,
-            edit_mode: false,
-            color: None,
+            ..SessionTab::default()
         }
     }
 
@@ -306,12 +310,12 @@ mod tests {
         }
     }
 
-    /// v3 往返一致（含分栏布局、每栏标签与聚焦栏）。
+    /// v3 往返一致（含分栏布局、每栏标签与聚焦栏、光标与折叠锚点）。
     #[test]
     fn session_roundtrip_v3() {
         let dir = data_dir();
         let state = SessionState {
-            schema_version: 3,
+            schema_version: 4,
             windows: vec![
                 WindowSession {
                     label: "main".to_string(),
@@ -333,6 +337,18 @@ mod tests {
                                     scroll_row: 1234,
                                     edit_mode: false,
                                     color: None,
+                                    caret_row: Some(1200),
+                                    caret_col: Some(7),
+                                    folds: vec![
+                                        crate::session::model::FoldSpan {
+                                            start_row: 100,
+                                            len: 42,
+                                        },
+                                        crate::session::model::FoldSpan {
+                                            start_row: 600,
+                                            len: 3,
+                                        },
+                                    ],
                                 },
                                 SessionTab {
                                     path: "D:/novels/b.txt".to_string(),
@@ -340,6 +356,9 @@ mod tests {
                                     scroll_row: 0,
                                     edit_mode: true,
                                     color: Some("green".to_string()),
+                                    caret_row: None,
+                                    caret_col: None,
+                                    folds: Vec::new(),
                                 },
                             ],
                         },
@@ -383,13 +402,13 @@ mod tests {
         let loaded = load(dir.path());
         assert_eq!(loaded, state);
         let raw = std::fs::read_to_string(session_path(dir.path())).expect("读取失败");
-        assert!(raw.contains("\"schemaVersion\": 3"));
+        assert!(raw.contains("\"schemaVersion\": 4"));
         assert!(raw.contains("\"focusedLabel\": \"main-2\""));
         assert!(raw.contains("\"focusedPane\": \"main#2\""));
         assert!(!raw.contains("legacy"));
     }
 
-    /// v1 单窗口文件迁移到 v3（顶层 window/tabs 归入 main#1）。
+    /// v1 单窗口文件迁移到当前版本（顶层 window/tabs 归入 main#1）。
     #[test]
     fn migrates_v1_single_window() {
         let dir = data_dir();
@@ -399,7 +418,7 @@ mod tests {
         )
         .expect("写会话失败");
         let loaded = load(dir.path());
-        assert_eq!(loaded.schema_version, 3);
+        assert_eq!(loaded.schema_version, 4);
         assert_eq!(loaded.windows.len(), 1);
         let main = &loaded.windows[0];
         assert_eq!(main.label, "main");
@@ -412,7 +431,7 @@ mod tests {
         assert_eq!(main.layout, Some(leaf("main#1")));
     }
 
-    /// v2 多窗口切片（window 级 tabs/activeTabIndex）迁移为单栏 v3。
+    /// v2 多窗口切片（window 级 tabs/activeTabIndex）迁移为单栏当前版本。
     #[test]
     fn migrates_v2_slice_to_single_pane() {
         let dir = data_dir();
@@ -426,7 +445,7 @@ mod tests {
         }"#;
         std::fs::write(session_path(dir.path()), v2).expect("写会话失败");
         let loaded = load(dir.path());
-        assert_eq!(loaded.schema_version, 3);
+        assert_eq!(loaded.schema_version, 4);
         let main = &loaded.windows[0];
         assert_eq!(main.panes.len(), 1);
         assert_eq!(main.panes[0].pane, "main#1");
@@ -434,6 +453,57 @@ mod tests {
         assert_eq!(main.panes[0].tabs.len(), 2);
         assert_eq!(main.layout, Some(leaf("main#1")));
         assert_eq!(loaded.focused_label.as_deref(), Some("main"));
+    }
+
+    /// v3 旧文件（标签无 caret/folds 字段）迁移：字段缺失按默认补齐。
+    #[test]
+    fn migrates_v3_tab_without_caret_and_folds() {
+        let dir = data_dir();
+        let v3 = r#"{
+          "schemaVersion": 3,
+          "windows": [{ "label": "main", "window": { "width": 1100, "height": 760, "maximized": false },
+            "panes": [{ "pane": "main#1", "activeTabIndex": 0, "tabs": [
+              { "path": "C:/a.txt", "encoding": null, "scrollRow": 3, "editMode": true, "color": "red" } ] }],
+            "layout": { "type": "leaf", "pane": "main#1" }, "focusedPane": "main#1" }]
+        }"#;
+        std::fs::write(session_path(dir.path()), v3).expect("写会话失败");
+        let loaded = load(dir.path());
+        assert_eq!(loaded.schema_version, 4);
+        let tab = &loaded.windows[0].panes[0].tabs[0];
+        assert_eq!(tab.caret_row, None);
+        assert_eq!(tab.caret_col, None);
+        assert!(tab.folds.is_empty());
+    }
+
+    /// 折叠锚点净化：零长剔除、起始行去重、按行号升序、条数限幅。
+    #[test]
+    fn normalizes_fold_anchors() {
+        let dir = data_dir();
+        let mut folds = String::new();
+        for index in (0..600).rev() {
+            if !folds.is_empty() {
+                folds.push(',');
+            }
+            folds.push_str(&format!("{{\"startRow\":{},\"len\":2}}", index));
+        }
+        let v4 = format!(
+            r#"{{"schemaVersion":4,"windows":[{{"label":"main","window":{{"width":1100,"height":760,"maximized":false}},
+            "panes":[{{"pane":"main#1","activeTabIndex":0,"tabs":[
+              {{"path":"C:/a.txt","scrollRow":0,"folds":[{{"startRow":9,"len":0}},{{"startRow":5,"len":4}},{{"startRow":5,"len":9}}{folds_extra}]}}]}}],
+            "layout":{{"type":"leaf","pane":"main#1"}}}}]}}"#,
+            folds_extra = format!(",{folds}")
+        );
+        std::fs::write(session_path(dir.path()), v4).expect("写会话失败");
+        let loaded = load(dir.path());
+        let tab = &loaded.windows[0].panes[0].tabs[0];
+        assert!(tab.folds.len() <= crate::session::model::MAX_SESSION_FOLDS);
+        assert_eq!(tab.folds.len(), crate::session::model::MAX_SESSION_FOLDS);
+        assert!(tab.folds.iter().all(|span| span.len > 0));
+        assert!(tab
+            .folds
+            .windows(2)
+            .all(|pair| pair[0].start_row < pair[1].start_row));
+        assert_eq!(tab.folds[0].start_row, 0);
     }
 
     /// 布局净化：未知叶子剔除、缺失栏位补齐 → 不完整时整体回退默认布局。
@@ -537,7 +607,7 @@ mod tests {
         )
         .expect("写会话失败");
         let loaded = load(dir.path());
-        assert_eq!(loaded.schema_version, 3);
+        assert_eq!(loaded.schema_version, 4);
         assert_eq!(loaded.windows.len(), 2, "空 label 应剔除");
         let main = &loaded.windows[0];
         assert_eq!(main.window.width, DEFAULT_WINDOW_WIDTH);

@@ -492,6 +492,7 @@ export const zhCN = {
   'app.dataDir.stillUnwritable': '所选目录仍不可写，请重试',
   'app.dataDir.readOnlyRun': '本次运行不会保存历史、设置与会话数据',
   'app.session.restoreFailed': '无法恢复「{path}」：{reason}',
+  'app.session.positionClipped': '有 {count} 个标签的原位置超出文件长度，已定位到最后一行',
   'app.editReadOnlyHint': '文件超过只读阈值，已以只读模式打开，不可编辑（可在设置中调整）',
   'app.openReadOnlyHint': '文件超过只读阈值，已以只读模式打开（可在设置中调整）',
   'app.currentFile': '当前文件',

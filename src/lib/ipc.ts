@@ -795,6 +795,12 @@ export interface WindowState {
   maximized: boolean;
 }
 
+/** 会话折叠锚点（起始显示行 + 行数；恢复时与重算区间校验）。 */
+export interface SessionFoldSpan {
+  startRow: number;
+  len: number;
+}
+
 /** 会话中的单个标签（恢复用；scrollRow = 顶部定位行）。 */
 export interface SessionTab {
   path: string;
@@ -803,6 +809,12 @@ export interface SessionTab {
   editMode: boolean;
   /** 标签颜色（调色板 id；null = 未设置） */
   color: string | null;
+  /** 编辑标签光标行（0 基；null = 未记录） */
+  caretRow: number | null;
+  /** 编辑标签光标行内 UTF-16 偏移（0 基；null = 未记录） */
+  caretCol: number | null;
+  /** 折叠区域锚点（恢复时校验，不匹配丢弃） */
+  folds: SessionFoldSpan[];
 }
 
 /** 分栏布局树（v3 会话；与 Rust `PaneLayout` 对应）。 */

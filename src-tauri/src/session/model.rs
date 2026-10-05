@@ -19,7 +19,10 @@ pub const MAX_WINDOW_DIMENSION: u32 = 16384;
 /// 单窗口分栏上限（叶栏位数量）
 pub const MAX_PANES: usize = 4;
 /// 会话配置格式版本（独立于设置 schema：会话结构变更时递增并在会话模块内提供迁移）
-pub const SESSION_SCHEMA_VERSION: u32 = 3;
+pub const SESSION_SCHEMA_VERSION: u32 = 4;
+
+/// 单标签折叠锚点条数上限（防御脏数据）。
+pub const MAX_SESSION_FOLDS: usize = 512;
 
 /// 窗口状态。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -49,6 +52,16 @@ impl Default for WindowState {
     }
 }
 
+/// 单个折叠区域的锚点（起始显示行 + 行数；恢复时与重算区间逐项校验）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoldSpan {
+    /// 折叠头部行（0 基）
+    pub start_row: u64,
+    /// 折叠区域行数（含头部行）
+    pub len: u64,
+}
+
 /// 单个标签的会话锚点（不持久化未保存的编辑内容）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -63,6 +76,12 @@ pub struct SessionTab {
     pub edit_mode: bool,
     /// 标签颜色（调色板 id；`None` = 未设置）
     pub color: Option<String>,
+    /// 编辑标签光标行（0 基；`None` = 未记录）
+    pub caret_row: Option<u64>,
+    /// 编辑标签光标行内 UTF-16 偏移（0 基；`None` = 未记录）
+    pub caret_col: Option<u64>,
+    /// 折叠区域锚点（恢复时与重算区间校验，不匹配丢弃）
+    pub folds: Vec<FoldSpan>,
 }
 
 impl Default for SessionTab {
@@ -73,6 +92,9 @@ impl Default for SessionTab {
             scroll_row: 0,
             edit_mode: false,
             color: None,
+            caret_row: None,
+            caret_col: None,
+            folds: Vec::new(),
         }
     }
 }

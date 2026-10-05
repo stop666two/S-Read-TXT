@@ -14,9 +14,11 @@
     type EditApplied,
     type FoldRegion,
     type FilterQuery,
+    type SessionFoldSpan,
     type TabInfo,
   } from '../ipc';
   import { breadcrumbChain, buildVisibleRows, hiddenIntervals } from '../reader/folds';
+  import { foldMemory } from '../reader/fold-memory';
   import { HeightModel } from '../reader/heights';
   import { RowCache } from '../reader/row-cache';
   import { scrollMemory } from '../reader/scroll-memory';
@@ -297,12 +299,61 @@
     return filter ? (filter[displayRow] ?? 0) : displayRow;
   }
 
+  /** 文件行 → 显示行（过滤/折叠启用时经视图行映射；行不在可视集时取其后最近行）。 */
+  function fileRowToDisplay(row: number): number {
+    const view = viewRows;
+    if (!view) return row;
+    const index = view.indexOf(row);
+    if (index >= 0) return index;
+    const next = view.findIndex((item) => item > row);
+    return next >= 0 ? next : Math.max(0, view.length - 1);
+  }
+
+  /** 当前折叠集合 → 会话锚点（区间未加载或折叠为空时返回空数组）。 */
+  function currentFoldSpans(): SessionFoldSpan[] {
+    const regions = foldRegions;
+    if (!regions || foldedRows.size === 0) return [];
+    const spans: SessionFoldSpan[] = [];
+    for (const region of regions) {
+      if (foldedRows.has(region.startRow)) {
+        spans.push({ startRow: region.startRow, len: region.endRow - region.startRow + 1 });
+      }
+    }
+    return spans;
+  }
+
+  /** 标签切换前写回折叠锚点（空集合会清除记录）。 */
+  let lastFoldTabId: number | null = null;
+  function saveFoldsFor(tabId: number): void {
+    foldMemory.set(tabId, currentFoldSpans());
+  }
+
+  /** 折叠锚点恢复：仅保留「起始行存在且长度一致」的条目，并回写剪枝后的记忆。 */
+  function restoreFoldsFor(tabId: number, regions: FoldRegion[]): void {
+    const spans = foldMemory.get(tabId);
+    if (!spans || spans.length === 0) return;
+    const valid = new Set<number>();
+    for (const span of spans) {
+      const region = regions.find((item) => item.startRow === span.startRow);
+      if (region && region.endRow - region.startRow + 1 === span.len) {
+        valid.add(span.startRow);
+      }
+    }
+    if (valid.size > 0) {
+      foldedRows = valid;
+      applyFoldChange();
+    }
+    saveFoldsFor(tabId);
+  }
+
   /** 当前视图总行数（过滤启用后为命中数）。 */
-  // 折叠状态随标签/编码切换重置（区间与折叠集属标签级；内容变更由 version 触发重载）
+  // 折叠状态随标签/编码切换重置（区间与折叠集属标签级；切换前先把折叠锚点写回记忆）
   $effect(() => {
-    void tab.tabId;
+    const tabId = tab.tabId;
     void tab.encoding;
     untrack(() => {
+      if (lastFoldTabId !== null && lastFoldTabId !== tabId) saveFoldsFor(lastFoldTabId);
+      lastFoldTabId = tabId;
       foldedRows = new Set();
       foldRegions = null;
     });
@@ -323,7 +374,10 @@
       void (async () => {
         try {
           const regions = await ipc.foldRegions(tabId);
-          if (seq === foldLoadSeq) foldRegions = regions;
+          if (seq === foldLoadSeq) {
+            foldRegions = regions;
+            restoreFoldsFor(tabId, regions);
+          }
         } catch (error) {
           if (seq === foldLoadSeq) {
             foldRegions = [];
@@ -351,6 +405,7 @@
           )
         : new Set();
     applyFoldChange();
+    saveFoldsFor(tab.tabId);
   });
 
   /** 折叠切换后保持顶部行稳定并重排 */
@@ -368,6 +423,7 @@
     else next.add(row);
     foldedRows = next;
     applyFoldChange();
+    saveFoldsFor(tab.tabId);
   }
 
   function viewRowsTotal(): number {
@@ -789,16 +845,17 @@
    *  2. 仅对第 >0 行重试（行高模型校准期间位置会漂移）；顶部无需恢复。
    *  3. 用户主动交互（滚轮/指针/触摸/按键）通过 scrollEpoch 中止重试。 */
   function applyInitialScroll(row: number, rowsTotal: number): void {
+    const displayRow = fileRowToDisplay(row);
     refreshWindow();
-    if (row <= 0) return;
+    if (displayRow <= 0) return;
     const epoch = scrollEpoch;
     let attempts = 0;
     const attempt = (): void => {
       if (!container || scrollEpoch !== epoch) return;
-      const contentTop = heights.offsetOf(row, Math.max(1, rowsTotal));
+      const contentTop = heights.offsetOf(displayRow, Math.max(1, rowsTotal));
       // 打字机模式：程序化定位（跳转/恢复）时目标行保持视口中部
       const target = (readingSettings?.typewriter ?? false)
-        ? Math.max(0, contentTop - (container.clientHeight - heights.heightOf(row)) / 2)
+        ? Math.max(0, contentTop - (container.clientHeight - heights.heightOf(displayRow)) / 2)
         : contentTop;
       setContentScrollTop(target);
       if (Math.abs(container.scrollTop - (target + pagePadTop)) <= 2 || attempts >= 120) {
@@ -846,7 +903,10 @@
     return () => {
       if (readingSettings?.progressMemory ?? true) {
         const offset = untrack(() => (spreadMode ? spreadOffset : contentScrollTop()));
-        scrollMemory.set(currentTabId, heights.rowAtOffset(offset, Math.max(1, rowsTotal)));
+        const displayRow = heights.rowAtOffset(offset, Math.max(1, rowsTotal));
+        // 过滤/折叠启用时 heights 以显示行计——写回文件行，会话恢复始终按文件行解释
+        const fileRow = untrack(() => (viewRows ? fileRowOf(displayRow) : displayRow));
+        scrollMemory.set(currentTabId, fileRow);
       }
     };
   });

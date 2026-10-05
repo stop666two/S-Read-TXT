@@ -5,8 +5,10 @@
 
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
+import { caretMemory } from './edit/caret-memory';
 import { ipc, type WindowSession, type WindowState } from './ipc';
 import { collectLeaves, type PaneLayout } from './layout/pane-tree';
+import { foldMemory } from './reader/fold-memory';
 import { scrollMemory } from './reader/scroll-memory';
 import { tabs } from './state/tabs.svelte';
 
@@ -53,13 +55,19 @@ export async function collectSession(): Promise<WindowSession> {
     return {
       pane,
       activeTabIndex: activeIndex >= 0 ? activeIndex : 0,
-      tabs: list.map((tab) => ({
-        path: tab.path,
-        encoding: tab.encodingOverride ?? null,
-        scrollRow: scrollMemory.get(tab.tabId) ?? 0,
-        editMode: tab.editing,
-        color: tab.color ?? null,
-      })),
+      tabs: list.map((tab) => {
+        const caret = caretMemory.get(tab.tabId);
+        return {
+          path: tab.path,
+          encoding: tab.encodingOverride ?? null,
+          scrollRow: scrollMemory.get(tab.tabId) ?? 0,
+          editMode: tab.editing,
+          color: tab.color ?? null,
+          caretRow: caret?.row ?? null,
+          caretCol: caret?.utf16 ?? null,
+          folds: foldMemory.get(tab.tabId) ?? [],
+        };
+      }),
     };
   });
   return {
