@@ -203,11 +203,9 @@ fn layout_sanitize_drops_unknown_and_appends_missing() { /* panes=[m#1,m#2]，la
 
 **Interfaces:**
 - `HoverPayload { active: bool, client_x: f64, client_y: f64 }`、`DroppedPayload { tab_id: u64, client_x: f64, client_y: f64 }`
-- `drag_end` 分支：
-  - 落回源窗 → 发 `EVENT_DRAG_DROPPED`（含 y）；
-  - 落其他主窗 → **只发** `EVENT_DRAG_DROPPED` 给目标窗（不再 `move_tab`/广播；由目标前端调 `move_tab_to_pane`）；
-  - 桌面 → `build_main_window` 后 `move_tab(tab_id, &default_pane(&label), MAX)` + 广播（该窗无前端状态，`#1` 键确定）。
-- `client_y` 计算：`(y - inner.y) / scale`（与 client_x 同源，`hit_test` 已取 inner 位置与 scale）。
+- **两阶段落地**：本任务（阶段一）后端仍执行移动，但目标改为目标窗口默认栏 `default_pane(label)`（桌面新建窗口同理），保证既有 smoke-windows 全绿；任务 7（阶段二）跨窗落点改由目标窗口前端 `resolvePaneDrop` 执行栏位级移动，届时移除后端自动移动。
+- `drag_end` 分支（阶段一）：落回源窗 → 发 `EVENT_DRAG_DROPPED`（含 x/y）；落其他主窗 → `move_tab(tab_id, default_pane(target))` + 广播 + DROPPED 给目标窗；桌面 → `build_main_window` 后 `move_tab(tab_id, default_pane(label))` + 广播。
+- `client_y` 计算：`(y - inner.y) / scale`（与 client_x 同源）。
 
 - [ ] **Step 1：实现 payload 与分支调整**（无 Rust 单测面；由任务 7/9 E2E 覆盖）
 - [ ] **Step 2：`cargo test` 全绿 + `cargo fmt`**

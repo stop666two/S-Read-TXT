@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::{Emitter, Manager, PhysicalPosition, State, WebviewUrl, WebviewWindowBuilder};
 
-use s_read_txt::app_state::AppState;
+use s_read_txt::app_state::{default_pane, AppState};
 use s_read_txt::ipc_error::{IpcError, CODE_IO, CODE_TAB_NOT_FOUND};
 
 use crate::commands::{self, EVENT_TABS_CHANGED};
@@ -47,12 +47,13 @@ struct GhostPayload {
     dark: bool,
 }
 
-/// 悬停载荷。
+/// 悬停载荷（`clientX`/`clientY` 为内容坐标，供目标窗解析栏位与边缘区域）。
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct HoverPayload {
     active: bool,
     client_x: f64,
+    client_y: f64,
 }
 
 /// 落点载荷。
@@ -61,6 +62,7 @@ struct HoverPayload {
 struct DroppedPayload {
     tab_id: u64,
     client_x: f64,
+    client_y: f64,
 }
 
 /// 主窗口 label 判定。
@@ -76,9 +78,9 @@ fn ordinal(label: &str) -> u32 {
         .unwrap_or(0)
 }
 
-/// 命中测试：返回（窗口 label，内容坐标 clientX）。重叠时取序号大者（后创建者在上）。
-fn hit_test(app: &tauri::AppHandle, x: f64, y: f64) -> Option<(String, f64)> {
-    let mut candidates: Vec<(u32, String, f64)> = Vec::new();
+/// 命中测试：返回（窗口 label，内容坐标 clientX/clientY）。重叠时取序号大者（后创建者在上）。
+fn hit_test(app: &tauri::AppHandle, x: f64, y: f64) -> Option<(String, f64, f64)> {
+    let mut candidates: Vec<(u32, String, f64, f64)> = Vec::new();
     for (label, window) in app.webview_windows() {
         if !is_main_label(&label) {
             continue;
@@ -99,13 +101,14 @@ fn hit_test(app: &tauri::AppHandle, x: f64, y: f64) -> Option<(String, f64)> {
             continue;
         };
         let client_x = (x - f64::from(inner.x)) / scale;
-        candidates.push((ordinal(&label), label.clone(), client_x));
+        let client_y = (y - f64::from(inner.y)) / scale;
+        candidates.push((ordinal(&label), label.clone(), client_x, client_y));
     }
-    candidates.sort_by_key(|(order, _, _)| std::cmp::Reverse(*order));
+    candidates.sort_by_key(|(order, _, _, _)| std::cmp::Reverse(*order));
     candidates
         .into_iter()
         .next()
-        .map(|(_, label, client_x)| (label, client_x))
+        .map(|(_, label, client_x, client_y)| (label, client_x, client_y))
 }
 
 /// 命令：开始拖拽（前端越出源窗口边界时调用）。
@@ -184,7 +187,7 @@ pub async fn drag_move(
         let _ = ghost.set_position(PhysicalPosition::new(x + 12.0, y + 14.0));
         let _ = ghost.show();
     }
-    let next = over_now.as_ref().map(|(label, _)| label.clone());
+    let next = over_now.as_ref().map(|(label, _, _)| label.clone());
     if session.over != next {
         if let Some(previous) = session.over.clone() {
             let _ = app.emit_to(
@@ -193,16 +196,18 @@ pub async fn drag_move(
                 HoverPayload {
                     active: false,
                     client_x: 0.0,
+                    client_y: 0.0,
                 },
             );
         }
-        if let Some((label, client_x)) = over_now {
+        if let Some((label, client_x, client_y)) = over_now {
             let _ = app.emit_to(
                 label.clone(),
                 EVENT_DRAG_HOVER,
                 HoverPayload {
                     active: true,
                     client_x,
+                    client_y,
                 },
             );
         }
@@ -241,12 +246,13 @@ pub async fn drag_end(
             HoverPayload {
                 active: false,
                 client_x: 0.0,
+                client_y: 0.0,
             },
         );
     }
     if !cancelled {
         match hit_test(&app, x, y) {
-            Some((target, client_x)) if target == session.source => {
+            Some((target, client_x, client_y)) if target == session.source => {
                 // 拖回源窗口：交由源窗口按 clientX 精确插入
                 let _ = app.emit_to(
                     &session.source,
@@ -254,14 +260,15 @@ pub async fn drag_end(
                     DroppedPayload {
                         tab_id: session.tab_id,
                         client_x,
+                        client_y,
                     },
                 );
             }
-            Some((target, client_x)) => {
+            Some((target, client_x, client_y)) => {
                 {
                     let mut guard = commands::lock_state(&tabs)?;
                     guard
-                        .move_tab(session.tab_id, &target, usize::MAX)
+                        .move_tab(session.tab_id, &default_pane(&target), usize::MAX)
                         .map_err(IpcError::from)?;
                 }
                 let _ = app.emit(EVENT_TABS_CHANGED, ());
@@ -271,18 +278,19 @@ pub async fn drag_end(
                     DroppedPayload {
                         tab_id: session.tab_id,
                         client_x,
+                        client_y,
                     },
                 );
             }
             None => {
-                // 桌面落点：新建窗口并把标签迁入（置于落点附近）
+                // 桌面落点：新建窗口并把标签迁入其默认栏（置于落点附近）
                 let label = commands::next_window_label(&app);
                 let position = Some((x as i32 - 60, (y as i32 - 16).max(0)));
                 commands::build_main_window(&app, &label, position, 1100.0, 760.0, false)?;
                 {
                     let mut guard = commands::lock_state(&tabs)?;
                     guard
-                        .move_tab(session.tab_id, &label, usize::MAX)
+                        .move_tab(session.tab_id, &default_pane(&label), usize::MAX)
                         .map_err(IpcError::from)?;
                 }
                 let _ = app.emit(EVENT_TABS_CHANGED, ());
