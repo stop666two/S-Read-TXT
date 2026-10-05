@@ -80,7 +80,7 @@ export async function dismissOnboarding(evalJs) {
 }
 
 /** 建立 CDP 客户端（send/close）。 */
-export function createClient(wsUrl) {  return new Promise((resolveClient, rejectClient) => {
+export function createClient(wsUrl, onEvent) {  return new Promise((resolveClient, rejectClient) => {
     const socket = new WebSocket(wsUrl);
     let nextId = 1;
     const pending = new Map();
@@ -107,7 +107,24 @@ export function createClient(wsUrl) {  return new Promise((resolveClient, reject
         pending.delete(message.id);
         if (message.error) rejectSend(new Error(message.error.message));
         else resolveSend(message.result);
+      } else if (onEvent) {
+        onEvent(message);
       }
     });
   });
+}
+
+/**
+ * 唤醒 WebView2 的空闲 IPC 通道：
+ * 窗口输入空闲约 1s 后，首个 页面→Rust invoke 可能被延迟约 16s 才投递；
+ * 合成一次鼠标移动（与真实用户操作等价）可立即恢复（实测 4ms）。
+ * 自动化中被 CDP eval 驱动的流程不含真实输入，需显式唤醒。
+ */
+export async function wakeChannel(client) {
+  try {
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 160, y: 320, buttons: 0 });
+    await delay(80);
+  } catch {
+    // 输入注入失败不阻断主流程
+  }
 }

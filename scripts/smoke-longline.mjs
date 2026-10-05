@@ -11,7 +11,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readSync, readdirSync, rmSy
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { argValue, createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue } from './lib/smoke-cdp.mjs';
+import { argValue, createClient, delay, dismissOnboarding, findTarget, openPathDone, waitForValue, wakeChannel } from './lib/smoke-cdp.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe')));
@@ -147,6 +147,13 @@ async function main() {
     );
 
     // C3：滚动到中部仍能渲染（虚拟滚动 + 分段取窗）
+    // 先合成一次鼠标移动唤醒空闲 IPC 通道（WebView2 空闲后首个 invoke 可能延迟 ~16s；
+    // 真实用户滚动前必有输入事件，自动化中需等效补一次），再做一次轻量往返确认通道已热。
+    await wakeChannel(client);
+    const warmMs = await evalJs(
+      `(async () => { const t0 = performance.now(); try { await window.__TAURI_INTERNALS__.invoke('list_tabs'); } catch {} return Math.round(performance.now() - t0); })()`,
+    );
+    console.log(`C3_warmup ${warmMs}ms`);
     await evalJs(
       `(() => { const el = document.querySelector('.reader'); el.scrollTop = el.scrollHeight / 2; return true; })()`,
     );
