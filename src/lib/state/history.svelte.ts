@@ -43,15 +43,15 @@ class HistoryStore {
   /** 从历史打开文件并恢复阅读进度。
    *
    *  实现要点：先取回 TabInfo（打开后该标签会被激活），再 seed 滚动记忆——
-   *  之后 `applyView` 触发的 ReaderView 挂载/切换才会读到恢复行；
+   *  之后视图回读触发的 ReaderView 挂载/切换才会读到恢复行；
    *  文件已在当前活动标签打开时不重复跳转（该场景视觉上无变化，可接受）。 */
   async openEntry(entry: HistoryEntry): Promise<void> {
     try {
-      const info = await ipc.openFile(entry.path);
+      const info = await ipc.openFile(entry.path, tabs.activePane);
       if (entry.lastRow > 0) {
         scrollMemory.seed(info.tabId, entry.lastRow);
       }
-      tabs.applyView(await ipc.listTabs());
+      await tabs.refresh();
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
     }

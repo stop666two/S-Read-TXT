@@ -952,8 +952,9 @@ export const ipc = {
   dataDirStatus: () => invoke<DataDirStatus>('data_dir_status'),
   /** 设置会话级数据目录（不可写引导；所有后续读写改路至新目录）。 */
   setDataDir: (dir: string) => invoke<DataDirStatus>('set_data_dir', { dir }),
-  /** 打开文件（重复打开由后端复用标签）。 */
-  openFile: (path: string) => invoke<TabInfo>('open_file', { path }),
+  /** 打开文件到指定栏（默认窗口首栏；重复打开由后端复用标签）。 */
+  openFile: (path: string, pane?: string) =>
+    invoke<TabInfo>('open_file', { path, pane: pane ?? null }),
   /** 取文本窗口（count 上限 2048）。 */
   getRows: (tabId: number, startRow: number, count: number) =>
     invoke<RowsPayload>('get_rows', { tabId, startRow, count }),
@@ -962,15 +963,18 @@ export const ipc = {
     invoke<TabInfo>('set_encoding', { tabId, encoding }),
   /** 支持的编码列表。 */
   listEncodings: () => invoke<string[]>('list_encodings'),
-  /** 全部标签视图。 */
-  listTabs: () => invoke<TabsView>('list_tabs'),
-  /** 关闭标签（返回剩余视图）。 */
+  /** 指定栏的标签视图（默认窗口首栏）。 */
+  listTabs: (pane?: string) => invoke<TabsView>('list_tabs', { pane: pane ?? null }),
+  /** 关闭标签（返回窗口聚合视图；前端回读所属栏）。 */
   closeTab: (tabId: number) => invoke<TabsView>('close_tab', { tabId }),
   /** 主窗口列表（跨窗口移动菜单）。 */
   listWindows: () => invoke<WindowOption[]>('list_windows'),
   /** 移动标签到其他主窗口（返回源窗口剩余视图；目标窗口经事件刷新）。 */
   moveTabToWindow: (tabId: number, targetLabel: string) =>
     invoke<TabsView>('move_tab_to_window', { tabId, targetLabel }),
+  /** 移动标签到指定栏（目标为其他窗口的栏时经事件刷新该窗口；返回源窗口视图）。 */
+  moveTabToPane: (tabId: number, targetPane: string, toIndex?: number) =>
+    invoke<TabsView>('move_tab_to_pane', { tabId, targetPane, toIndex: toIndex ?? null }),
   /** 开始跨窗口拖拽（前端越出源窗口边界时调用；坐标由 drag_move 持续提供）。 */
   beginTabDrag: (tabId: number, name: string, color: string | null, dark: boolean) =>
     invoke<void>('begin_tab_drag', { tabId, name, color, dark }),
@@ -1205,7 +1209,7 @@ export const ipc = {
   takeCrashFlag: () => invoke<boolean>('take_crash_flag'),
   /** 取走命令行/单实例待打开文件。 */
   takeCliFiles: () => invoke<string[]>('take_cli_files'),
-  newFile: () => invoke<TabInfo>('new_file'),
+  newFile: (pane?: string) => invoke<TabInfo>('new_file', { pane: pane ?? null }),
   /** 新建主窗口；可选物理坐标与尺寸（缺省级联偏移/1100×760）；返回新窗口 label。 */
   newWindow: (options?: { x?: number; y?: number; width?: number; height?: number }) =>
     invoke<string>('new_window', {

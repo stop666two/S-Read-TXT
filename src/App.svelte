@@ -114,7 +114,7 @@ let outlineOpen = $state(false);
     if (tabs.activeId !== file.tabId) {
       try {
         await ipc.setActiveTab(file.tabId);
-        tabs.applyView(await ipc.listTabs());
+        await tabs.refresh();
       } catch (error) {
         toasts.error(describeIpcError(toIpcError(error)));
         return;
@@ -167,6 +167,9 @@ let outlineOpen = $state(false);
   /** 活动标签的关键原始值（用作 effect 依赖：避免 tabs 刷新重建对象时重复触发）。 */
   const activeTabId = $derived(active?.tabId);
   const activeRowsTotal = $derived(active?.rowsTotal);
+
+  /** 初始栏位：窗口首栏（多栏布局建立前，所有标签操作作用于该栏）。 */
+  tabs.setActivePane(`${getCurrentWindow().label}#1`);
 
   /** 生效快捷键绑定（后端为唯一真源；启动加载，设置变更后刷新） */
   let shortcuts = $state<ShortcutMap>({});
@@ -242,7 +245,7 @@ let outlineOpen = $state(false);
     if (!current || !current.editing) return;
     try {
       await ipc.convertEol(current.tabId, target);
-      tabs.applyView(await ipc.listTabs());
+      await tabs.refresh();
       toasts.show(t('status.converted', { style: target.toUpperCase() }));
       refreshDocStats(current.tabId);
     } catch (error) {
@@ -368,13 +371,13 @@ let outlineOpen = $state(false);
       const activeIndex = firstPane ? firstPane.activeTabIndex : (session?.activeTabIndex ?? 0);
       if (!session || sessionTabs.length === 0) {
         // 无会话切片时仍需同步后端已有标签（如拖放迁入的新窗口/CLI 先到的文件）
-        tabs.applyView(await ipc.listTabs());
+        await tabs.refresh();
         return;
       }
       const seeds: { tabId: number; row: number }[] = [];
       for (const item of sessionTabs) {
         try {
-          const info = await ipc.openFile(item.path);
+          const info = await ipc.openFile(item.path, tabs.activePane);
           if (item.encoding) {
             await ipc.setEncoding(info.tabId, item.encoding);
           }
@@ -405,7 +408,7 @@ let outlineOpen = $state(false);
           scrollMemory.seed(seed.tabId, seed.row);
         }
       }
-      tabs.applyView(await ipc.listTabs());
+      await tabs.refresh();
       const target = tabs.tabs[activeIndex];
       if (target) tabs.select(target.tabId);
     } finally {
@@ -440,8 +443,10 @@ let outlineOpen = $state(false);
 
   /** 移动标签到其他主窗口（返回源窗口剩余视图；目标窗口经事件刷新）。 */
   async function moveTabToWindow(tabId: number, targetLabel: string): Promise<void> {
+    const pane = tabs.paneOf(tabId) ?? tabs.activePane;
     try {
-      tabs.applyView(await ipc.moveTabToWindow(tabId, targetLabel));
+      await ipc.moveTabToWindow(tabId, targetLabel);
+      await tabs.refresh(pane);
       void saveSessionNow();
     } catch (error) {
       const payload = toIpcError(error);
@@ -453,7 +458,7 @@ let outlineOpen = $state(false);
   /** 刷新本窗口标签视图（跨窗口移动广播后调用；失败保持现状）。 */
   async function refreshTabsView(): Promise<void> {
     try {
-      tabs.applyView(await ipc.listTabs());
+      await tabs.refresh();
       void saveSessionNow();
     } catch {
       // 刷新失败保持现状（下一次交互会再次校准）
@@ -903,8 +908,8 @@ let outlineOpen = $state(false);
   /** 新建文件：后端生成未命名文件并以编辑模式打开 */
   async function newFileFlow(): Promise<void> {
     try {
-      await ipc.newFile();
-      tabs.applyView(await ipc.listTabs());
+      await ipc.newFile(tabs.activePane);
+      await tabs.refresh();
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
     }
