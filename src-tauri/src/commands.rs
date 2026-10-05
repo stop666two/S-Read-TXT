@@ -15,7 +15,7 @@ use serde::Serialize;
 use tauri::{Emitter, Manager, State};
 
 use s_read_txt::annotations::{FileAnnotations, NoteKind};
-use s_read_txt::app_state::{AppState, RowsPayload, TabInfo};
+use s_read_txt::app_state::{default_pane, is_pane_of, AppState, RowsPayload, TabInfo};
 use s_read_txt::background::{self, BackgroundEntry};
 use s_read_txt::clipboard_history as clipboard_store;
 use s_read_txt::clipboard_history::ClipboardEntry;
@@ -440,17 +440,28 @@ pub fn take_crash_flag() -> bool {
     !s_read_txt::snapshots::take_clean_exit(&dir)
 }
 
+/// 解析调用窗口的目标栏位键：显式 pane 属于本窗口时采用，否则回落默认栏 `#1`。
+fn resolve_pane(window: &tauri::WebviewWindow, pane: Option<String>) -> String {
+    let label = window.label();
+    match pane {
+        Some(key) if is_pane_of(&key, label) => key,
+        _ => default_pane(label),
+    }
+}
+
 /// 命令：新建未命名文件：按 `file` 设置生成临时文件并以编辑模式打开。
-/// 新标签归属调用窗口（`window.label()`，由 Tauri 自动注入）。
+/// 新标签归属 `pane`（缺省为调用窗口默认栏 `#1`）。
 #[tauri::command]
 pub fn new_file(
     window: tauri::WebviewWindow,
+    pane: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<TabInfo, IpcError> {
     let settings = current_app_settings();
     let (dir, _origin) = paths::resolve_data_dir();
+    let owner = resolve_pane(&window, pane);
     lock_state(&state)?
-        .open_untitled(window.label(), &dir, &settings)
+        .open_untitled(&owner, &dir, &settings)
         .map_err(Into::into)
 }
 
@@ -971,19 +982,20 @@ pub fn forget_window_session(window: tauri::WebviewWindow) -> Result<(), IpcErro
     })
 }
 
-/// 命令：打开文件（重复打开自动复用**本窗口**已有标签；首次打开成功时记录历史）。
-/// 新标签归属调用窗口（label 由 Tauri 自动注入）。
+/// 命令：打开文件（重复打开自动复用**本栏位**已有标签；首次打开成功时记录历史）。
+/// 新标签归属 `pane`（缺省为调用窗口默认栏 `#1`）。
 #[tauri::command]
 pub fn open_file(
     window: tauri::WebviewWindow,
     path: String,
+    pane: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<TabInfo, IpcError> {
     with_context(LogContext::request(), || {
         let (dir, _origin) = paths::resolve_data_dir();
         let settings = settings_store::load_app_settings(&dir);
-        let (info, reused) =
-            lock_state(&state)?.open_file(window.label(), Path::new(&path), &settings)?;
+        let owner = resolve_pane(&window, pane);
+        let (info, reused) = lock_state(&state)?.open_file(&owner, Path::new(&path), &settings)?;
         if !reused {
             let entry = HistoryEntry {
                 path: info.path.clone(),
@@ -1065,18 +1077,19 @@ pub struct TabsView {
     active_tab_id: Option<u64>,
 }
 
-/// 命令：列出**调用窗口**的标签（前端启动同步/恢复时使用；label 由 Tauri 自动注入）。
+/// 命令：列出指定栏位的标签（缺省为调用窗口默认栏 `#1`；前端启动同步/恢复时使用）。
 #[tauri::command]
 pub fn list_tabs(
     window: tauri::WebviewWindow,
+    pane: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<TabsView, IpcError> {
     with_context(LogContext::request(), || {
         let guard = lock_state(&state)?;
-        let owner = window.label();
+        let owner = resolve_pane(&window, pane);
         Ok(TabsView {
-            tabs: guard.tabs_info(owner),
-            active_tab_id: guard.active_tab(owner),
+            tabs: guard.tabs_info(&owner),
+            active_tab_id: guard.active_tab(&owner),
         })
     })
 }
@@ -1114,7 +1127,7 @@ pub fn close_tab(
     })
 }
 
-/// 命令：关闭**调用窗口**的全部标签（窗口关闭前清理全局标签表）。
+/// 命令：关闭**调用窗口全部栏位**的标签（窗口关闭前清理全局标签表）。
 #[tauri::command]
 pub fn close_window_tabs(
     window: tauri::WebviewWindow,
@@ -1122,16 +1135,16 @@ pub fn close_window_tabs(
 ) -> Result<TabsView, IpcError> {
     with_context(LogContext::request(), || {
         let mut guard = lock_state(&state)?;
-        let owner = window.label().to_string();
-        let closed = guard.close_window_tabs(&owner);
+        let label = window.label().to_string();
+        let closed = guard.close_window_panes(&label);
         let view = TabsView {
-            tabs: guard.tabs_info(&owner),
-            active_tab_id: guard.active_tab(&owner),
+            tabs: guard.window_tabs_info(&label),
+            active_tab_id: None,
         };
         log::info!(
             target: "sread::ipc",
             "关闭窗口标签：窗口 {}，共 {} 个",
-            owner,
+            label,
             closed.len()
         );
         Ok(view)
@@ -1783,9 +1796,9 @@ pub fn list_windows(
         Ok(labels
             .into_iter()
             .map(|label| {
-                let tabs = guard.tabs_info(&label);
+                let tabs = guard.window_tabs_info(&label);
                 let active_name = guard
-                    .active_tab(&label)
+                    .window_active_tab(&label)
                     .and_then(|id| tabs.iter().find(|tab| tab.tab_id == id))
                     .map(|tab| tab.name.clone());
                 WindowOption {
@@ -1798,9 +1811,9 @@ pub fn list_windows(
     })
 }
 
-/// 命令：把标签移动到其他主窗口（目标窗口已打开同一文件时合并并激活）。
+/// 命令：把标签移动到其他主窗口（目标窗口默认栏 `#1`；已打开同一文件时合并并激活）。
 ///
-/// 返回**源窗口**的剩余标签视图；目标窗口经 `srt://tabs-changed` 事件自行刷新。
+/// 返回**源栏位**的剩余标签视图；目标窗口经 `srt://tabs-changed` 事件自行刷新。
 #[tauri::command]
 pub fn move_tab_to_window(
     app: tauri::AppHandle,
@@ -1816,7 +1829,43 @@ pub fn move_tab_to_window(
                 .map(|info| info.owner)
                 .ok_or_else(|| IpcError::new(CODE_TAB_NOT_FOUND, "标签不存在"))?;
             guard
-                .move_tab(tab_id, &target_label, usize::MAX)
+                .move_tab(tab_id, &default_pane(&target_label), usize::MAX)
+                .map_err(IpcError::from)?;
+            TabsView {
+                tabs: guard.tabs_info(&source),
+                active_tab_id: guard.active_tab(&source),
+            }
+        };
+        let _ = app.emit(EVENT_TABS_CHANGED, ());
+        Ok(view)
+    })
+}
+
+/// 命令：把标签移动/并入指定栏位（同栏位即重排）。
+///
+/// `to_index = None` 表示追加到末尾。返回**源栏位**的剩余标签视图；
+/// 所有窗口经 `srt://tabs-changed` 事件自行刷新。
+#[tauri::command]
+pub fn move_tab_to_pane(
+    app: tauri::AppHandle,
+    tab_id: u64,
+    target_pane: String,
+    to_index: Option<u32>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<TabsView, IpcError> {
+    with_context(LogContext::request(), || {
+        let view = {
+            let mut guard = lock_state(&state)?;
+            let source = guard
+                .tab_info(tab_id)
+                .map(|info| info.owner)
+                .ok_or_else(|| IpcError::new(CODE_TAB_NOT_FOUND, "标签不存在"))?;
+            guard
+                .move_tab(
+                    tab_id,
+                    &target_pane,
+                    to_index.map(|index| index as usize).unwrap_or(usize::MAX),
+                )
                 .map_err(IpcError::from)?;
             TabsView {
                 tabs: guard.tabs_info(&source),

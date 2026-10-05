@@ -399,6 +399,7 @@ fn main() {
             commands::set_tab_color,
             commands::list_windows,
             commands::move_tab_to_window,
+            commands::move_tab_to_pane,
             tab_drag::begin_tab_drag,
             tab_drag::drag_move,
             tab_drag::drag_end,

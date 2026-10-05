@@ -217,6 +217,26 @@ pub struct RowsPayload {
 /// 主窗口 label（与 `tauri.conf.json` 主窗口 label 保持一致；多窗口下其余为 `main-2`、`main-3`…）。
 pub const MAIN_WINDOW: &str = "main";
 
+/// 栏位键：`窗口标签#栏号`（窗口内栏位从 1 起；分屏后各栏独立标签组）。
+pub fn pane_key(label: &str, index: u32) -> String {
+    format!("{label}#{index}")
+}
+
+/// 窗口默认栏位键（单栏窗口、CLI 转发与菜单入口统一落到 `#1`）。
+pub fn default_pane(label: &str) -> String {
+    pane_key(label, 1)
+}
+
+/// 窗口全部栏位的键前缀（用于按窗口聚合/清理）。
+pub fn window_pane_prefix(label: &str) -> String {
+    format!("{label}#")
+}
+
+/// 判断 owner 键是否属于某窗口的栏位。
+pub fn is_pane_of(owner: &str, label: &str) -> bool {
+    owner.starts_with(&window_pane_prefix(label))
+}
+
 /// 标签颜色调色板（固定 8 色；前端以主题感知的 CSS 变量渲染为标签左侧竖条）。
 pub const TAB_COLORS: [&str; 8] = [
     "red", "orange", "yellow", "green", "cyan", "blue", "purple", "gray",
@@ -225,7 +245,7 @@ pub const TAB_COLORS: [&str; 8] = [
 /// 单个标签的运行时状态（内部）。
 struct Tab {
     id: u64,
-    /// 所属窗口 label（多窗口各自独立标签组；默认主窗口 `"main"`）
+    /// 所属栏位键（`窗口标签#栏号`；多窗口/分屏各自独立标签组）
     owner: String,
     /// 未命名文件序号（`None` = 普通磁盘文件）
     untitled: Option<u32>,
@@ -245,17 +265,17 @@ struct Tab {
 
 /// 应用运行状态。
 ///
-/// 多窗口模型：标签表全局共享（tab_id 全局唯一），**展示顺序与活动标签
-/// 按窗口分区**（`orders` / `active` 以窗口 label 为键）；标签自身记录 `owner`。
+/// 多窗口/分屏模型：标签表全局共享（tab_id 全局唯一），**展示顺序与活动标签
+/// 按栏位分区**（`orders` / `active` 以栏位键 `label#n` 为键）；标签自身记录 `owner`。
 pub struct AppState {
     tabs: BTreeMap<u64, Tab>,
-    /// 各窗口标签展示顺序（window label → tab_id 列表；拖拽排序修改）。
+    /// 各栏位标签展示顺序（栏位键 → tab_id 列表；拖拽排序修改）。
     /// 与 BTreeMap 解耦以支持任意展示顺序；新标签追加到末尾。
     orders: BTreeMap<String, Vec<u64>>,
     next_tab_id: u64,
     /// 未命名文件序号（会话内单调递增；标签关闭不回收）
     untitled_seq: u32,
-    /// 各窗口活动标签（window label → tab_id）
+    /// 各栏位活动标签（栏位键 → tab_id）
     active: BTreeMap<String, Option<u64>>,
 }
 
@@ -1377,6 +1397,31 @@ impl AppState {
         ids
     }
 
+    /// 关闭某窗口全部栏位的标签（窗口关闭流程）；返回被关闭的标签 id（按栏位键顺序）。
+    pub fn close_window_panes(&mut self, label: &str) -> Vec<u64> {
+        let prefix = window_pane_prefix(label);
+        let mut ids: Vec<u64> = Vec::new();
+        let pane_owners: Vec<String> = self
+            .orders
+            .keys()
+            .filter(|owner| owner.starts_with(&prefix))
+            .cloned()
+            .collect();
+        for owner in &pane_owners {
+            if let Some(order) = self.orders.get(owner) {
+                ids.extend(order.iter().copied());
+            }
+        }
+        for id in &ids {
+            let _ = self.close(*id);
+        }
+        for owner in pane_owners {
+            self.orders.remove(&owner);
+            self.active.remove(&owner);
+        }
+        ids
+    }
+
     /// 跨窗口移动标签：
     /// - 目标窗口已打开同一文件 → **合并激活**已有标签（源标签关闭，返回 `true`）；
     /// - 否则迁移：从源窗口顺序移除，改属目标窗口并插入 `to_index`（越界收敛末尾），
@@ -1517,7 +1562,7 @@ impl AppState {
         Ok(())
     }
 
-    /// 指定窗口的全部标签信息（按该窗口展示顺序）。
+    /// 指定栏位（owner 键）的全部标签信息（按该栏位展示顺序）。
     pub fn tabs_info(&self, owner: &str) -> Vec<TabInfo> {
         self.orders
             .get(owner)
@@ -1529,6 +1574,25 @@ impl AppState {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// 窗口聚合视图：按栏位键顺序拼接该窗口全部栏位的标签（菜单/窗口数统计用）。
+    pub fn window_tabs_info(&self, label: &str) -> Vec<TabInfo> {
+        let prefix = window_pane_prefix(label);
+        self.orders
+            .keys()
+            .filter(|owner| owner.starts_with(&prefix))
+            .flat_map(|owner| self.tabs_info(owner))
+            .collect()
+    }
+
+    /// 窗口级活动标签：按栏位键顺序取第一个有活动标签的栏（菜单标题用）。
+    pub fn window_active_tab(&self, label: &str) -> Option<u64> {
+        let prefix = window_pane_prefix(label);
+        self.orders
+            .keys()
+            .filter(|owner| owner.starts_with(&prefix))
+            .find_map(|owner| self.active_tab(owner))
     }
 
     /// 内部：取标签（不存在报错）。
@@ -2553,5 +2617,97 @@ mod tests {
         assert!(state.owner_of(ib.tab_id).is_none());
         assert_eq!(state.tabs_info(MAIN_WINDOW).len(), 1, "其他窗口不受影响");
         assert_eq!(state.owners(), vec![MAIN_WINDOW.to_string()]);
+    }
+
+    /// 关闭窗口（分栏前缀）只清理该窗口的栏位，不影响相邻编号窗口。
+    #[test]
+    fn close_window_panes_closes_only_matching_prefix() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let a = write_file(dir.path(), "a.txt", "a\n");
+        let b = write_file(dir.path(), "b.txt", "b\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (ia, _) = state
+            .open_file(&pane_key("main", 1), &a, &settings)
+            .expect("打开失败");
+        let (ib, _) = state
+            .open_file(&pane_key("main", 2), &b, &settings)
+            .expect("打开失败");
+        let (ic, _) = state
+            .open_file(&pane_key("main-2", 1), &b, &settings)
+            .expect("打开失败");
+
+        let closed = state.close_window_panes("main");
+        assert_eq!(closed.len(), 2);
+        assert!(closed.contains(&ia.tab_id) && closed.contains(&ib.tab_id));
+        assert!(state.tabs_info(&pane_key("main", 1)).is_empty());
+        assert!(state.tabs_info(&pane_key("main", 2)).is_empty());
+        assert_eq!(
+            state.tabs_info(&pane_key("main-2", 1))[0].tab_id,
+            ic.tab_id,
+            "相邻编号窗口不受前缀误伤"
+        );
+    }
+
+    /// 跨栏移动：owner/顺序/目标活动标签同步，源栏活动回落。
+    #[test]
+    fn move_tab_between_panes_updates_owner_and_order() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let a = write_file(dir.path(), "a.txt", "a\n");
+        let b = write_file(dir.path(), "b.txt", "b\n");
+        let c = write_file(dir.path(), "c.txt", "c\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (ia, _) = state
+            .open_file(&pane_key("main", 1), &a, &settings)
+            .expect("打开失败");
+        let (ib, _) = state
+            .open_file(&pane_key("main", 1), &b, &settings)
+            .expect("打开失败");
+        let (ic, _) = state
+            .open_file(&pane_key("main", 2), &c, &settings)
+            .expect("打开失败");
+
+        let merged = state
+            .move_tab(ib.tab_id, &pane_key("main", 2), 0)
+            .expect("移动失败");
+        assert!(!merged);
+        let src = state.tabs_info(&pane_key("main", 1));
+        assert_eq!(src.len(), 1);
+        assert_eq!(src[0].tab_id, ia.tab_id);
+        let dst = state.tabs_info(&pane_key("main", 2));
+        assert_eq!(
+            dst.iter().map(|t| t.tab_id).collect::<Vec<_>>(),
+            vec![ib.tab_id, ic.tab_id]
+        );
+        assert_eq!(state.active_tab(&pane_key("main", 2)), Some(ib.tab_id));
+        assert_eq!(state.owner_of(ib.tab_id).as_deref(), Some("main#2"));
+    }
+
+    /// 窗口聚合视图：按栏位键顺序拼接各栏标签，与窗口前缀一致。
+    #[test]
+    fn window_tabs_info_aggregates_panes_in_key_order() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let a = write_file(dir.path(), "a.txt", "a\n");
+        let b = write_file(dir.path(), "b.txt", "b\n");
+        let c = write_file(dir.path(), "c.txt", "c\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (ia, _) = state
+            .open_file(&pane_key("main", 1), &a, &settings)
+            .expect("打开失败");
+        let (ib, _) = state
+            .open_file(&pane_key("main", 2), &b, &settings)
+            .expect("打开失败");
+        let (ic, _) = state
+            .open_file(&pane_key("main-2", 1), &c, &settings)
+            .expect("打开失败");
+
+        let all = state.window_tabs_info("main");
+        assert_eq!(
+            all.iter().map(|t| t.tab_id).collect::<Vec<_>>(),
+            vec![ia.tab_id, ib.tab_id]
+        );
+        assert_eq!(state.window_tabs_info("main-2")[0].tab_id, ic.tab_id);
     }
 }
