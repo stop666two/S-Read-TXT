@@ -167,6 +167,13 @@ class TabStore {
   update(info: TabInfo): void {
     this.groups = withTab(this.groups, info);
   }
+
+  /** 移除栏位分组镜像（栏位关闭后调用；活动栏被移除前应先切换）。 */
+  dropGroup(pane: string): void {
+    const next = { ...this.groups };
+    delete next[pane];
+    this.groups = next;
+  }
 }
 
 /** 全局标签单例（每个窗口一个前端实例）。 */

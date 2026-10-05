@@ -340,6 +340,18 @@ export const en: Record<MessageKey, string> = {
   'tabBar.newTabAria': 'New tab',
   'tabBar.newWindowHint': 'New window (Ctrl+Shift+N)',
   'tabBar.newWindowAria': 'New window',
+  'tabBar.splitRightHint': 'Split right (Ctrl+\\)',
+  'tabBar.splitRightAria': 'Split right',
+  'tabBar.splitDownHint': 'Split down (Ctrl+Shift+\\)',
+  'tabBar.splitDownAria': 'Split down',
+  'tabBar.closePaneHint': 'Close pane (Ctrl+Shift+W; tabs merge into neighbor)',
+  'tabBar.closePaneAria': 'Close pane',
+
+  // ---------- Split panes ----------
+  'pane.empty': 'Empty pane',
+  'pane.emptyHint': 'Drag a tab here, or open a file with the button below',
+  'pane.open': 'Open file…',
+  'pane.limit': 'Up to 4 panes are supported',
 
   // ---------- Tab context menu ----------
   'tabMenu.aria': 'Tab actions',

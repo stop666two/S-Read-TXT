@@ -22,10 +22,10 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import { annotations } from './lib/state/annotations.svelte';
   import MenuBar from './lib/components/MenuBar.svelte';
   import Onboarding from './lib/components/Onboarding.svelte';
-  import ReaderView from './lib/components/ReaderView.svelte';
+  import PaneTree from './lib/components/PaneTree.svelte';
+  import PaneView from './lib/components/PaneView.svelte';
   import SaveDialog from './lib/components/SaveDialog.svelte';
   import StatusBar from './lib/components/StatusBar.svelte';
-  import TabBar from './lib/components/TabBar.svelte';
   import TitleBar from './lib/components/TitleBar.svelte';
   import Toast from './lib/components/Toast.svelte';
   import ToolBar from './lib/components/ToolBar.svelte';
@@ -34,6 +34,19 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import { formatBytes } from './lib/format';
   import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
+  import {
+    collectLeaves,
+    leaf,
+    makeSplit,
+    MAX_PANES,
+    removeLeaf,
+    replaceLeaf,
+    siblingLeaf,
+    updateSizes,
+    type PaneLayout,
+    type PaneSplitDir,
+  } from './lib/layout/pane-tree';
+  import { EMPTY_GROUP } from './lib/state/tabs-groups';
   import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type TextStats, type ThemeSummary, type WindowOption, type WindowSession, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
   import { saveSessionNow } from './lib/session';
@@ -168,8 +181,18 @@ let outlineOpen = $state(false);
   const activeTabId = $derived(active?.tabId);
   const activeRowsTotal = $derived(active?.rowsTotal);
 
+  /** 窗口 label（栏位键前缀；会话与拖放共用）。 */
+  const windowLabel = getCurrentWindow().label;
   /** 初始栏位：窗口首栏（多栏布局建立前，所有标签操作作用于该栏）。 */
-  tabs.setActivePane(`${getCurrentWindow().label}#1`);
+  tabs.setActivePane(`${windowLabel}#1`);
+  /** 窗口内分屏布局（叶子=栏位；随会话 v3 持久化）。 */
+  let layout = $state<PaneLayout>(leaf(`${windowLabel}#1`));
+  /** 新栏位序号（栏位键 `label#n` 的 n 递增；会话恢复时按已有栏位推进）。 */
+  let paneSeq = 2;
+  /** 布局中的全部栏位键（前序） */
+  const paneKeys = $derived(collectLeaves(layout));
+  /** 栏位数量（多栏渲染与上限判断） */
+  const paneCount = $derived(paneKeys.length);
 
   /** 生效快捷键绑定（后端为唯一真源；启动加载，设置变更后刷新） */
   let shortcuts = $state<ShortcutMap>({});
@@ -455,10 +478,12 @@ let outlineOpen = $state(false);
     }
   }
 
-  /** 刷新本窗口标签视图（跨窗口移动广播后调用；失败保持现状）。 */
+  /** 刷新本窗口全部栏位的标签视图（跨窗口移动广播后调用；失败保持现状）。 */
   async function refreshTabsView(): Promise<void> {
     try {
-      await tabs.refresh();
+      for (const key of collectLeaves(layout)) {
+        await tabs.refresh(key);
+      }
       void saveSessionNow();
     } catch {
       // 刷新失败保持现状（下一次交互会再次校准）
@@ -905,11 +930,11 @@ let outlineOpen = $state(false);
     saveRequest = { tabId: tab.tabId, targetPath: filePath, resolve: () => {} };
   }
 
-  /** 新建文件：后端生成未命名文件并以编辑模式打开 */
-  async function newFileFlow(): Promise<void> {
+  /** 新建文件：后端生成未命名文件并以编辑模式打开（默认当前激活栏）。 */
+  async function newFileFlow(pane: string = tabs.activePane): Promise<void> {
     try {
-      await ipc.newFile(tabs.activePane);
-      await tabs.refresh();
+      await ipc.newFile(pane);
+      await tabs.refresh(pane);
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
     }
@@ -922,6 +947,51 @@ let outlineOpen = $state(false);
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
     }
+  }
+
+  /** 栏位获得焦点（指针按下于栏内）。 */
+  function activatePane(pane: string): void {
+    tabs.setActivePane(pane);
+  }
+
+  /** 分隔条拖动：更新所属分支权重并持久化。 */
+  function updateSplitSizes(path: number[], sizes: number[]): void {
+    layout = updateSizes(layout, path, sizes);
+    void saveSessionNow();
+  }
+
+  /** 拆分栏位：目标叶子替换为 [原栏, 新栏] 分支（上限 4 栏）。 */
+  function splitPane(target: string, dir: PaneSplitDir): void {
+    if (paneCount >= MAX_PANES) {
+      toasts.show(t('pane.limit'), 'warn');
+      return;
+    }
+    const pane = `${windowLabel}#${paneSeq}`;
+    paneSeq += 1;
+    layout = replaceLeaf(layout, target, (old) => makeSplit(dir, leaf(old), leaf(pane)));
+    tabs.setActivePane(pane);
+    void saveSessionNow();
+  }
+
+  /** 关闭栏位：标签无损并入最近相邻栏，随后折叠布局（唯一栏时忽略）。 */
+  async function closePane(target: string): Promise<void> {
+    if (paneCount <= 1) return;
+    const sibling =
+      siblingLeaf(layout, target) ?? paneKeys.find((key) => key !== target) ?? tabs.activePane;
+    const ids = (tabs.groups[target]?.tabs ?? []).map((tab) => tab.tabId);
+    for (const id of ids) {
+      try {
+        await ipc.moveTabToPane(id, sibling);
+      } catch (error) {
+        toasts.error(describeIpcError(toIpcError(error)));
+        return;
+      }
+    }
+    layout = removeLeaf(layout, target) ?? leaf(sibling);
+    tabs.dropGroup(target);
+    tabs.setActivePane(sibling);
+    await tabs.refresh(sibling);
+    void saveSessionNow();
   }
 
   /** 导出…：格式由扩展名推断，不改变标签状态 */
@@ -1798,60 +1868,80 @@ onMount(() => {
     onSettings={() => void ipc.openSettings()}
     onHistory={() => (historyOpen = true)}
   />
-<TabBar
-  tabs={tabs.tabs}
-  activeId={tabs.activeId}
-  onSelect={(tabId) => tabs.select(tabId)}
-  onClose={(tabId) => void requestCloseTab(tabId)}
-  onCloseOthers={(tabId) => void closeOtherTabs(tabId)}
-  onCloseAll={() => void closeAllTabs()}
-  onReorder={reorderTab}
-  onSetColor={(tabId, color) => void setTabColor(tabId, color)}
-  windows={windowOptions}
-  onRequestWindows={() => void refreshWindowOptions()}
-  onMoveToWindow={(tabId, label) => void moveTabToWindow(tabId, label)}
-  onNewTab={() => void newFileFlow()}
-  onNewWindow={() => void newWindowFlow()}
-/>
+{#snippet paneView(pane: string, _zone: string | null)}
+  <PaneView
+    {pane}
+    active={pane === tabs.activePane}
+    compact={paneCount > 1}
+    group={tabs.groups[pane] ?? EMPTY_GROUP}
+    windows={windowOptions}
+    appSettings={appSettings}
+    readerSettings={readerSettings}
+    editorAction={pane === tabs.activePane ? editorAction : null}
+    pageTurn={pane === tabs.activePane ? pageTurnSignal : null}
+    foldCommand={pane === tabs.activePane ? foldCommand : null}
+    snapshotRestore={pane === tabs.activePane ? snapshotRestoreRequest : null}
+    layoutKey={typographyKey}
+    editCaretRow={pane === tabs.activePane && caretInfo ? caretInfo.row - 1 : null}
+    onOpenDialog={() => void tabs.openViaDialog(pane)}
+    onSelect={(tabId) => tabs.select(tabId)}
+    onClose={(tabId) => void requestCloseTab(tabId)}
+    onCloseOthers={(tabId) => {
+      tabs.setActivePane(pane);
+      void closeOtherTabs(tabId);
+    }}
+    onCloseAll={() => {
+      tabs.setActivePane(pane);
+      void closeAllTabs();
+    }}
+    onReorder={reorderTab}
+    onSetColor={(tabId, color) => void setTabColor(tabId, color)}
+    onRequestWindows={() => void refreshWindowOptions()}
+    onMoveToWindow={(tabId, label) => void moveTabToWindow(tabId, label)}
+    onNewTab={() => void newFileFlow(pane)}
+    onNewWindow={() => void newWindowFlow()}
+    onSplitRight={() => splitPane(pane, 'row')}
+    onSplitDown={() => splitPane(pane, 'column')}
+    onClosePane={() => void closePane(pane)}
+    onPercent={(percent) => {
+      if (pane === tabs.activePane) readPercent = percent;
+    }}
+    onEditApplied={handleEditApplied}
+    onUserScroll={handleUserScroll}
+    onBreadcrumbJump={(row) => {
+      const group = tabs.groups[pane];
+      if (group?.activeId != null) jumpStore.request(group.activeId, row, 0, 0);
+    }}
+    onTopRow={(row) => {
+      if (pane === tabs.activePane) topRow = row;
+    }}
+    onSelectionStats={(stats) => {
+      if (pane === tabs.activePane) selectionStats = stats;
+    }}
+    onCaretInfo={(info) => {
+      if (pane === tabs.activePane) caretInfo = info;
+    }}
+  >
+    <EmptyState
+      onOpen={openFile}
+      recent={recentEntries}
+      onOpenRecent={(entry) => void historyStore.openEntry(entry)}
+      bindings={shortcuts as Record<string, string>}
+    />
+  </PaneView>
+{/snippet}
   <div class="work-area" class:with-bg={bgActive}>
     {#if bgActive && bgDataUrl}
       <div class="bg-layer" data-bg-layer style={bgLayerStyle}></div>
     {/if}
-    {#if active}
-      <ReaderView
-        tab={active}
-        onPercent={(percent) => (readPercent = percent)}
-        onEditApplied={handleEditApplied}
-        {editorAction}
-        lineDefaults={appSettings?.editor.lines ?? null}
-        multiCursor={appSettings?.editor.multiCursor ?? null}
-        findSettings={appSettings?.find ?? null}
-        insertSettings={appSettings?.editor.insert ?? null}
-        autoPairs={appSettings?.editor.autoPairs ?? null}
-        cleanupSettings={appSettings?.editor.cleanup ?? null}
-        onTopRow={(row) => (topRow = row)}
-        onSelectionStats={(stats) => (selectionStats = stats)}
-        onCaretInfo={(info) => (caretInfo = info)}
-        displaySettings={appSettings?.display ?? null}
-        editCaretRow={caretInfo ? caretInfo.row - 1 : null}
-        readingSettings={readerSettings?.reading ?? null}
-        pageTurn={pageTurnSignal}
-        onUserScroll={handleUserScroll}
-            onBreadcrumbJump={(row) => {
-              if (active) jumpStore.request(active.tabId, row, 0, 0);
-            }}
-        snapshotRestore={snapshotRestoreRequest}
-              foldCommand={foldCommand}
-        layoutKey={typographyKey}
-      />
-    {:else}
-      <EmptyState
-        onOpen={openFile}
-        recent={recentEntries}
-        onOpenRecent={(entry) => void historyStore.openEntry(entry)}
-        bindings={shortcuts as Record<string, string>}
-      />
-    {/if}
+    <PaneTree
+      {layout}
+      activePane={tabs.activePane}
+      onSizes={updateSplitSizes}
+      onActivate={activatePane}
+      hover={null}
+      view={paneView}
+    />
   </div>
   <StatusBar
     fileName={active?.name}

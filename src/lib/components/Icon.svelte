@@ -3,7 +3,18 @@
   // 新增图标时在 Props 的联合类型与 {#if} 分支中同步登记。
   interface Props {
     /** 图标名 */
-    name: 'open' | 'history' | 'palette' | 'settings' | 'close' | 'edit' | 'save' | 'plus' | 'window';
+    name:
+      | 'open'
+      | 'history'
+      | 'palette'
+      | 'settings'
+      | 'close'
+      | 'edit'
+      | 'save'
+      | 'plus'
+      | 'window'
+      | 'split-right'
+      | 'split-down';
     /** 像素尺寸（默认 16） */
     size?: number;
   }
@@ -57,5 +68,11 @@
   {:else if name === 'window'}
     <rect x="3" y="5" width="18" height="14" rx="2" />
     <path d="M3 9h18" />
+  {:else if name === 'split-right'}
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M13 5v14" />
+  {:else if name === 'split-down'}
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M3 12h18" />
   {/if}
 </svg>

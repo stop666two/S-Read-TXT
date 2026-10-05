@@ -37,8 +37,18 @@
     onMoveToWindow?: (tabId: number, label: string) => void;
     /** 新建标签（标签栏右侧按钮） */
     onNewTab?: () => void;
-    /** 新建窗口（标签栏右侧按钮） */
+    /** 新建窗口（标签栏右侧按钮；仅单栏时显示） */
     onNewWindow?: () => void;
+    /** 多栏紧凑模式（显示栏位操作按钮） */
+    compact?: boolean;
+    /** 是否允许关闭本栏（多栏时可用） */
+    canClosePane?: boolean;
+    /** 向右拆分本栏 */
+    onSplitRight?: () => void;
+    /** 向下拆分本栏 */
+    onSplitDown?: () => void;
+    /** 关闭本栏（标签并入相邻栏） */
+    onClosePane?: () => void;
   }
   let {
     tabs,
@@ -54,6 +64,11 @@
     onMoveToWindow,
     onNewTab,
     onNewWindow,
+    compact = false,
+    canClosePane = false,
+    onSplitRight,
+    onSplitDown,
+    onClosePane,
   }: Props = $props();
 
   /** 右键菜单状态（null = 关闭；坐标为视口像素） */
@@ -260,7 +275,7 @@
   onkeydown={onKeydown}
 />
 
-<div class="tab-shell" bind:this={shell}>
+<div class="tab-shell" class:compact bind:this={shell}>
   <div class="tab-bar" role="tablist" aria-label={t('tabBar.aria')} bind:this={bar}>
   {#each tabs as tab (tab.tabId)}
     <div
@@ -332,13 +347,47 @@
     <button
       class="bar-btn"
       type="button"
-      title={t('tabBar.newWindowHint')}
-      aria-label={t('tabBar.newWindowAria')}
-      data-window-new
-      onclick={() => onNewWindow?.()}
+      title={t('tabBar.splitRightHint')}
+      aria-label={t('tabBar.splitRightAria')}
+      data-pane-split-right
+      onclick={() => onSplitRight?.()}
     >
-      <Icon name="window" size={14} />
+      <Icon name="split-right" size={14} />
     </button>
+    <button
+      class="bar-btn"
+      type="button"
+      title={t('tabBar.splitDownHint')}
+      aria-label={t('tabBar.splitDownAria')}
+      data-pane-split-down
+      onclick={() => onSplitDown?.()}
+    >
+      <Icon name="split-down" size={14} />
+    </button>
+    {#if compact}
+      <button
+        class="bar-btn"
+        type="button"
+        title={t('tabBar.closePaneHint')}
+        aria-label={t('tabBar.closePaneAria')}
+        data-pane-close
+        disabled={!canClosePane}
+        onclick={() => onClosePane?.()}
+      >
+        <Icon name="close" size={12} />
+      </button>
+    {:else}
+      <button
+        class="bar-btn"
+        type="button"
+        title={t('tabBar.newWindowHint')}
+        aria-label={t('tabBar.newWindowAria')}
+        data-window-new
+        onclick={() => onNewWindow?.()}
+      >
+        <Icon name="window" size={14} />
+      </button>
+    {/if}
   </div>
 </div>
 
@@ -363,7 +412,7 @@
     display: flex;
     align-items: stretch;
     height: var(--h-tabbar);
-    padding-right: 62px;
+    padding-right: 92px;
     background: var(--chrome);
     border-bottom: 1px solid var(--line);
     user-select: none;
@@ -374,6 +423,22 @@
 
   .tab-bar::-webkit-scrollbar {
     display: none;
+  }
+
+  /* 多栏紧凑模式：更窄的标签与更宽的右侧按钮区（四个栏位操作按钮）。 */
+  .tab-shell.compact .tab-bar {
+    padding-right: 118px;
+  }
+
+  .tab-shell.compact .tab {
+    min-width: 70px;
+    max-width: 140px;
+    font-size: 12px;
+  }
+
+  .bar-btn:disabled {
+    opacity: 0.45;
+    pointer-events: none;
   }
 
   .tab {

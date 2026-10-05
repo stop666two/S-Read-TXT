@@ -332,6 +332,18 @@ export const zhCN = {
   'tabBar.newTabAria': '新建标签',
   'tabBar.newWindowHint': '新建窗口（Ctrl+Shift+N）',
   'tabBar.newWindowAria': '新建窗口',
+  'tabBar.splitRightHint': '向右拆分（Ctrl+\\）',
+  'tabBar.splitRightAria': '向右拆分',
+  'tabBar.splitDownHint': '向下拆分（Ctrl+Shift+\\）',
+  'tabBar.splitDownAria': '向下拆分',
+  'tabBar.closePaneHint': '关闭栏位（Ctrl+Shift+W；标签并入相邻栏）',
+  'tabBar.closePaneAria': '关闭栏位',
+
+  // ---------- 分屏栏位 ----------
+  'pane.empty': '空栏位',
+  'pane.emptyHint': '拖入标签，或用下方按钮打开文件',
+  'pane.open': '打开文件…',
+  'pane.limit': '最多支持 4 个栏位',
 
   // ---------- 标签右键菜单 ----------
   'tabMenu.aria': '标签操作',
