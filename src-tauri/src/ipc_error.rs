@@ -37,7 +37,7 @@ pub const CODE_SETTINGS_RESET: &str = "SETTINGS_RESET";
 
 /// 缓存清理范围未知（`clear_cache` 的 scope 非法）
 pub const CODE_INVALID_SCOPE: &str = "INVALID_SCOPE";
-/// 数据目录迁移失败（P0-10）
+/// 数据目录迁移失败
 pub const CODE_MIGRATE_FAILED: &str = "MIGRATE_FAILED";
 /// 历史保存失败
 pub const CODE_HISTORY_SAVE: &str = "HISTORY_SAVE";
@@ -79,11 +79,11 @@ pub const CODE_MULTIFILE_DISABLED: &str = "MULTIFILE_DISABLED";
 pub const CODE_OUTLINE_INVALID: &str = "OUTLINE_INVALID";
 /// 快照/版本历史操作失败
 pub const CODE_SNAPSHOT_INVALID: &str = "SNAPSHOT_INVALID";
-/// 未命名文件必须先另存为（P3-2）
+/// 未命名文件必须先另存为
 pub const CODE_UNTITLED_NEEDS_PATH: &str = "UNTITLED_NEEDS_PATH";
-/// 导出内容超限（P3-2）
+/// 导出内容超限
 pub const CODE_EXPORT_TOO_LARGE: &str = "EXPORT_TOO_LARGE";
-/// 打印内容超限（P3-2；建议改用导出）
+/// 打印内容超限（建议改用导出）
 pub const CODE_PRINT_TOO_LARGE: &str = "PRINT_TOO_LARGE";
 /// 字体格式不支持
 pub const CODE_FONT_UNSUPPORTED: &str = "FONT_UNSUPPORTED";

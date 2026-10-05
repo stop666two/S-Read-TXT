@@ -132,7 +132,7 @@ pub enum AppStateError {
     /// 快照与版本历史错误（透传）
     #[error(transparent)]
     Snapshot(#[from] crate::snapshots::SnapshotError),
-    /// 未命名文件需先「另存为」确定路径（P3-2）
+    /// 未命名文件需先「另存为」确定路径
     #[error("未命名文件需先另存为再保存")]
     UntitledNeedsPath(u64),
     /// 导出与打印错误（透传）
@@ -311,7 +311,7 @@ impl AppState {
         Ok((info, false))
     }
 
-    /// 新建未命名文件（P3-2）：在 `data/untitled/` 生成临时文件
+    /// 新建未命名文件：在 `data/untitled/` 生成临时文件
     /// （按 `file.newEncoding` 写入 BOM、按 `file.newEol` 写入首个换行），
     /// 以编辑模式打开并标记 `untitled`（保存时必须「另存为」）。
     pub fn open_untitled(
@@ -408,7 +408,7 @@ impl AppState {
         Ok(tab_info(tab))
     }
 
-    // ---- 编辑模式（阶段 4a：编辑能力接线；UI 交互在阶段 4b） ----
+    // ---- 编辑模式（编辑能力接线与 UI 交互） ----
 
     /// 切换编辑模式：首次进入时创建编辑文档并记录磁盘基准快照。
     ///
@@ -962,7 +962,7 @@ impl AppState {
         Ok(tab_info(tab))
     }
 
-    /// 预览批量序号（P1-1；仅编辑标签，格式超限/范围非法在此阶段报错）。
+    /// 预览批量序号（仅编辑标签，格式超限/范围非法在预览时即报错）。
     pub fn preview_batch_numbering(
         &self,
         tab_id: u64,
@@ -982,7 +982,7 @@ impl AppState {
         Ok(doc.apply_batch_numbering(config)?)
     }
 
-    /// 预览行操作（P1-2；仅编辑标签）。
+    /// 预览行操作（仅编辑标签）。
     pub fn preview_line_op(
         &self,
         tab_id: u64,
@@ -1002,7 +1002,7 @@ impl AppState {
         Ok(doc.apply_line_op(config)?)
     }
 
-    /// 过滤扫描（P1-4，只读会话）：返回命中显示行号供阅读态虚拟化。
+    /// 过滤扫描（只读会话）：返回命中显示行号供阅读态虚拟化。
     pub fn filter_rows(
         &self,
         tab_id: u64,
@@ -1026,9 +1026,9 @@ impl AppState {
             .collect())
     }
 
-    // ---------- 标注（P2-3：书签/高亮/注释） ----------
+    // ---------- 标注（书签/高亮/注释） ----------
 
-    /// 折叠区间（P2-6b V-08）：由命令层传入折叠方式与正则（编辑与阅读一致）。
+    /// 折叠区间：由命令层传入折叠方式与正则（编辑与阅读一致）。
     pub fn fold_regions(
         &self,
         tab_id: u64,
@@ -1039,7 +1039,7 @@ impl AppState {
         outline_mod::fold_regions(source, mode, patterns).map_err(Into::into)
     }
 
-    /// 大纲提取（P2-6 V-09）：按给定正则扫描当前标签文档（编辑优先）。
+    /// 大纲提取：按给定正则扫描当前标签文档（编辑优先）。
     pub fn outline_items(
         &self,
         tab_id: u64,
@@ -1049,7 +1049,7 @@ impl AppState {
         outline_mod::extract(source, patterns, outline_mod::OUTLINE_MAX_ITEMS).map_err(Into::into)
     }
 
-    // ---------- 快照与版本历史（P3-1） ----------
+    // ---------- 快照与版本历史 ----------
 
     /// 列举某标签的快照（新→旧；只读会话也可查看历史）。
     pub fn list_snapshots(
@@ -1277,7 +1277,7 @@ impl AppState {
         Ok(data)
     }
 
-    /// 文档级文本统计（P2-1 状态栏 v2）：编辑文档优先，否则只读会话。
+    /// 文档级文本统计：编辑文档优先，否则只读会话。
     pub fn document_stats(
         &self,
         tab_id: u64,
@@ -2324,7 +2324,7 @@ mod tests {
             .expect("另存为失败");
 
         assert!(target.exists(), "目标文件应已生成");
-        assert!(!temp_path.exists(), "另存为后临时文件应立即清理（N7 回归）");
+        assert!(!temp_path.exists(), "另存为后临时文件应立即清理");
         let info = state.tab_info(info.tab_id).expect("取标签信息失败");
         assert!(info.untitled.is_none(), "未命名标记应被清除");
     }

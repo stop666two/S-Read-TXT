@@ -38,7 +38,7 @@ pub struct RowIndex {
 }
 
 impl RowIndex {
-    /// 构建索引（单次线性扫描；100MB 量级为几十毫秒，阶段 2 将移入后台线程）。
+    /// 构建索引（单次线性扫描；100MB 量级为几十毫秒，后续可移入后台线程）。
     pub fn build(bytes: &[u8], encoding: FileEncoding) -> Self {
         let byte_len = bytes.len() as u64;
         let mut checkpoints = vec![0u64];

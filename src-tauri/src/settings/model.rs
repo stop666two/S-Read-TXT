@@ -296,7 +296,7 @@ pub struct AppSettings {
     pub show_onboarding: bool,
     /// 界面语言（BCP 47 标签：`zh-CN` / `en`）
     pub locale: Language,
-    /// 状态栏显示与交互（P2-1）
+    /// 状态栏显示与交互
     pub status: StatusSettings,
     /// 显示选项（行号/高亮/标尺/不可见字符等，P2-2）
     pub display: DisplaySettings,
@@ -304,7 +304,7 @@ pub struct AppSettings {
     pub startup: StartupSettings,
     /// 编辑器默认值（行操作等）
     pub editor: EditorSettings,
-    /// 文件与快照设置（P3-1）
+    /// 文件与快照设置
     pub file: FileSettings,
     /// 查找与替换默认值
     pub find: FindSettings,

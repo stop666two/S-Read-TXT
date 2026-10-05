@@ -132,7 +132,7 @@ fn persisted_dir_text() -> Option<String> {
     paths::read_pointer(&exe).map(|dir| dir.to_string_lossy().into_owned())
 }
 
-/// 取走命令行/单实例转发的待打开文件列表（P3-3）。
+/// 取走命令行/单实例转发的待打开文件列表。
 #[tauri::command]
 pub fn take_cli_files(pending: State<'_, s_read_txt::cli::PendingCliFiles>) -> Vec<String> {
     s_read_txt::cli::take_pending(&pending)
@@ -214,7 +214,7 @@ pub fn set_data_dir(dir: String) -> DataDirStatus {
     })
 }
 
-/// 命令：迁移数据目录到指定位置（P0-10；复制校验 → 写指针 → 清理原目录）。
+/// 命令：迁移数据目录到指定位置（复制校验 → 写指针 → 清理原目录）。
 ///
 /// 说明：成功后需重启应用方可完全生效（指针在启动时读取）；
 ///       原目录被占用时延迟清理（下次启动自动重试，见 `migrate_dir::cleanup_pending`）。
@@ -258,7 +258,7 @@ pub fn restart_app() -> Result<(), IpcError> {
     })
 }
 
-/// 命令：预览批量序号（仅编辑标签；格式超限/范围非法在预览阶段报错）。
+/// 命令：预览批量序号（仅编辑标签；格式超限/范围非法在预览时即报错）。
 #[tauri::command]
 pub fn preview_batch_numbering(
     tab_id: u64,
@@ -312,7 +312,7 @@ pub fn apply_line_op(
 
 use s_read_txt::textfile::filter::{FilterQuery, FilterResult};
 
-/// 折叠区间（P2-6b V-08）：按显示设置中的折叠方式计算。
+/// 折叠区间：按显示设置中的折叠方式计算。
 #[tauri::command]
 pub fn fold_regions(
     tab_id: u64,
@@ -335,7 +335,7 @@ pub fn fold_regions(
     })
 }
 
-/// 大纲提取（P2-6 V-09）：按显示设置中的可编辑正则扫描当前标签文档。
+/// 大纲提取：按显示设置中的可编辑正则扫描当前标签文档。
 #[tauri::command]
 pub fn outline_items(
     tab_id: u64,
@@ -358,7 +358,7 @@ pub fn outline_items(
     })
 }
 
-/// 命令：列举快照（P3-1 版本历史；新→旧）。
+/// 命令：列举快照（版本历史；新→旧）。
 #[tauri::command]
 pub fn list_snapshots(
     tab_id: u64,
@@ -429,7 +429,7 @@ pub fn mark_clean_exit() -> Result<(), IpcError> {
         .map_err(|err| IpcError::new(CODE_IO, format!("写入退出标记失败：{err}")))
 }
 
-/// 命令：消费「干净退出」标记；返回 `true` 表示上次异常退出（P3-1 崩溃恢复提示用）。
+/// 命令：消费「干净退出」标记；返回 `true` 表示上次异常退出（崩溃恢复提示用）。
 #[tauri::command]
 pub fn take_crash_flag() -> bool {
     let (dir, _origin) = paths::resolve_data_dir();
@@ -497,11 +497,8 @@ pub async fn new_window(
             let _ = new_window.set_icon(icon);
         }
         let (dir, _origin) = paths::resolve_data_dir();
-        let theme = theme::resolve_theme(
-            &dir,
-            &settings_store::load_reader_settings(&dir).theme_id,
-        )
-        .ok();
+        let theme =
+            theme::resolve_theme(&dir, &settings_store::load_reader_settings(&dir).theme_id).ok();
         let color = theme
             .as_ref()
             .map(crate::theme_background_color)
@@ -594,7 +591,7 @@ pub async fn print_document(
     Ok(())
 }
 
-/// 命令：过滤扫描（P1-4，只读会话；返回命中显示行号供阅读态虚拟化）。
+/// 命令：过滤扫描（只读会话；返回命中显示行号供阅读态虚拟化）。
 #[tauri::command]
 pub fn filter_rows(
     tab_id: u64,
@@ -776,7 +773,7 @@ pub fn get_settings_registry() -> Vec<SettingSpec> {
     with_context(LogContext::request(), || registry::SPECS.to_vec())
 }
 
-/// 命令：数据目录磁盘占用分项统计（P0-8；目录缺失视为全 0）。
+/// 命令：数据目录磁盘占用分项统计（目录缺失视为全 0）。
 #[tauri::command]
 pub fn get_disk_usage() -> Result<resources::DiskUsageReport, IpcError> {
     with_context(LogContext::request(), || {
@@ -1590,7 +1587,7 @@ pub fn set_active_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<
     })
 }
 
-/// 命令：文档级文本统计（P2-1 状态栏 v2）。
+/// 命令：文档级文本统计（供状态栏展示）。
 #[tauri::command]
 pub fn document_stats(
     tab_id: u64,
@@ -1603,7 +1600,7 @@ pub fn document_stats(
     })
 }
 
-// ---------- 标注（P2-3：书签/高亮/注释） ----------
+// ---------- 标注（书签/高亮/注释） ----------
 
 /// 命令：逻辑坐标 → 显示坐标（编辑态长行分段；供标注创建使用）。
 #[tauri::command]

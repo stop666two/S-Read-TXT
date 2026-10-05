@@ -19,7 +19,7 @@ use s_read_txt::settings::theme;
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::paths;
 
-/// WebView2 启动附加参数（内存优化 + 离线加固；决策与实测见 docs/plan/progress.md 阶段 9）。
+/// WebView2 启动附加参数（内存优化 + 离线加固；决策与实测见 docs/plan/progress.md）。
 ///
 /// 依据 2026-10-02 实测（10×100MiB 标签、专用工作集口径）：
 /// - 基线（独立 GPU 进程 + 默认特性）97.7MiB → 本组合 81.9MiB（-15.8MiB）；
@@ -92,7 +92,7 @@ fn main() {
     // WebView2 用户数据目录重定向到便携 data/webview（默认写 %LOCALAPPDATA%，
     // 违反「数据全部在程序目录」红线；`WEBVIEW2_USER_DATA_FOLDER` 由 WebView2Loader
     // 在创建环境时读取，必须在 Builder 之前设置）。目录不可写时暂不重定向
-    // （避免 WebView 初始化失败；阶段 8 已接入「选择可写目录」引导）。
+    // （避免 WebView 初始化失败；已接入「选择可写目录」引导）。
     match data_dir::probe_writable(&startup_dir) {
         Ok(()) => {
             std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", startup_dir.join("webview"));
@@ -131,7 +131,7 @@ fn main() {
     }
 
     let app_result = tauri::Builder::default()
-        // 单实例（P3-3）：第二次启动只把文件参数转发给已运行实例并退出。
+        // 单实例：第二次启动只把文件参数转发给已运行实例并退出。
         // 必须最先注册（官方要求）；同时避免多实例并写同一便携数据目录。
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let paths = s_read_txt::cli::file_args(argv.iter().skip(1).map(String::as_str));
@@ -214,7 +214,7 @@ fn main() {
         })
         // 运行状态：打开标签集合（由命令层以 Mutex 访问）
         .manage(Mutex::new(AppState::new()))
-        // 命令行/单实例待打开队列（P3-3）
+        // 命令行/单实例待打开队列
         .manage(s_read_txt::cli::PendingCliFiles::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,

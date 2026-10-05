@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::settings::defaults;
 
-/// 折叠方式（显示选项 V-08；编辑与阅读双模式）。
+/// 折叠方式（编辑与阅读双模式）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum FoldingMode {
     /// 关闭（默认）
@@ -88,9 +88,9 @@ pub struct DisplaySettings {
     pub invisible: Vec<String>,
     /// 滚动条标记（搜索命中 / 书签 / 修改位置）
     pub scrollbar_markers: bool,
-    /// 折叠方式（V-08：关闭/按缩进/按标题/按正则）
+    /// 折叠方式（关闭/按缩进/按标题/按正则）
     pub folding: FoldingMode,
-    /// 大纲面板（V-09）
+    /// 大纲面板
     pub outline: bool,
     /// 面包屑（V-10）
     pub breadcrumb: bool,

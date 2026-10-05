@@ -503,7 +503,7 @@ pub const SPECS: &[SettingSpec] = &[
             integer: true,
         },
     },
-    // ---------- editor.multiCursor（P1-3） ----------
+    // ---------- editor.multiCursor ----------
     SettingSpec {
         id: "app.editor.multiCursor.enabled",
         group: "app.editor.multiCursor",
@@ -525,7 +525,7 @@ pub const SPECS: &[SettingSpec] = &[
             integer: true,
         },
     },
-    // ---------- editor.clipboard（P1-5） ----------
+    // ---------- editor.clipboard ----------
     SettingSpec {
         id: "app.editor.clipboard.historyLimit",
         group: "app.editor.clipboard",
@@ -540,7 +540,7 @@ pub const SPECS: &[SettingSpec] = &[
         group: "app.editor.clipboard",
         kind: SettingKind::Bool,
     },
-    // ---------- editor.insert / autoPairs / cleanup（P1-7） ----------
+    // ---------- editor.insert / autoPairs / cleanup ----------
     SettingSpec {
         id: "app.editor.insert.timestampFormat",
         group: "app.editor.insert",
@@ -673,7 +673,7 @@ pub const SPECS: &[SettingSpec] = &[
             allowed: None,
         },
     },
-    // ---------- settings.json：状态栏（P2-1） ----------
+    // ---------- settings.json：状态栏 ----------
     SettingSpec {
         id: "app.status.items",
         group: "app.status",
@@ -719,7 +719,7 @@ pub const SPECS: &[SettingSpec] = &[
         group: "app.status",
         kind: SettingKind::Text { max_len: 16 },
     },
-    // ---------- settings.json：显示选项（P2-2） ----------
+    // ---------- settings.json：显示选项 ----------
     SettingSpec {
         id: "app.display.lineNumbers",
         group: "app.display",
@@ -799,7 +799,7 @@ pub const SPECS: &[SettingSpec] = &[
             allowed: None,
         },
     },
-    // ---------- settings.json / file（P3-1） ----------
+    // ---------- settings.json / file ----------
     SettingSpec {
         id: "app.file.newEncoding",
         group: "app.file",

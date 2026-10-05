@@ -1,8 +1,7 @@
-//! `settings.json` · 文件与快照设置（P3-1，D 组）。
+//! `settings.json` · 文件与快照设置。
 //!
 //! 与 `docs/configuration.md` §2.1 的 `file.*` 字段保持同步。
-//! 说明：本阶段落地 D-01/02/05/06/07/08/13/16/18；其余 D 组项（关联打开方式等）
-//! 在后续切片以独立字段追加（`#[serde(default)]` 保证旧配置兼容）。
+//! 新增项以独立字段追加（`#[serde(default)]` 保证旧配置兼容）。
 
 use serde::{Deserialize, Serialize};
 

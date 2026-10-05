@@ -775,7 +775,7 @@ mod tests {
         );
     }
 
-    /// 时间戳格式未知取值归一（P1-7）。
+    /// 时间戳格式未知取值归一。
     #[test]
     fn editor_timestamp_format_normalizes_on_load() {
         let dir = data_dir();
@@ -895,7 +895,7 @@ mod tests {
     }
 
     /// 显示选项归一：标尺位置钳制 + 不可见标记白名单去重。
-    /// 显示「折叠/大纲」字段归一（P2-6）：未知折叠回退默认、非法/超长/重复正则剔除、空列表回退内置默认。
+    /// 显示「折叠/大纲」字段归一：未知折叠回退默认、非法/超长/重复正则剔除、空列表回退内置默认。
     #[test]
     fn display_outline_and_folding_normalize() {
         use crate::settings::display::{DisplaySettings, FoldingMode};

@@ -23,7 +23,7 @@ use crate::settings::status::CountMode;
 /// v11：新增显示选项设置节（display，P2-2）。
 /// v12：页边距改四向「阅读/编辑两套」（typography.pagePadding → margins，S4）。
 /// v13：新增阅读模式设置节（reading，P2-4）。
-/// v14：新增显示折叠/大纲/面包屑字段（P2-6）。
+/// v14：新增显示折叠/大纲/面包屑字段。
 pub const SCHEMA_VERSION: u32 = 15;
 
 // ---------- settings.json ----------
@@ -61,7 +61,7 @@ pub const DEFAULT_SAVE_BACKUP_ENABLED: bool = true;
 /// 默认是否显示首启引导
 pub const DEFAULT_SHOW_ONBOARDING: bool = true;
 
-// ---------- settings.json / editor.clipboard（P1-5） ----------
+// ---------- settings.json / editor.clipboard ----------
 
 /// 默认剪贴板历史上限（条；0 = 禁用）
 pub const DEFAULT_CLIPBOARD_HISTORY_LIMIT: u32 = 200;
@@ -263,7 +263,7 @@ pub const REGEX_LIBRARY_MAX_ITEMS: u32 = 200;
 /// 正则库单条最大字符数（F-14）
 pub const REGEX_LIBRARY_MAX_CHARS: u32 = 512;
 
-// ---------- settings.json：状态栏（P2-1） ----------
+// ---------- settings.json：状态栏 ----------
 
 /// 状态栏默认显示项与顺序（id 白名单见 [`STATUS_ITEM_IDS`]）
 pub const DEFAULT_STATUS_ITEMS: &[&str] = &[
@@ -308,9 +308,9 @@ pub const DEFAULT_DISPLAY_INDENT_GUIDES: bool = false;
 pub const DISPLAY_INVISIBLE_IDS: &[&str] = &["space", "tab", "newline", "trailingSpace"];
 /// 滚动条标记默认开
 pub const DEFAULT_DISPLAY_SCROLLBAR_MARKERS: bool = true;
-/// 默认折叠方式（关闭：V-08）
+/// 默认折叠方式（关闭）
 pub const DEFAULT_DISPLAY_FOLDING: FoldingMode = FoldingMode::Off;
-/// 默认是否启用大纲面板（V-09）
+/// 默认是否启用大纲面板
 pub const DEFAULT_DISPLAY_OUTLINE: bool = true;
 /// 默认是否显示面包屑（V-10）
 pub const DEFAULT_DISPLAY_BREADCRUMB: bool = true;

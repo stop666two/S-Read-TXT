@@ -15,8 +15,8 @@
 //!   `Encoding` 对象的身份与比较语义——实测对象比较在本组合下未命中 GB18030）；
 //! - 注意 WHATWG 中 GB18030 编码的规范名称是 `GBK`；
 //! - `encoding_rs::Encoding::encode` 是 Web 表单语义：请求 UTF-16 时会被改写为
-//!   UTF-8。因此本模块只做**解码**；后续「保存」功能必须使用 encoding_rs 的
-//!   `Encoder` 流式接口（阶段 3 实现）。
+//!   UTF-8。因此本模块只做**解码**；保存路径使用 encoding_rs 的
+//!   `Encoder` 流式接口编码输出。
 //!
 //! 解码：`encoding_rs::Encoding::decode` 按窗口解码并自动剥离 BOM；
 //! 行边界在 WHATWG 多字节编码中必定落在字符边界（0x0A/0x0D 不可能出现在

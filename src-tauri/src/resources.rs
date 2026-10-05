@@ -1,4 +1,4 @@
-//! 资源占用统计与缓存清理（P0-8）。
+//! 资源占用统计与缓存清理：日志、备份、WebView 缓存与字体的占用统计与安全清理。
 //!
 //! - [`disk_usage`]：数据目录占用分项统计（固定 6 键：logs / webview / fonts / backups / files / others）；
 //! - [`clear_scope`]：按范围清理（日志 / WebView 缓存 / 备份类文件），逐文件容错——被占用或删除失败

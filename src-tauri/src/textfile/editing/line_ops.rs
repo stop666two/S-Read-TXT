@@ -1,4 +1,4 @@
-//! 常用行操作引擎（P1-2 / 需求三 / D44）。
+//! 常用行操作引擎。
 //!
 //! 设计：
 //! - 预览与执行共用同一纯变换 `transform`（输入=范围跨度内的行文本，输出=变换后的行文本）；
@@ -21,7 +21,7 @@ pub const LINE_OP_MAX_ROWS: u64 = 200_000;
 /// 预览默认条数（前端可覆盖）。
 pub const DEFAULT_PREVIEW_LINES: usize = 10;
 
-/// 行操作种类（26 种；见设置规格 §3 / 阶段计划 P1-D44）。
+/// 行操作种类（26 种；见设置规范 §3）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LineOp {
