@@ -25,9 +25,9 @@ use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
     IpcError, CODE_BACKGROUND_INVALID, CODE_CONFIG_SAVE, CODE_FILE_TOO_LARGE, CODE_HISTORY_SAVE,
     CODE_INVALID_ENCODING, CODE_INVALID_EOL, CODE_INVALID_POSITION, CODE_INVALID_REGEX,
-    CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_PRINT_TOO_LARGE, CODE_SESSION_SAVE,
-    CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET, CODE_SNAPSHOT_INVALID,
-    CODE_SPLIT_INVALID, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
+    CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_PRINT_TOO_LARGE, CODE_RENAME_INVALID,
+    CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET,
+    CODE_SNAPSHOT_INVALID, CODE_SPLIT_INVALID, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -503,6 +503,160 @@ pub fn apply_split(
     let source = std::path::PathBuf::from(&path);
     let resolved = resolve_split_out_dir(&source, out_dir);
     s_read_txt::split::apply_file(&source, &mode, Some(&resolved)).map_err(split_ipc_error)
+}
+
+/// 重命名扫描返回体。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameFileDto {
+    name: String,
+    size: u64,
+}
+
+/// 重命名对（旧名 → 新名）。
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenamePairDto {
+    old: String,
+    new: String,
+}
+
+/// 重命名应用返回体。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameAppliedDto {
+    pairs: Vec<RenamePairDto>,
+    log_saved: bool,
+}
+
+/// 重命名撤销日志（供对话框恢复「撤销本次重命名」）。
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameLogDto {
+    dir: String,
+    pairs: Vec<RenamePairDto>,
+    at: u64,
+}
+
+/// 重命名扫描上限（超出提示缩小范围）。
+const RENAME_SCAN_CAP: usize = 2000;
+
+/// 撤销日志文件名（数据目录内）。
+const RENAME_LOG_FILE: &str = "rename-log.json";
+
+/// 重命名错误 → IPC 错误（IO 与非法分类）。
+fn rename_ipc_error(err: s_read_txt::rename::RenameError) -> IpcError {
+    use s_read_txt::rename::RenameError;
+    match err {
+        RenameError::Io(_, err) => IpcError::new(CODE_IO, format!("读写失败：{err}")),
+        other => IpcError::new(CODE_RENAME_INVALID, other.to_string()),
+    }
+}
+
+/// 撤销日志路径（数据目录）。
+fn rename_log_path() -> std::path::PathBuf {
+    let (dir, _origin) = paths::resolve_data_dir();
+    dir.join(RENAME_LOG_FILE)
+}
+
+/// 当前时间戳（Unix 毫秒）。
+fn rename_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// 命令：扫描目录（仅文件、扩展名白名单、自然序、上限 2000）。
+#[tauri::command]
+pub fn scan_rename_dir(
+    dir: String,
+    extensions: Option<Vec<String>>,
+) -> Result<Vec<RenameFileDto>, IpcError> {
+    let base = std::path::PathBuf::from(&dir);
+    if !base.is_dir() {
+        return Err(IpcError::new(CODE_IO, format!("目录不存在：{dir}")));
+    }
+    let exts = extensions
+        .filter(|list| !list.is_empty())
+        .unwrap_or_else(s_read_txt::rename::default_extensions);
+    let names =
+        s_read_txt::rename::scan(&base, &exts, RENAME_SCAN_CAP).map_err(rename_ipc_error)?;
+    let items = names
+        .into_iter()
+        .map(|name| {
+            let size = std::fs::metadata(base.join(&name))
+                .map(|meta| meta.len())
+                .unwrap_or(0);
+            RenameFileDto { name, size }
+        })
+        .collect();
+    Ok(items)
+}
+
+/// 命令：重命名预览（纯计算，不触盘）。
+#[tauri::command]
+pub fn preview_rename(
+    dir: String,
+    files: Vec<String>,
+    rules: s_read_txt::rename::RenameRules,
+) -> Result<Vec<s_read_txt::rename::RenameEntry>, IpcError> {
+    Ok(s_read_txt::rename::plan(
+        std::path::Path::new(&dir),
+        &files,
+        &rules,
+    ))
+}
+
+/// 命令：执行重命名（两阶段 + 失败回滚；成功后写撤销日志）。
+#[tauri::command]
+pub fn apply_rename(dir: String, pairs: Vec<RenamePairDto>) -> Result<RenameAppliedDto, IpcError> {
+    let base = std::path::PathBuf::from(&dir);
+    let raw: Vec<(String, String)> = pairs
+        .iter()
+        .map(|pair| (pair.old.clone(), pair.new.clone()))
+        .collect();
+    s_read_txt::rename::validate_pairs(&base, &raw).map_err(rename_ipc_error)?;
+    let applied = s_read_txt::rename::apply(&base, &raw).map_err(rename_ipc_error)?;
+    let dto_pairs: Vec<RenamePairDto> = applied
+        .into_iter()
+        .map(|(old, new)| RenamePairDto { old, new })
+        .collect();
+    let log = RenameLogDto {
+        dir: dir.clone(),
+        pairs: dto_pairs.clone(),
+        at: rename_now_ms(),
+    };
+    let saved = match serde_json::to_string_pretty(&log) {
+        Ok(text) => {
+            s_read_txt::storage::atomic::write_atomic_str(&rename_log_path(), &text).is_ok()
+        }
+        Err(_) => false,
+    };
+    Ok(RenameAppliedDto {
+        pairs: dto_pairs,
+        log_saved: saved,
+    })
+}
+
+/// 命令：撤销本次重命名（反向改名成功后删除日志）。
+#[tauri::command]
+pub fn undo_rename(dir: String, pairs: Vec<RenamePairDto>) -> Result<(), IpcError> {
+    let base = std::path::PathBuf::from(&dir);
+    let raw: Vec<(String, String)> = pairs
+        .iter()
+        .map(|pair| (pair.old.clone(), pair.new.clone()))
+        .collect();
+    s_read_txt::rename::undo(&base, &raw).map_err(rename_ipc_error)?;
+    let _ = std::fs::remove_file(rename_log_path());
+    Ok(())
+}
+
+/// 命令：读取撤销日志（无日志或损坏返回 None）。
+#[tauri::command]
+pub fn read_rename_log() -> Option<RenameLogDto> {
+    let text = std::fs::read_to_string(rename_log_path()).ok()?;
+    serde_json::from_str(&text).ok()
 }
 
 /// 解析调用窗口的目标栏位键：显式 pane 属于本窗口时采用，否则回落默认栏 `#1`。

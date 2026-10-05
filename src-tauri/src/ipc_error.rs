@@ -102,6 +102,8 @@ pub const CODE_BACKGROUND_INVALID: &str = "BACKGROUND_INVALID";
 pub const CODE_THEME_INVALID: &str = "THEME_INVALID";
 /// 拆分配置无效 / 无输出 / 分片过多
 pub const CODE_SPLIT_INVALID: &str = "SPLIT_INVALID";
+/// 批量重命名非法（冲突/重名/保留名/位数越界等）。
+pub const CODE_RENAME_INVALID: &str = "RENAME_INVALID";
 /// 内部错误（锁中毒等）
 pub const CODE_INTERNAL: &str = "INTERNAL";
 

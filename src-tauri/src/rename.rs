@@ -288,6 +288,28 @@ pub fn undo(dir: &Path, pairs: &[(String, String)]) -> Result<(), RenameError> {
     apply(dir, &reversed).map(|_| ())
 }
 
+/// 校验待执行对：源存在、目标合法、目标唯一（大小写不敏感）、源不重复。
+pub fn validate_pairs(dir: &Path, pairs: &[(String, String)]) -> Result<(), RenameError> {
+    let mut seen_targets: HashMap<String, ()> = HashMap::new();
+    let mut seen_sources: HashMap<String, ()> = HashMap::new();
+    for (old, new) in pairs {
+        let old_lower = old.to_lowercase();
+        if seen_sources.insert(old_lower, ()).is_some() {
+            return Err(RenameError::Blocked);
+        }
+        if !dir.join(old).exists() {
+            return Err(RenameError::Blocked);
+        }
+        if !is_valid_name(new) {
+            return Err(RenameError::Blocked);
+        }
+        if seen_targets.insert(new.to_lowercase(), ()).is_some() {
+            return Err(RenameError::Blocked);
+        }
+    }
+    Ok(())
+}
+
 /// 计算新文件名：替换（茎部）→ 前缀/后缀 → 序号（排序后按序号递增）。
 fn compute_new_name(old: &str, rules: &RenameRules, index: usize) -> String {
     let (stem, ext) = match old.rsplit_once('.') {
@@ -588,6 +610,33 @@ mod tests {
             .filter(|name| name.contains("srt-ren"))
             .collect();
         assert!(leftovers.is_empty(), "存在临时残留：{leftovers:?}");
+    }
+
+    #[test]
+    fn validate_pairs_accepts_chain_and_rejects_duplicates() {
+        let tmp = tempdir().unwrap();
+        let dir = tmp.path();
+        for name in ["a.txt", "b.txt"] {
+            touch(dir, name);
+        }
+        let chain = vec![
+            ("a.txt".to_string(), "b.txt".to_string()),
+            ("b.txt".to_string(), "c.txt".to_string()),
+        ];
+        assert!(validate_pairs(dir, &chain).is_ok());
+        let dup = vec![
+            ("a.txt".to_string(), "x.txt".to_string()),
+            ("b.txt".to_string(), "x.txt".to_string()),
+        ];
+        assert!(matches!(
+            validate_pairs(dir, &dup),
+            Err(RenameError::Blocked)
+        ));
+        let missing = vec![("gone.txt".to_string(), "x.txt".to_string())];
+        assert!(matches!(
+            validate_pairs(dir, &missing),
+            Err(RenameError::Blocked)
+        ));
     }
 
     #[test]
