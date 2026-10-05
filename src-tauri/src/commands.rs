@@ -23,10 +23,11 @@ use s_read_txt::fonts::{self, FontEntry};
 use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
-    IpcError, CODE_BACKGROUND_INVALID, CODE_CONFIG_SAVE, CODE_HISTORY_SAVE, CODE_INVALID_ENCODING,
-    CODE_INVALID_EOL, CODE_INVALID_POSITION, CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED,
-    CODE_PRINT_TOO_LARGE, CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT,
-    CODE_SETTINGS_RESET, CODE_SNAPSHOT_INVALID, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
+    IpcError, CODE_BACKGROUND_INVALID, CODE_CONFIG_SAVE, CODE_FILE_TOO_LARGE, CODE_HISTORY_SAVE,
+    CODE_INVALID_ENCODING, CODE_INVALID_EOL, CODE_INVALID_POSITION, CODE_INVALID_REGEX,
+    CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_PRINT_TOO_LARGE, CODE_SESSION_SAVE,
+    CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET, CODE_SNAPSHOT_INVALID,
+    CODE_SPLIT_INVALID, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -439,6 +440,69 @@ pub fn take_crash_flag() -> bool {
     let (dir, _origin) = paths::resolve_data_dir();
     let crashed = !s_read_txt::snapshots::take_clean_exit(&dir);
     crashed && s_read_txt::snapshots::has_any(&dir)
+}
+
+/// 拆分预览返回体（含实际输出目录）。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SplitPreviewDto {
+    #[serde(flatten)]
+    plan: s_read_txt::split::SplitPlan,
+    out_dir: String,
+}
+
+/// 拆分错误 → IPC 错误（模式非法/无输出/过多 → SPLIT_INVALID；正则 → INVALID_REGEX）。
+fn split_ipc_error(err: s_read_txt::split::SplitError) -> IpcError {
+    use s_read_txt::split::SplitError;
+    match err {
+        SplitError::InvalidPattern(reason) => {
+            IpcError::new(CODE_INVALID_REGEX, format!("正则表达式无效：{reason}"))
+        }
+        SplitError::TooLarge(bytes) => IpcError::new(
+            CODE_FILE_TOO_LARGE,
+            format!("文件过大（{bytes} 字节），无法拆分"),
+        ),
+        SplitError::Io(err) => IpcError::new(CODE_IO, format!("读写失败：{err}")),
+        other => IpcError::new(CODE_SPLIT_INVALID, other.to_string()),
+    }
+}
+
+/// 解析拆分输出目录：显式指定，缺省为源文件所在目录。
+fn resolve_split_out_dir(path: &std::path::Path, out_dir: Option<String>) -> std::path::PathBuf {
+    out_dir
+        .filter(|value| !value.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| path.parent().map(std::path::Path::to_path_buf))
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+}
+
+/// 命令：拆分预览（不写盘）。
+#[tauri::command]
+pub fn preview_split(
+    path: String,
+    mode: s_read_txt::split::SplitMode,
+    out_dir: Option<String>,
+) -> Result<SplitPreviewDto, IpcError> {
+    let source = std::path::PathBuf::from(&path);
+    let resolved = resolve_split_out_dir(&source, out_dir);
+    let plan =
+        s_read_txt::split::plan_file(&source, &mode, Some(&resolved)).map_err(split_ipc_error)?;
+    Ok(SplitPreviewDto {
+        plan,
+        out_dir: resolved.to_string_lossy().into_owned(),
+    })
+}
+
+/// 命令：执行拆分（流式 + 原子写；同名覆盖）。
+#[tauri::command]
+pub fn apply_split(
+    path: String,
+    mode: s_read_txt::split::SplitMode,
+    out_dir: Option<String>,
+) -> Result<s_read_txt::split::AppliedSplit, IpcError> {
+    let source = std::path::PathBuf::from(&path);
+    let resolved = resolve_split_out_dir(&source, out_dir);
+    s_read_txt::split::apply_file(&source, &mode, Some(&resolved)).map_err(split_ipc_error)
 }
 
 /// 解析调用窗口的目标栏位键：显式 pane 属于本窗口时采用，否则回落默认栏 `#1`。

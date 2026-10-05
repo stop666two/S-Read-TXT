@@ -100,6 +100,8 @@ pub const CODE_BACKGROUND_INVALID: &str = "BACKGROUND_INVALID";
 
 /// 主题不存在 / 文件无效 / 内置主题删除被拒（消息含具体原因）
 pub const CODE_THEME_INVALID: &str = "THEME_INVALID";
+/// 拆分配置无效 / 无输出 / 分片过多
+pub const CODE_SPLIT_INVALID: &str = "SPLIT_INVALID";
 /// 内部错误（锁中毒等）
 pub const CODE_INTERNAL: &str = "INTERNAL";
 

@@ -382,6 +382,8 @@ fn main() {
         commands::delete_snapshot,
         commands::mark_clean_exit,
         commands::take_crash_flag,
+        commands::preview_split,
+        commands::apply_split,
         commands::new_file,
         commands::export_text,
         commands::print_document,
