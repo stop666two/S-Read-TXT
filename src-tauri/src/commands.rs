@@ -613,6 +613,56 @@ pub fn merge_rows(
     Ok(state.merge_rows(source, start, count.min(10_000) as usize)?)
 }
 
+/// 合并冲突选择项（`region_index` = 冲突序号，0 起，与前端冲突列表顺序一致）。
+#[derive(Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeChoiceDto {
+    pub region_index: u32,
+    pub choice: String,
+}
+
+/// 合并写回结果。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeWriteDto {
+    pub target: String,
+    pub backup: Option<String>,
+    pub bytes: u64,
+    pub lines: u64,
+}
+
+/// 命令：按当前冲突选择物化合并输出并写回（`makeBackup` 时覆盖前生成 `.bak`）。
+#[tauri::command]
+pub fn write_merge_output(
+    state: State<'_, CompareState>,
+    target: String,
+    choices: Vec<MergeChoiceDto>,
+    make_backup: bool,
+) -> Result<MergeWriteDto, IpcError> {
+    let pairs: Vec<(u32, String)> = choices
+        .into_iter()
+        .map(|item| (item.region_index, item.choice))
+        .collect();
+    let (backup, bytes, lines) = state.write_output(&target, &pairs, make_backup)?;
+    log::info!(
+        target: "sread::ipc",
+        "合并写回：{target}（{lines} 行；备份：{}）",
+        backup.clone().unwrap_or_else(|| "无".to_string())
+    );
+    Ok(MergeWriteDto {
+        target,
+        backup,
+        bytes,
+        lines,
+    })
+}
+
+/// 命令：撤销合并写回（以 `<目标>.bak` 覆盖目标；无备份返回 false）。
+#[tauri::command]
+pub fn undo_merge_writeback(state: State<'_, CompareState>, target: String) -> Result<bool, IpcError> {
+    Ok(state.undo_writeback(&target)?)
+}
+
 /// 重命名扫描返回体。
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]

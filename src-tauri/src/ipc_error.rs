@@ -164,6 +164,7 @@ impl From<crate::compare::CompareError> for IpcError {
             crate::compare::CompareError::NotLoaded => {
                 Self::internal("比较文档尚未加载或侧不存在")
             }
+            crate::compare::CompareError::Io(message) => Self::new(CODE_IO, message),
         }
     }
 }

@@ -55,6 +55,8 @@ pub enum CompareError {
     Diff(DiffError),
     /// 尚未加载文档（或请求了未加载的侧）。
     NotLoaded,
+    /// 落盘/备份等 IO 失败。
+    Io(String),
 }
 
 impl std::fmt::Display for CompareError {
@@ -75,7 +77,14 @@ impl std::fmt::Display for CompareError {
             },
             CompareError::Diff(err) => write!(f, "{err}"),
             CompareError::NotLoaded => write!(f, "比较文档尚未加载"),
+            CompareError::Io(message) => write!(f, "{message}"),
         }
+    }
+}
+
+impl From<std::io::Error> for CompareError {
+    fn from(err: std::io::Error) -> Self {
+        CompareError::Io(format!("读写失败：{err}"))
     }
 }
 
@@ -184,6 +193,9 @@ pub struct MergeDocsDto {
     pub base_name: String,
     pub ours_name: String,
     pub theirs_name: String,
+    pub base_path: String,
+    pub ours_path: String,
+    pub theirs_path: String,
     pub base_rows: u64,
     pub ours_rows: u64,
     pub theirs_rows: u64,
@@ -314,6 +326,9 @@ impl CompareState {
             base_name: base_doc.name.clone(),
             ours_name: ours_doc.name.clone(),
             theirs_name: theirs_doc.name.clone(),
+            base_path: base_doc.session.path().to_string_lossy().into_owned(),
+            ours_path: ours_doc.session.path().to_string_lossy().into_owned(),
+            theirs_path: theirs_doc.session.path().to_string_lossy().into_owned(),
             base_rows: base_doc.hashes.len() as u64,
             ours_rows: ours_doc.hashes.len() as u64,
             theirs_rows: theirs_doc.hashes.len() as u64,
@@ -355,6 +370,113 @@ impl CompareState {
             paths.push(doc.session.path().to_path_buf());
         }
         Ok(Some((merge, hashes, paths)))
+    }
+
+    /// 按当前冲突选择物化合并输出并写回目标（可选覆盖前备份 `<目标>.bak`）。
+    ///
+    /// 返回：`(备份路径, 写入字节数, 输出行数)`。
+    pub fn write_output(
+        &self,
+        target: &str,
+        choices: &[(u32, String)],
+        make_backup: bool,
+    ) -> Result<(Option<String>, u64, u64), CompareError> {
+        let guard = self.inner.lock().map_err(|_| CompareError::NotLoaded)?;
+        let Some(merge) = guard.merge.as_ref() else {
+            return Err(CompareError::NotLoaded);
+        };
+        let source_doc = |source: MergedSource| match source {
+            MergedSource::Base => guard.left.as_ref(),
+            MergedSource::Ours => guard.right.as_ref(),
+            MergedSource::Theirs => guard.extra.as_ref(),
+        };
+        let choice_of = |index: usize| -> &str {
+            choices
+                .iter()
+                .find(|(region, _)| *region as usize == index)
+                .map(|(_, value)| value.as_str())
+                .unwrap_or("ours")
+        };
+
+        let mut text = String::new();
+        let mut lines = 0u64;
+        let mut first_line = true;
+        let mut conflict_index = 0u32;
+        let mut push_span = |source: MergedSource, start: u64, end: u64| -> Result<(), CompareError> {
+            let doc = source_doc(source).ok_or(CompareError::NotLoaded)?;
+            let mut row = start;
+            while row < end {
+                let count = ((end - row) as usize).min(LOAD_BATCH_ROWS);
+                let batch = doc.session.rows(row, count);
+                if batch.is_empty() {
+                    break;
+                }
+                for item in &batch {
+                    if !first_line {
+                        text.push('\n');
+                    }
+                    text.push_str(&item.text);
+                    first_line = false;
+                    lines += 1;
+                }
+                row += batch.len() as u64;
+            }
+            Ok(())
+        };
+
+        for region in merge.regions.iter() {
+            if region.kind == RegionKind::Conflict {
+                let choice = choice_of(conflict_index as usize);
+                conflict_index += 1;
+                match choice {
+                    "theirs" => push_span(
+                        MergedSource::Theirs,
+                        region.theirs_range.0,
+                        region.theirs_range.1,
+                    )?,
+                    "both" => {
+                        push_span(MergedSource::Ours, region.ours_range.0, region.ours_range.1)?;
+                        push_span(
+                            MergedSource::Theirs,
+                            region.theirs_range.0,
+                            region.theirs_range.1,
+                        )?;
+                    }
+                    "none" => {}
+                    _ => push_span(MergedSource::Ours, region.ours_range.0, region.ours_range.1)?,
+                }
+                continue;
+            }
+            if let Some((source, (start, end))) = region.merged {
+                push_span(source, start, end)?;
+            }
+        }
+        if lines > 0 {
+            text.push('\n');
+        }
+
+        let path = Path::new(target);
+        let backup = if make_backup && path.exists() {
+            let backup_path = crate::textfile::editing::save::backup_path_for(path);
+            std::fs::copy(path, &backup_path)?;
+            Some(backup_path.to_string_lossy().into_owned())
+        } else {
+            None
+        };
+        crate::storage::atomic::write_atomic(path, text.as_bytes())?;
+        Ok((backup, text.len() as u64, lines))
+    }
+
+    /// 撤销写回：以 `<目标>.bak` 覆盖目标（无备份返回 false）。
+    pub fn undo_writeback(&self, target: &str) -> Result<bool, CompareError> {
+        let path = Path::new(target);
+        let backup_path = crate::textfile::editing::save::backup_path_for(path);
+        if !backup_path.exists() {
+            return Ok(false);
+        }
+        let bytes = std::fs::read(&backup_path)?;
+        crate::storage::atomic::write_atomic(path, &bytes)?;
+        Ok(true)
     }
 
     /// 三方合并的源文件路径（base, ours, theirs）。
@@ -445,5 +567,44 @@ mod tests {
         let state = CompareState::new();
         let err = state.load_diff("Z:/definitely/missing.txt", "Z:/nope.txt").unwrap_err();
         assert!(matches!(err, CompareError::Text(_)));
+    }
+
+    #[test]
+    fn write_output_materializes_choices_and_undo_restores() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = write_file(dir.path(), "base.txt", "a\nb\nc\nd\n");
+        let ours = write_file(dir.path(), "ours.txt", "a\nX\nc\nd\n");
+        let theirs = write_file(dir.path(), "theirs.txt", "a\nY\nc\nD\n");
+        let target = write_file(dir.path(), "target.txt", "original\n");
+        let state = CompareState::new();
+        state
+            .load_merge(
+                &base.to_string_lossy(),
+                &ours.to_string_lossy(),
+                &theirs.to_string_lossy(),
+            )
+            .unwrap();
+
+        // 默认（我方）：a / X / c / D
+        let (backup, bytes, lines) = state
+            .write_output(&target.to_string_lossy(), &[], true)
+            .unwrap();
+        assert!(backup.is_some());
+        assert_eq!(lines, 4);
+        assert_eq!(bytes, 8);
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "a\nX\nc\nD\n");
+        let backup_path = backup.unwrap();
+        assert_eq!(std::fs::read_to_string(&backup_path).unwrap(), "original\n");
+
+        // 选择他方：a / Y / c / D（备份保留上一次写回结果）
+        state
+            .write_output(&target.to_string_lossy(), &[(0, "theirs".to_string())], true)
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "a\nY\nc\nD\n");
+        assert_eq!(std::fs::read_to_string(&backup_path).unwrap(), "a\nX\nc\nD\n");
+
+        // 撤销本次写回：恢复到写回前（上一次结果）
+        assert!(state.undo_writeback(&target.to_string_lossy()).unwrap());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "a\nX\nc\nD\n");
     }
 }

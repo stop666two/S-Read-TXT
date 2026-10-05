@@ -1036,12 +1036,29 @@ export interface MergeDocs {
   baseName: string;
   oursName: string;
   theirsName: string;
+  basePath: string;
+  oursPath: string;
+  theirsPath: string;
   baseRows: number;
   oursRows: number;
   theirsRows: number;
   conflicts: number;
   autoMergedLines: number;
   regions: MergeRegionDto[];
+}
+
+/** 合并冲突选择（regionIndex = 冲突序号，0 起）。 */
+export interface MergeChoiceDto {
+  regionIndex: number;
+  choice: string;
+}
+
+/** 合并写回结果。 */
+export interface MergeWriteResult {
+  target: string;
+  backup: string | null;
+  bytes: number;
+  lines: number;
 }
 
 /** 重命名扫描项（仅文件名与大小）。 */
@@ -1410,6 +1427,11 @@ export const ipc = {
   /** 取合并输出行（按来源与区间）。 */
   mergeRows: (source: 'base' | 'ours' | 'theirs', start: number, count: number) =>
     invoke<string[]>('merge_rows', { source, start, count }),
+  /** 按当前冲突选择写回合并输出（可选覆盖前备份 `<目标>.bak`）。 */
+  writeMergeOutput: (target: string, choices: MergeChoiceDto[], makeBackup: boolean) =>
+    invoke<MergeWriteResult>('write_merge_output', { target, choices, makeBackup }),
+  /** 撤销合并写回（以 `<目标>.bak` 覆盖目标；无备份返回 false）。 */
+  undoMergeWriteback: (target: string) => invoke<boolean>('undo_merge_writeback', { target }),
   /** 剪贴板历史（读取最新列表）。 */
   listClipboardHistory: () => invoke<ClipboardEntry[]>('list_clipboard_history'),
   /** 记录一次复制到历史（空文本/禁用时后端 no-op；返回最新列表）。 */

@@ -94,7 +94,6 @@ pub fn merge3(base: &[u64], ours: &[u64], theirs: &[u64]) -> Result<MergeResult,
                 map_span(&theirs_hunks, base_cursor, cluster_start),
                 Some((MergedSource::Base, (base_cursor, cluster_start))),
             );
-            base_cursor = cluster_start;
         }
 
         let mut cluster_end = cluster_start;
@@ -229,10 +228,9 @@ fn push_region(
     });
 }
 
-/// 变更区间（base 与源侧坐标）。
+/// 变更区间（base 坐标；源侧区间由 diff 边界映射还原）。
 struct Change {
     base: LineSpan,
-    source: LineSpan,
 }
 
 fn collect_changes(diff: &[DiffHunk]) -> Vec<Change> {
@@ -240,7 +238,6 @@ fn collect_changes(diff: &[DiffHunk]) -> Vec<Change> {
         .filter(|hunk| hunk.kind != HunkKind::Equal)
         .map(|hunk| Change {
             base: (hunk.left_start, hunk.left_start + hunk.left_len),
-            source: (hunk.right_start, hunk.right_start + hunk.right_len),
         })
         .collect()
 }

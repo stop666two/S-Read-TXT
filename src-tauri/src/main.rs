@@ -398,6 +398,8 @@ fn main() {
         commands::merge3_docs,
         commands::compare_rows,
         commands::merge_rows,
+        commands::write_merge_output,
+        commands::undo_merge_writeback,
         commands::new_file,
         commands::export_text,
         commands::print_document,
