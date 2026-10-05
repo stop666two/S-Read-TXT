@@ -2,7 +2,7 @@
 // 设置项存在性与总开关/细项语义——折叠锚点（含失效丢弃）、光标恢复与越界裁剪、
 // 滚动关闭、布局关闭合并单栏、总开关关闭仍恢复窗口数量与几何。
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -435,6 +435,121 @@ try {
     topVisible === 0 && secondRow === 's 2',
     `scrollTop=${topVisible} row1=${secondRow} preScroll=${scrolled}`,
   );
+
+  // ---------- U11 滚动正向恢复（真实滚轮，写入滚动记忆） ----------
+  step = 'U11 滚动正向恢复';
+  await openSettings();
+  await setToggle('app.startup.restoreItems.scroll', true);
+  await closeSettings();
+  await openPath(main, fileScroll);
+  await waitForValue(async () => ((await rowTexts(main)).length > 0 ? true : null), 10000);
+  const topRowOf = () =>
+    evalIn(
+      main,
+      `(() => { const list = [...document.querySelectorAll('.row')].map((n) => Number(n.dataset.row)).filter((v) => !Number.isNaN(v)); return list.length > 0 ? Math.min(...list) : -1; })()`,
+    );
+  let scrolledTo = 0;
+  for (let i = 0; i < 60; i += 1) {
+    await main.send('Input.dispatchMouseEvent', {
+      type: 'mouseWheel',
+      x: 400,
+      y: 300,
+      deltaX: 0,
+      deltaY: 800,
+    });
+    await delay(80);
+    scrolledTo = await topRowOf();
+    if (scrolledTo >= 110) break;
+  }
+  await delay(400);
+  await saveWait();
+  await killApp();
+
+  step = 'U11 滚动正向恢复重启';
+  main = await launch(dataDir);
+  const restoredTop = await waitForValue(async () => {
+    const row = await topRowOf();
+    return row >= 0 ? row : null;
+  }, 15000);
+  check(
+    'U11 滚动位置恢复正常',
+    scrolledTo >= 110 && restoredTop !== null && Math.abs(restoredTop - scrolledTo) <= 4,
+    `scrolledTo=${scrolledTo} topRow=${restoredTop}`,
+  );
+
+  // ---------- U12 锚点容错：注入越界/非法折叠与光标 ----------
+  step = 'U12 锚点容错注入';
+  await openSettings();
+  await setToggle('app.startup.restoreItems.folds', true);
+  await setToggle('app.startup.restoreItems.caret', true);
+  await closeSettings();
+  await saveWait();
+  await killApp();
+  const sessionPath = join(dataDir, 'session.json');
+  const sessionJson = JSON.parse(readFileSync(sessionPath, 'utf8'));
+  for (const window of sessionJson.windows) {
+    for (const pane of window.panes) {
+      for (const tab of pane.tabs) {
+        if (tab.path.endsWith('scroll.txt')) {
+          tab.folds = [
+            { startRow: 99999, len: 5 },
+            { startRow: 1, len: 0 },
+          ];
+        }
+        if (tab.path.endsWith('caret.txt')) {
+          tab.caretRow = 99999;
+          tab.caretCol = 0;
+        }
+      }
+    }
+  }
+  writeFileSync(sessionPath, JSON.stringify(sessionJson));
+  main = await launch(dataDir);
+  const survived = await waitForValue(async () => {
+    const texts = await rowTexts(main);
+    return Array.isArray(texts) && texts.length > 0 ? true : null;
+  }, 15000);
+  const scrollTexts = await evalIn(
+    main,
+    `(async () => { const v = await window.__TAURI_INTERNALS__.invoke('list_tabs', { pane: 'main#1' }); return v.tabs.map((t) => t.name).join(','); })()`,
+  );
+  const clipToast = await waitForValue(async () => {
+    const text = await evalIn(
+      main,
+      `[...document.querySelectorAll('.toast')].map((n) => n.textContent).join('|')`,
+    );
+    return typeof text === 'string' && text.includes('超出文件长度') ? text : null;
+  }, 10000);
+  check(
+    'U12 非法折叠锚点丢弃且不崩溃',
+    survived === true && String(scrollTexts).includes('scroll.txt'),
+    `tabs=${scrollTexts}`,
+  );
+  check(
+    'U12b 越界光标裁剪提示',
+    clipToast !== null,
+    `toast=${String(clipToast ?? '').slice(0, 50)}`,
+  );
+
+  // ---------- U13 会话文件损坏自愈 ----------
+  step = 'U13 会话损坏自愈';
+  await killApp();
+  writeFileSync(sessionPath, '{"schemaVersion":4,"windows":[{bogus');
+  main = await launch(dataDir);
+  const emptyShown2 = await waitForValue(
+    async () => ((await evalIn(main, `!!document.querySelector('.empty')`)) ? true : null),
+    15000,
+  );
+  const corruptBackups = readdirSync(dataDir).filter((name) => name.includes('.corrupt-'));
+  check(
+    'U13 会话损坏：空态启动且生成损坏备份',
+    emptyShown2 === true && corruptBackups.length >= 1,
+    `backups=${JSON.stringify(corruptBackups)}`,
+  );
+
+  // 恢复环境：重新打开文件供后续用例
+  await openPath(main, fileScroll);
+  await saveWait();
 
   // ---------- U7 布局关闭合并单栏 ----------
   step = 'U7 布局关闭';
