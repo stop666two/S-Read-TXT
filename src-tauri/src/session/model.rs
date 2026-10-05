@@ -59,6 +59,8 @@ pub struct SessionTab {
     pub scroll_row: u64,
     /// 上次是否处于编辑态（仅恢复界面模式）
     pub edit_mode: bool,
+    /// 标签颜色（调色板 id；`None` = 未设置）
+    pub color: Option<String>,
 }
 
 impl Default for SessionTab {
@@ -68,6 +70,7 @@ impl Default for SessionTab {
             encoding: None,
             scroll_row: 0,
             edit_mode: false,
+            color: None,
         }
     }
 }

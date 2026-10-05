@@ -1730,6 +1730,20 @@ pub fn set_active_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<
     })
 }
 
+/// 命令：设置标签颜色（`None` 清除；颜色 id 由后端调色板校验）。
+#[tauri::command]
+pub fn set_tab_color(
+    tab_id: u64,
+    color: Option<String>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<TabInfo, IpcError> {
+    with_context(LogContext::request(), || {
+        lock_state(&state)?
+            .set_tab_color(tab_id, color.as_deref())
+            .map_err(IpcError::from)
+    })
+}
+
 /// 命令：文档级文本统计（供状态栏展示）。
 #[tauri::command]
 pub fn document_stats(

@@ -338,6 +338,16 @@ export const zhCN = {
   'tabMenu.close': '关闭',
   'tabMenu.closeOthers': '关闭其他',
   'tabMenu.closeAll': '关闭全部',
+  'tabMenu.color': '颜色',
+  'tabMenu.colorClear': '清除颜色',
+  'tabMenu.color.red': '红色',
+  'tabMenu.color.orange': '橙色',
+  'tabMenu.color.yellow': '黄色',
+  'tabMenu.color.green': '绿色',
+  'tabMenu.color.cyan': '青色',
+  'tabMenu.color.blue': '蓝色',
+  'tabMenu.color.purple': '紫色',
+  'tabMenu.color.gray': '灰色',
 
   // ---------- 编码菜单 ----------
   'encoding.switch': '切换编码',

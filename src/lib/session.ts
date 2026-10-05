@@ -41,11 +41,12 @@ export async function collectSession(): Promise<WindowSession> {
     tabs: tabs.tabs
       .filter((tab) => tab.untitled == null)
       .map((tab) => ({
-      path: tab.path,
-      encoding: tab.encodingOverride ?? null,
-      scrollRow: scrollMemory.get(tab.tabId) ?? 0,
-      editMode: tab.editing,
-    })),
+        path: tab.path,
+        encoding: tab.encodingOverride ?? null,
+        scrollRow: scrollMemory.get(tab.tabId) ?? 0,
+        editMode: tab.editing,
+        color: tab.color ?? null,
+      })),
   };
 }
 

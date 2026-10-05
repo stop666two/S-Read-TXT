@@ -375,6 +375,13 @@ let outlineOpen = $state(false);
               // 编辑态恢复失败（文件已变化等）：保持只读，不阻塞其余标签
             }
           }
+          if (item.color) {
+            try {
+              await ipc.setTabColor(info.tabId, item.color);
+            } catch {
+              // 颜色恢复失败（调色板变化等）：忽略，不影响其余标签
+            }
+          }
           seeds.push({ tabId: info.tabId, row: item.scrollRow });
         } catch (error) {
           const payload = toIpcError(error);
@@ -393,6 +400,18 @@ let outlineOpen = $state(false);
       if (target) tabs.select(target.tabId);
     } finally {
       sessionReady = true;
+    }
+  }
+
+  /** 设置标签颜色（右键菜单；后端返回更新后的标签信息并同步会话）。 */
+  async function setTabColor(tabId: number, color: string | null): Promise<void> {
+    try {
+      tabs.update(await ipc.setTabColor(tabId, color));
+      void saveSessionNow();
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[app] 设置标签颜色失败', payload);
+      toasts.error(describeIpcError(payload));
     }
   }
 
@@ -1715,6 +1734,7 @@ onMount(() => {
   onCloseOthers={(tabId) => void closeOtherTabs(tabId)}
   onCloseAll={() => void closeAllTabs()}
   onReorder={reorderTab}
+  onSetColor={(tabId, color) => void setTabColor(tabId, color)}
   onNewTab={() => void newFileFlow()}
   onNewWindow={() => void newWindowFlow()}
 />

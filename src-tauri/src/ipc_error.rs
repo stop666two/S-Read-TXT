@@ -22,6 +22,8 @@ pub const CODE_FILE_TOO_LARGE: &str = "FILE_TOO_LARGE";
 pub const CODE_MAX_TABS: &str = "MAX_TABS";
 /// 标签不存在
 pub const CODE_TAB_NOT_FOUND: &str = "TAB_NOT_FOUND";
+/// 标签颜色不在调色板内
+pub const CODE_INVALID_COLOR: &str = "INVALID_COLOR";
 /// 未知编码名
 pub const CODE_INVALID_ENCODING: &str = "INVALID_ENCODING";
 /// 底层 IO 失败
@@ -269,6 +271,10 @@ impl From<AppStateError> for IpcError {
             AppStateError::DirtyEdit(tab_id) => Self::new(
                 CODE_EDIT_DIRTY,
                 format!("标签 {tab_id} 有未保存的修改，请先保存或放弃修改"),
+            ),
+            AppStateError::InvalidColor(value) => Self::new(
+                CODE_INVALID_COLOR,
+                format!("标签颜色「{value}」不在允许的调色板内"),
             ),
             AppStateError::EditTooLarge {
                 size_bytes,

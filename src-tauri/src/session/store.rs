@@ -155,6 +155,7 @@ mod tests {
             encoding: None,
             scroll_row: 0,
             edit_mode: false,
+            color: None,
         }
     }
 
@@ -181,12 +182,14 @@ mod tests {
                             encoding: Some("GB18030".to_string()),
                             scroll_row: 1234,
                             edit_mode: false,
+                            color: None,
                         },
                         SessionTab {
                             path: "D:/novels/b.txt".to_string(),
                             encoding: None,
                             scroll_row: 0,
                             edit_mode: true,
+                            color: Some("green".to_string()),
                         },
                     ],
                 },

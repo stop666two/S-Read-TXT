@@ -23,15 +23,20 @@
     onCloseAll: () => void;
     /** 拖拽排序（toIndex = 移除后插入下标语义） */
     onReorder: (tabId: number, toIndex: number) => void;
+    /** 设置标签颜色（右键菜单；null = 清除） */
+    onSetColor?: (tabId: number, color: string | null) => void;
     /** 新建标签（标签栏右侧按钮） */
     onNewTab?: () => void;
     /** 新建窗口（标签栏右侧按钮） */
     onNewWindow?: () => void;
   }
-  let { tabs, activeId, onSelect, onClose, onCloseOthers, onCloseAll, onReorder, onNewTab, onNewWindow }: Props = $props();
+  let { tabs, activeId, onSelect, onClose, onCloseOthers, onCloseAll, onReorder, onSetColor, onNewTab, onNewWindow }: Props = $props();
 
   /** 右键菜单状态（null = 关闭；坐标为视口像素） */
   let menu = $state<{ x: number; y: number; tabId: number } | null>(null);
+
+  /** 右键菜单对应标签的颜色（菜单打开时随标签数据更新） */
+  let menuColor = $derived(menu ? (tabs.find((tab) => tab.tabId === menu?.tabId)?.color ?? null) : null);
 
   /** 拖拽状态（pending：按下未越阈值；active：拖拽中） */
   let drag = $state<{ tabId: number; startX: number; active: boolean } | null>(null);
@@ -133,6 +138,7 @@
       class:active={tab.tabId === activeId}
       class:dragging={drag?.active === true && drag.tabId === tab.tabId}
       data-tab-id={tab.tabId}
+      data-color={tab.color ?? undefined}
       role="tab"
       aria-selected={tab.tabId === activeId}
       tabindex={0}
@@ -160,6 +166,9 @@
         }
       }}
     >
+      {#if tab.color}
+        <span class="color-bar" aria-hidden="true"></span>
+      {/if}
       <span class="name">{tab.untitled != null ? t('untitled.name', { n: tab.untitled }) : tab.name}</span>
       <button
         class="close"
@@ -206,9 +215,11 @@
   <TabContextMenu
     x={menu.x}
     y={menu.y}
+    color={menuColor}
     onClose={() => onClose(menu?.tabId ?? 0)}
     onCloseOthers={() => onCloseOthers(menu?.tabId ?? 0)}
     onCloseAll={onCloseAll}
+    onSetColor={(color) => onSetColor?.(menu?.tabId ?? 0, color)}
     onDismiss={() => (menu = null)}
   />
 {/if}
@@ -269,6 +280,43 @@
 
   .tab.dragging {
     opacity: 0.55;
+  }
+
+  /* 标签颜色竖条（左侧；色值由 --tab-color 按 data-color 映射） */
+  .tab[data-color='red'] {
+    --tab-color: var(--tab-color-red);
+  }
+  .tab[data-color='orange'] {
+    --tab-color: var(--tab-color-orange);
+  }
+  .tab[data-color='yellow'] {
+    --tab-color: var(--tab-color-yellow);
+  }
+  .tab[data-color='green'] {
+    --tab-color: var(--tab-color-green);
+  }
+  .tab[data-color='cyan'] {
+    --tab-color: var(--tab-color-cyan);
+  }
+  .tab[data-color='blue'] {
+    --tab-color: var(--tab-color-blue);
+  }
+  .tab[data-color='purple'] {
+    --tab-color: var(--tab-color-purple);
+  }
+  .tab[data-color='gray'] {
+    --tab-color: var(--tab-color-gray);
+  }
+
+  .color-bar {
+    position: absolute;
+    left: 0;
+    top: 2px;
+    bottom: 2px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--tab-color);
+    pointer-events: none;
   }
 
   .name {

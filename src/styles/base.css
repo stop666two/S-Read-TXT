@@ -25,6 +25,16 @@
   --accent: #3b6ea5; /* 强调色（信息/交互；蓝系） */
   --tab-active: #faf9f7; /* 活动标签底色（与阅读区一致，形成连通感） */
 
+  /* —— 标签颜色调色板（固定 8 色；与 Rust app_state::TAB_COLORS 同步；深浅两套保证可辨） —— */
+  --tab-color-red: #c94f4f; /* 红 */
+  --tab-color-orange: #d97a1f; /* 橙 */
+  --tab-color-yellow: #bfa012; /* 黄 */
+  --tab-color-green: #3f8f4f; /* 绿 */
+  --tab-color-cyan: #2f8f9f; /* 青 */
+  --tab-color-blue: #4a7dbd; /* 蓝 */
+  --tab-color-purple: #7a5bbd; /* 紫 */
+  --tab-color-gray: #8a8a8a; /* 灰 */
+
   /* —— 界面尺寸 —— */
   --h-titlebar: 38px; /* 自定义标题栏高度 */
   --h-menu: 30px; /* 菜单栏高度 */
@@ -45,6 +55,16 @@
 /* 明暗基底（主题加载器写入；驱动 color-scheme 与原生控件明暗） */
 :root[data-theme-base='dark'] {
   color-scheme: dark;
+
+  /* 标签颜色调色板：暗色底上提亮，保持色相可辨 */
+  --tab-color-red: #e57373;
+  --tab-color-orange: #e8a15c;
+  --tab-color-yellow: #d8c35a;
+  --tab-color-green: #6fbf7f;
+  --tab-color-cyan: #5fb8c9;
+  --tab-color-blue: #7ea6e0;
+  --tab-color-purple: #a98fd9;
+  --tab-color-gray: #9a9a9a;
 }
 
 /* 主题切换过渡：加载器临时挂 .theme-anim（按设置时长过渡颜色；尊重“减少动态效果”） */

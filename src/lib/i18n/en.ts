@@ -346,6 +346,16 @@ export const en: Record<MessageKey, string> = {
   'tabMenu.close': 'Close',
   'tabMenu.closeOthers': 'Close others',
   'tabMenu.closeAll': 'Close all',
+  'tabMenu.color': 'Color',
+  'tabMenu.colorClear': 'Clear color',
+  'tabMenu.color.red': 'Red',
+  'tabMenu.color.orange': 'Orange',
+  'tabMenu.color.yellow': 'Yellow',
+  'tabMenu.color.green': 'Green',
+  'tabMenu.color.cyan': 'Cyan',
+  'tabMenu.color.blue': 'Blue',
+  'tabMenu.color.purple': 'Purple',
+  'tabMenu.color.gray': 'Gray',
 
   // ---------- Encoding menu ----------
   'encoding.switch': 'Switch encoding',

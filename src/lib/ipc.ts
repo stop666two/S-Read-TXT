@@ -51,6 +51,8 @@ export interface TabInfo {
   editing: boolean;
   /** 是否有未保存修改 */
   dirty: boolean;
+  /** 标签颜色（调色板 id，如 `red`；null = 未设置） */
+  color: string | null;
   /** 是否只读（文件超过只读阈值：可浏览、不可进入编辑） */
   readOnly: boolean;
   rowsTotal: number;
@@ -783,6 +785,8 @@ export interface SessionTab {
   encoding: string | null;
   scrollRow: number;
   editMode: boolean;
+  /** 标签颜色（调色板 id；null = 未设置） */
+  color: string | null;
 }
 
 /** 单个窗口的会话切片（与 Rust `WindowSession` 对应；label 由后端按调用窗口覆写）。 */
@@ -961,6 +965,8 @@ export const ipc = {
     invoke<EolConvertOutcome>('convert_eol', { tabId, target }),
   /** 同步活动标签到后端（点击/快捷键选择后调用）。 */
   setActiveTab: (tabId: number) => invoke<void>('set_active_tab', { tabId }),
+  setTabColor: (tabId: number, color: string | null) =>
+    invoke<TabInfo>('set_tab_color', { tabId, color }),
   /** 调整标签展示顺序（拖拽排序；下标记「移除后再插入」语义）。 */
   reorderTab: (tabId: number, toIndex: number) => invoke<void>('reorder_tab', { tabId, toIndex }),
   /** 打开设置窗口（已存在则聚焦；按需创建；tab 指定初始页签）。 */

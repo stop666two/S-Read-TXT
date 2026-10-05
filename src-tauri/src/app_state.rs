@@ -159,6 +159,9 @@ pub enum AppStateError {
     /// 文件超过只读阈值，不允许进入编辑模式
     #[error("文件大小 {size_bytes} 字节超过只读阈值 {limit_mb} MB")]
     EditTooLarge { size_bytes: u64, limit_mb: u32 },
+    /// 标签颜色不在允许的调色板内
+    #[error("无效的标签颜色：{0}")]
+    InvalidColor(String),
 }
 
 /// 标签的对外描述（IPC 载荷；不暴露 mmap 等内部状态）。
@@ -183,6 +186,8 @@ pub struct TabInfo {
     pub editing: bool,
     /// 是否有未保存修改（编辑文档存在且脏）
     pub dirty: bool,
+    /// 标签颜色（调色板 id，如 `red`；`None` = 未设置）
+    pub color: Option<String>,
     /// 是否只读（文件超过只读阈值：可浏览、不可进入编辑）
     pub read_only: bool,
     /// 总显示行数
@@ -212,6 +217,11 @@ pub struct RowsPayload {
 /// 主窗口 label（与 `tauri.conf.json` 主窗口 label 保持一致；多窗口下其余为 `main-2`、`main-3`…）。
 pub const MAIN_WINDOW: &str = "main";
 
+/// 标签颜色调色板（固定 8 色；前端以主题感知的 CSS 变量渲染为标签左侧竖条）。
+pub const TAB_COLORS: [&str; 8] = [
+    "red", "orange", "yellow", "green", "cyan", "blue", "purple", "gray",
+];
+
 /// 单个标签的运行时状态（内部）。
 struct Tab {
     id: u64,
@@ -229,6 +239,8 @@ struct Tab {
     read_only: bool,
     /// 打开/上次保存时的磁盘快照（外部修改冲突检测基准）
     edit_baseline: Option<DiskSnapshot>,
+    /// 标签颜色（调色板 id；`None` = 未设置）
+    color: Option<String>,
 }
 
 /// 应用运行状态。
@@ -303,6 +315,7 @@ impl AppState {
             editing: false,
             read_only,
             edit_baseline: None,
+            color: None,
         };
         let info = tab_info(&tab);
         self.tabs.insert(id, tab);
@@ -1460,6 +1473,27 @@ impl AppState {
         Ok(())
     }
 
+    /// 设置标签颜色（`None` 清除；仅接受调色板 id）。
+    ///
+    /// 错误：标签不存在（`TabNotFound`）、颜色不在 `TAB_COLORS`（`InvalidColor`）。
+    pub fn set_tab_color(
+        &mut self,
+        tab_id: u64,
+        color: Option<&str>,
+    ) -> Result<TabInfo, AppStateError> {
+        if let Some(value) = color {
+            if !TAB_COLORS.contains(&value) {
+                return Err(AppStateError::InvalidColor(value.to_string()));
+            }
+        }
+        let tab = self
+            .tabs
+            .get_mut(&tab_id)
+            .ok_or(AppStateError::TabNotFound(tab_id))?;
+        tab.color = color.map(str::to_string);
+        Ok(tab_info(tab))
+    }
+
     /// 单个标签信息（不存在返回 None）。
     pub fn tab_info(&self, tab_id: u64) -> Option<TabInfo> {
         self.tabs.get(&tab_id).map(tab_info)
@@ -1527,6 +1561,7 @@ fn tab_info(tab: &Tab) -> TabInfo {
             .map(|encoding| encoding.label().to_string()),
         editing: tab.editing,
         dirty: tab.edit.as_ref().is_some_and(|doc| doc.is_dirty()),
+        color: tab.color.clone(),
         read_only: tab.read_only,
         rows_total: source.rows_total(),
         eol: source.eol().as_str().to_string(),
@@ -1901,6 +1936,46 @@ mod tests {
         state.set_active_tab(info_a.tab_id).expect("同步失败");
         assert_eq!(state.active_tab(MAIN_WINDOW), Some(info_a.tab_id));
         assert!(state.set_active_tab(9999).is_err(), "不存在的标签应报错");
+    }
+
+    /// 标签颜色：设置/清除/非法值拒绝。
+    #[test]
+    fn set_tab_color_roundtrip() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "a.txt", "a\n");
+        let mut state = AppState::new();
+        let settings = AppSettings::default();
+        let (info, _) = state
+            .open_file(MAIN_WINDOW, &path, &settings)
+            .expect("打开失败");
+        assert_eq!(info.color, None, "新标签默认无颜色");
+
+        let colored = state
+            .set_tab_color(info.tab_id, Some("red"))
+            .expect("设置颜色失败");
+        assert_eq!(colored.color.as_deref(), Some("red"));
+        assert_eq!(
+            state
+                .tab_info(info.tab_id)
+                .expect("标签存在")
+                .color
+                .as_deref(),
+            Some("red")
+        );
+
+        let cleared = state
+            .set_tab_color(info.tab_id, None)
+            .expect("清除颜色失败");
+        assert_eq!(cleared.color, None);
+
+        assert!(
+            state.set_tab_color(info.tab_id, Some("neon")).is_err(),
+            "非法颜色应被拒绝"
+        );
+        assert!(
+            state.set_tab_color(9999, Some("red")).is_err(),
+            "不存在的标签应报错"
+        );
     }
 
     /// 关闭非活动标签不改变当前活动标签。
