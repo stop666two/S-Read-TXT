@@ -57,6 +57,10 @@
     onSplitRight: () => void;
     onSplitDown: () => void;
     onClosePane: () => void;
+    /** 本地拖拽：坐标上抛父级解析栏位落点 */
+    onLocalDragMove: (clientX: number, clientY: number) => void;
+    onLocalDrop: (tabId: number, clientX: number, clientY: number) => void;
+    onLocalDragCancel: () => void;
     onPercent: (percent: number) => void;
     onEditApplied: (tabId: number, result: EditApplied) => void;
     onUserScroll: () => void;
@@ -95,6 +99,9 @@
     onSplitRight,
     onSplitDown,
     onClosePane,
+    onLocalDragMove,
+    onLocalDrop,
+    onLocalDragCancel,
     onPercent,
     onEditApplied,
     onUserScroll,
@@ -129,6 +136,9 @@
     {onSplitRight}
     {onSplitDown}
     {onClosePane}
+    {onLocalDragMove}
+    {onLocalDrop}
+    {onLocalDragCancel}
   />
   <div class="pane-body">
     {#if activeTab}

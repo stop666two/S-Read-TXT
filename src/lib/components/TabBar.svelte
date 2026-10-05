@@ -49,6 +49,12 @@
     onSplitDown?: () => void;
     /** 关闭本栏（标签并入相邻栏） */
     onClosePane?: () => void;
+    /** 本地拖拽移动（拖拽中每次指针移动；坐标用于父级栏位落点解析） */
+    onLocalDragMove?: (clientX: number, clientY: number) => void;
+    /** 本地拖拽释放（父级解析目标栏位并执行移动/重排） */
+    onLocalDrop?: (tabId: number, clientX: number, clientY: number) => void;
+    /** 本地拖拽取消（拖出窗口转原生 / 拖拽结束未释放） */
+    onLocalDragCancel?: () => void;
   }
   let {
     tabs,
@@ -69,6 +75,9 @@
     onSplitRight,
     onSplitDown,
     onClosePane,
+    onLocalDragMove,
+    onLocalDrop,
+    onLocalDragCancel,
   }: Props = $props();
 
   /** 右键菜单状态（null = 关闭；坐标为视口像素） */
@@ -126,6 +135,12 @@
     );
   }
 
+  /** 坐标是否位于指定元素矩形内（跨渲染点判断用）。 */
+  function isInsideRect(el: HTMLElement, clientX: number, clientY: number): boolean {
+    const rect = el.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }
+
   /** 指针事件 → 屏幕物理坐标（拖拽会话使用） */
   function screenPoint(event: PointerEvent): { x: number; y: number } {
     const origin = dragOrigin ?? { x: 0, y: 0, scale: window.devicePixelRatio || 1 };
@@ -177,9 +192,16 @@
     }
     if (isOutside(event) && dragOrigin) {
       startNativeDrag(event);
+      onLocalDragCancel?.();
+      dropLineLeft = null;
       return;
     }
-    dropLineLeft = computeDrop(event.clientX, current.tabId).lineLeft;
+    // 指示线仅在本栏标签条内显示；跨栏落点由父级按指针坐标解析并预览
+    dropLineLeft =
+      bar && isInsideRect(bar, event.clientX, event.clientY)
+        ? computeDrop(event.clientX, current.tabId).lineLeft
+        : null;
+    onLocalDragMove?.(event.clientX, event.clientY);
   }
 
   /** 窗口指针抬起：完成排序或结束拖拽。 */
@@ -198,9 +220,15 @@
     }
     if (current.active) {
       suppressClick = true;
-      const { index } = computeDrop(event.clientX, current.tabId);
-      const from = tabs.findIndex((tab) => tab.tabId === current.tabId);
-      if (from >= 0 && index !== from) onReorder(current.tabId, index);
+      if (onLocalDrop) {
+        onLocalDrop(current.tabId, event.clientX, event.clientY);
+      } else {
+        const { index } = computeDrop(event.clientX, current.tabId);
+        const from = tabs.findIndex((tab) => tab.tabId === current.tabId);
+        if (from >= 0 && index !== from) onReorder(current.tabId, index);
+      }
+    } else {
+      onLocalDragCancel?.();
     }
     dropLineLeft = null;
     dragOrigin = null;
@@ -244,13 +272,16 @@
   $effect(() => {
     let stopHover: (() => void) | undefined;
     let stopEnd: (() => void) | undefined;
-    void listen<{ active: boolean; clientX: number }>('srt://tab-drag-hover', (event) => {
+    void listen<{ active: boolean; clientX: number; clientY: number }>('srt://tab-drag-hover', (event) => {
       if (!event.payload.active) {
         dropLineLeft = null;
         return;
       }
       if (!bar) return;
-      dropLineLeft = computeDropHit(bar, event.payload.clientX, drag?.tabId).lineLeft;
+      // 仅当悬停点位于本栏标签条内才显示插入线（多栏时其余落点由父级预览）
+      dropLineLeft = isInsideRect(bar, event.payload.clientX, event.payload.clientY)
+        ? computeDropHit(bar, event.payload.clientX, drag?.tabId).lineLeft
+        : null;
     }).then((stop) => {
       stopHover = stop;
     });

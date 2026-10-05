@@ -193,6 +193,12 @@ let outlineOpen = $state(false);
   const paneKeys = $derived(collectLeaves(layout));
   /** 栏位数量（多栏渲染与上限判断） */
   const paneCount = $derived(paneKeys.length);
+  /** 拖拽悬停的栏位与落点区（预览；null = 无） */
+  let hoverPane = $state<{ pane: string; zone: string } | null>(null);
+  /** 边缘分屏命中区：占栏位边长的比例与像素上下限。 */
+  const PANE_EDGE_RATIO = 0.25;
+  const PANE_EDGE_MIN = 40;
+  const PANE_EDGE_MAX = 160;
 
   /** 生效快捷键绑定（后端为唯一真源；启动加载，设置变更后刷新） */
   let shortcuts = $state<ShortcutMap>({});
@@ -972,16 +978,94 @@ let outlineOpen = $state(false);
     void saveSessionNow();
   }
 
-  /** 拆分栏位：目标叶子替换为 [原栏, 新栏] 分支（上限 4 栏）。 */
-  function splitPane(target: string, dir: PaneSplitDir): void {
+  /** 拆分栏位：目标叶子替换为 [原栏, 新栏] 分支（上限 4 栏；side=before 时新栏在前）。返回新栏键。 */
+  function splitPane(
+    target: string,
+    dir: PaneSplitDir,
+    side: 'after' | 'before' = 'after',
+  ): string | null {
     if (paneCount >= MAX_PANES) {
       toasts.show(t('pane.limit'), 'warn');
-      return;
+      return null;
     }
     const pane = `${windowLabel}#${paneSeq}`;
     paneSeq += 1;
-    layout = replaceLeaf(layout, target, (old) => makeSplit(dir, leaf(old), leaf(pane)));
+    layout = replaceLeaf(layout, target, (old) =>
+      side === 'before' ? makeSplit(dir, leaf(pane), leaf(old)) : makeSplit(dir, leaf(old), leaf(pane)),
+    );
     tabs.setActivePane(pane);
+    void saveSessionNow();
+    return pane;
+  }
+
+  /** 拖拽落点解析：指针坐标 → 目标栏位与区（标签条/内容边缘/内容中心）。 */
+  function resolvePaneDrop(clientX: number, clientY: number): { pane: string; zone: string } | null {
+    const cells = document.querySelectorAll<HTMLElement>('[data-pane]');
+    for (const cell of cells) {
+      const rect = cell.getBoundingClientRect();
+      if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom)
+        continue;
+      const pane = cell.dataset.pane ?? '';
+      const bar = cell.querySelector<HTMLElement>('.tab-bar');
+      if (bar) {
+        const barRect = bar.getBoundingClientRect();
+        if (clientY >= barRect.top && clientY <= barRect.bottom) return { pane, zone: 'tabBar' };
+      }
+      const edgeX = Math.min(clientX - rect.left, rect.right - clientX);
+      const edgeY = Math.min(clientY - rect.top, rect.bottom - clientY);
+      const limitX = Math.min(Math.max(rect.width * PANE_EDGE_RATIO, PANE_EDGE_MIN), PANE_EDGE_MAX);
+      const limitY = Math.min(Math.max(rect.height * PANE_EDGE_RATIO, PANE_EDGE_MIN), PANE_EDGE_MAX);
+      if (edgeY < limitY && edgeY <= edgeX) {
+        return { pane, zone: clientY < rect.top + rect.height / 2 ? 'edge-top' : 'edge-bottom' };
+      }
+      if (edgeX < limitX) {
+        return { pane, zone: clientX < rect.left + rect.width / 2 ? 'edge-left' : 'edge-right' };
+      }
+      return { pane, zone: 'center' };
+    }
+    return null;
+  }
+
+  /** 拖拽移动预览（本地拖拽与跨窗悬停共用）。 */
+  function paneDragMove(clientX: number, clientY: number): void {
+    hoverPane = resolvePaneDrop(clientX, clientY);
+  }
+
+  /** 拖拽释放：按落点执行栏内重排 / 跨栏移动 / 边缘分屏。
+   *  跨窗拖入时本窗即目标窗，由事件驱动调用（源窗标签经广播刷新）。 */
+  async function paneDragDrop(tabId: number, clientX: number, clientY: number): Promise<void> {
+    const sourcePane = tabs.paneOf(tabId);
+    let target = resolvePaneDrop(clientX, clientY);
+    if (!target) {
+      // 落点在窗体装饰区（标题栏/菜单/工具栏）：本窗拖拽保持原位；外来标签落到首栏
+      if (sourcePane !== null) return;
+      target = { pane: `${windowLabel}#1`, zone: 'center' };
+    }
+    hoverPane = null;
+    const edgeDir: PaneSplitDir | null =
+      target.zone === 'edge-left' || target.zone === 'edge-right'
+        ? 'row'
+        : target.zone === 'edge-top' || target.zone === 'edge-bottom'
+          ? 'column'
+          : null;
+    try {
+      if (edgeDir) {
+        const side = target.zone === 'edge-left' || target.zone === 'edge-top' ? 'before' : 'after';
+        const newPane = splitPane(target.pane, edgeDir, side);
+        if (newPane) await ipc.moveTabToPane(tabId, newPane);
+      } else if (target.zone === 'tabBar') {
+        const bar = document.querySelector<HTMLElement>(`[data-pane="${target.pane}"] .tab-bar`);
+        const index = bar ? computeDropHit(bar, clientX, tabId).index : 0;
+        if (sourcePane === target.pane) tabs.reorder(tabId, index);
+        else await ipc.moveTabToPane(tabId, target.pane, index);
+      } else if (sourcePane !== target.pane) {
+        await ipc.moveTabToPane(tabId, target.pane);
+      }
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+    await tabs.refresh(target.pane);
+    if (sourcePane && sourcePane !== target.pane) await tabs.refresh(sourcePane);
     void saveSessionNow();
   }
 
@@ -1616,18 +1700,39 @@ onMount(() => {
       unlistenTabsChanged = stop;
     });
 
-    // 拖放落点：先刷新视图，再按内容坐标精确插入（拖拽源/落点窗都会收到）
+    // 拖放落点：先刷新视图，再按落点坐标解析目标栏位（栏内重排/跨栏移动/边缘分屏）
     let unlistenDropped: (() => void) | undefined;
-    void listen<{ tabId: number; clientX: number }>('srt://tab-drag-dropped', (event) => {
-      void (async () => {
-        await refreshTabsView();
-        const bar = document.querySelector<HTMLElement>('.tab-bar');
-        if (!bar) return;
-        const { index } = computeDropHit(bar, event.payload.clientX, event.payload.tabId);
-        tabs.reorder(event.payload.tabId, index);
-      })();
-    }).then((stop) => {
+    void listen<{ tabId: number; clientX: number; clientY: number }>(
+      'srt://tab-drag-dropped',
+      (event) => {
+        void (async () => {
+          await refreshTabsView();
+          await paneDragDrop(event.payload.tabId, event.payload.clientX, event.payload.clientY);
+        })();
+      },
+    ).then((stop) => {
       unlistenDropped = stop;
+    });
+
+    // 跨窗悬停：按指针坐标预览目标栏位与边缘/插入落点
+    let unlistenHover: (() => void) | undefined;
+    void listen<{ active: boolean; clientX: number; clientY: number }>(
+      'srt://tab-drag-hover',
+      (event) => {
+        hoverPane = event.payload.active
+          ? resolvePaneDrop(event.payload.clientX, event.payload.clientY)
+          : null;
+      },
+    ).then((stop) => {
+      unlistenHover = stop;
+    });
+
+    // 拖拽结束（原生路径）：清理栏位预览
+    let unlistenDragEnd: (() => void) | undefined;
+    void listen('srt://tab-drag-end', () => {
+      hoverPane = null;
+    }).then((stop) => {
+      unlistenDragEnd = stop;
     });
 
     // 文件拖拽（Tauri 原生事件：over → 遮罩；drop → 逐个打开）
@@ -1726,6 +1831,8 @@ onMount(() => {
       unlistenQuitCancelled?.();
       unlistenTabsChanged?.();
       unlistenDropped?.();
+      unlistenHover?.();
+      unlistenDragEnd?.();
       unlistenSettings?.();
       unlistenFocus?.();
       unlistenMoved?.();
@@ -1920,6 +2027,9 @@ onMount(() => {
     onSplitRight={() => splitPane(pane, 'row')}
     onSplitDown={() => splitPane(pane, 'column')}
     onClosePane={() => void closePane(pane)}
+    onLocalDragMove={(clientX, clientY) => paneDragMove(clientX, clientY)}
+    onLocalDrop={(tabId, clientX, clientY) => void paneDragDrop(tabId, clientX, clientY)}
+    onLocalDragCancel={() => (hoverPane = null)}
     onPercent={(percent) => {
       if (pane === tabs.activePane) readPercent = percent;
     }}
@@ -1956,7 +2066,7 @@ onMount(() => {
       activePane={tabs.activePane}
       onSizes={updateSplitSizes}
       onActivate={activatePane}
-      hover={null}
+      hover={hoverPane}
       view={paneView}
     />
   </div>

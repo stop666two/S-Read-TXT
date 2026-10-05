@@ -260,7 +260,17 @@ try {
   await evalIn(byLabel.main, `(void window.__srt.openPath(${JSON.stringify(files.c)}), true)`);
   await waitForValue(async () => ((await tabNames(byLabel.main)).includes('c.txt') ? true : null), 8000);
   const cPoint = await tabPoint(byLabel.main, 'c.txt');
-  const outside = { x: 1230, y: 150 };
+  // 分屏语义下目标窗的「落点」应为栏位标签条区域（拖入指示与插入位置都按栏位解析）
+  const mainGeo = await evalIn(byLabel.main, `({ sx: window.screenX, sy: window.screenY })`);
+  const win2Geo = await evalIn(byLabel['main-2'], `({ sx: window.screenX, sy: window.screenY })`);
+  const win2Bar = await evalIn(
+    byLabel['main-2'],
+    `(() => { const b = document.querySelector('.tab-bar'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
+  );
+  const outside = {
+    x: win2Geo.sx + win2Bar.x - mainGeo.sx,
+    y: win2Geo.sy + win2Bar.y - mainGeo.sy,
+  };
   await mouse(byLabel.main, 'mousePressed', cPoint.x, cPoint.y, 1);
   await dragSteps(byLabel.main, cPoint, outside);
   await mouse(byLabel.main, 'mouseMoved', outside.x, outside.y, 1);

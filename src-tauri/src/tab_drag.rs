@@ -128,7 +128,14 @@ pub async fn begin_tab_drag(
         let guard = commands::lock_state(&tabs)?;
         guard
             .tab_info(tab_id)
-            .map(|info| info.owner)
+            .map(|info| {
+                // 会话记录所属“窗口”label（栏位键去掉 `#序号` 后缀），用于落回源窗判断
+                info.owner
+                    .split('#')
+                    .next()
+                    .unwrap_or(info.owner.as_str())
+                    .to_string()
+            })
             .ok_or_else(|| IpcError::new(CODE_TAB_NOT_FOUND, "标签不存在"))?
     };
     let ghost = match app.get_webview_window(GHOST_LABEL) {
@@ -265,13 +272,8 @@ pub async fn drag_end(
                 );
             }
             Some((target, client_x, client_y)) => {
-                {
-                    let mut guard = commands::lock_state(&tabs)?;
-                    guard
-                        .move_tab(session.tab_id, &default_pane(&target), usize::MAX)
-                        .map_err(IpcError::from)?;
-                }
-                let _ = app.emit(EVENT_TABS_CHANGED, ());
+                // 落在其他主窗：由目标窗口前端解析栏位/边缘并完成迁移
+                // （目标窗收到事件后调用 move_tab_to_pane；失败时标签留在源窗，不丢数据）
                 let _ = app.emit_to(
                     &target,
                     EVENT_DRAG_DROPPED,
