@@ -154,8 +154,10 @@ async function main() {
       await mouse('mouseReleased', aPoint2.x, aPoint2.y, 'right', 0);
     }
     const menuShown = await waitForValue(async () => {
-      const countText = await evalJs(`document.querySelectorAll('.tab-menu button[role="menuitem"]').length`);
-      return countText === 3 ? true : null;
+      const labels = await evalJs(
+        `[...document.querySelectorAll('.tab-menu button')].map((x) => x.textContent.trim())`,
+      );
+      return ['关闭', '关闭其他', '关闭全部'].every((label) => labels.includes(label)) ? true : null;
     }, 6000);
     check('T4a 右键菜单出现（关闭/关闭其他/关闭全部）', menuShown === true);
     await evalJs(
