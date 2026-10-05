@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * 大纲面板（P2-6c V-09）：列出当前文档章节，点击跳转。
+   * 大纲面板：列出当前文档章节，点击跳转。
    *
    * 数据来自 `ipc.outlineItems`（后端解析 `display.outlinePatterns` 正则；
    * 空列表回退内置默认）。打开期间 tab 变化或 `refreshKey` 变化时重新拉取。

@@ -1,4 +1,4 @@
-// 折叠视图映射（P2-6b V-08）：纯函数，供 ReaderView 与单测共用。
+// 折叠视图映射：纯函数，供 ReaderView 与单测共用。
 //
 // 坐标约定：全部为「显示行」（0 基，与渲染/跳转/标注一致）。
 // 折叠区间为闭区间 [startRow, endRow]；折叠后隐藏 (startRow, endRow]。
@@ -75,7 +75,7 @@ export function buildVisibleRows(total: number, intervals: readonly HiddenInterv
 }
 
 /**
- * 面包屑（P2-6c V-10）：给定大纲条目与当前顶部行，返回层级路径。
+ * 面包屑：给定大纲条目与当前顶部行，返回层级路径。
  *
  * 语义：按行序扫描，维护层级栈——遇到条目先按 `level` 弹栈再压入；
  * 返回“最后一行不超过 `row` 的条目”所在的完整祖先链（含自身）。

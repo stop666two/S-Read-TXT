@@ -457,7 +457,7 @@ export const en: Record<MessageKey, string> = {
   'shortcutIo.exported': 'Shortcuts exported ({bytes} bytes)',
   'shortcutIo.imported': 'Shortcuts imported',
 
-  // ---------- Settings window (P0-4: registry-driven) ----------
+  // ---------- Settings window (registry-driven) ----------
   'settings.title': 'Settings',
   'settings.category.general': 'General',
   'settings.category.reader': 'Reader',
@@ -581,13 +581,13 @@ export const en: Record<MessageKey, string> = {
   'setting.app.display.scrollbarMarkers': 'Scrollbar markers',
   'setting.app.display.scrollbarMarkers.desc': 'Mark search hits / bookmarks / modified rows on the scrollbar',
   'setting.app.display.folding': 'Folding',
-  'setting.app.display.folding.desc': 'Fold in both edit and reading modes: by indent / heading / editable regex (V-08)',
+  'setting.app.display.folding.desc': 'Fold in both edit and reading modes: by indent / heading / editable regex',
   'setting.enum.folding.off': 'Off',
   'setting.enum.folding.indent': 'By indent',
   'setting.enum.folding.heading': 'By heading',
   'setting.enum.folding.regex': 'By regex',
   'setting.app.display.outline': 'Outline panel',
-  'setting.app.display.outline.desc': 'Built-in chapter regex (editable) with click-to-jump (V-09)',
+  'setting.app.display.outline.desc': 'Built-in chapter regex (editable) with click-to-jump',
   'setting.app.display.breadcrumb': 'Breadcrumb',
   'setting.app.display.breadcrumb.desc': 'Show the chapter path of the current row at the top of the reader (V-10)',
   'setting.app.display.outlinePatterns': 'Outline patterns',
@@ -840,7 +840,7 @@ export const en: Record<MessageKey, string> = {
   'batch.previewTitle': 'Preview (first {shown} of {total} rows)',
   'batch.previewEmpty': 'No rows to number (check the scope or "Skip empty rows")',
   'batch.applied': 'Numbered {count} rows (Ctrl+Z to undo)',
-  // ---- Line operations (P1-2) ----
+  // ---- Line operations ----
   'lineOps.title': 'Line operations',
   'lineOps.close': 'Close',
   'lineOps.preview': 'Preview',

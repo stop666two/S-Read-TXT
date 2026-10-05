@@ -1,7 +1,7 @@
 <script lang="ts">
   // 阅读视图：虚拟滚动（仅渲染可视行 + 实测高度缓存 + 滚动锚定）+ 按窗取行。
   // 进度口径：状态栏百分比 = 顶部定位行的累计高度 / 内容总高度（视觉进度）。
-  // 标签/编码切换：重建高度与缓存、按记忆行号恢复滚动位置（阶段 8 会话持久化同口径）。
+  // 标签/编码切换：重建高度与缓存、按记忆行号恢复滚动位置（与会话持久化同口径）。
   import { onDestroy, untrack } from 'svelte';
 
   import EditLayer from './EditLayer.svelte';
@@ -53,15 +53,15 @@
   multiCursor?: MultiCursorSettings | null;
   /** 查找设置（透传编辑层；未就绪为 null） */
   findSettings?: FindSettings | null;
-  /** 阅读模式设置（P2-4b：专注/打字机/进度记忆；空对象=默认行为） */
+  /** 阅读模式设置（专注/打字机/进度记忆；空对象=默认行为） */
   readingSettings?: ReadingSettings | null;
   /** 用户主动滚动回调（用于停止自动滚动） */
   onUserScroll?: () => void;
   /** 面包屑跳转（点击路径段） */
   onBreadcrumbJump?: (row: number) => void;
-  /** 快照恢复请求（P3-1；seq 去重，由父组件触发） */
+  /** 快照恢复请求（seq 去重，由父组件触发） */
   snapshotRestore?: { name: string; seq: number } | null;
-  /** 折叠指令（P2-6b：菜单折叠全部/展开全部；seq 去重） */
+  /** 折叠指令（菜单折叠全部/展开全部；seq 去重） */
   foldCommand?: { kind: 'all' | 'none'; seq: number } | null;
   /** 时间戳插入设置（透传编辑层；未就绪为 null） */
   insertSettings?: InsertSettings | null;
@@ -75,9 +75,9 @@
     pageTurn?: { seq: number; kind: 'up' | 'down' | 'top' | 'bottom' } | null;
     /** 状态栏：选区统计透传（编辑层；P2-1） */
     onSelectionStats?: (stats: TextStats | null) => void;
-    /** 状态栏：光标行列透传（编辑层；P2-1） */
+    /** 状态栏：光标行列透传（编辑层） */
     onCaretInfo?: (info: { row: number; column: number }) => void;
-    /** 显示选项（P2-2；未就绪为 null = 全部默认行为） */
+    /** 显示选项（未就绪为 null = 全部默认行为） */
     displaySettings?: DisplaySettings | null;
     /** 编辑态光标所在显示行（0 基；当前行高亮/相对行号参照；阅读态忽略） */
     editCaretRow?: number | null;
@@ -146,7 +146,7 @@
   /** 当前渲染窗口首行（阅读态当前行高亮/相对行号参照） */
   let windowStartRow = $state(0);
 
-  // ---------- 显示选项（P2-2 V 组；null 时保持既有默认行为） ----------
+  // ---------- 显示选项（null 时保持既有默认行为） ----------
   const disp = $derived(displaySettings ?? null);
   const showLn = $derived(disp?.lineNumbers ?? false);
   const relLn = $derived(disp?.relativeLineNumbers ?? false);
@@ -259,7 +259,7 @@
   let scrollEpoch = 0;
 
   // ---------------------------------------------------------------------------
-  // 过滤视图（P1-4 / D61：仅阅读模式；以稀疏虚拟列表渲染命中行）
+  // 过滤视图（仅阅读模式；以稀疏虚拟列表渲染命中行）
   // ---------------------------------------------------------------------------
   /** 过滤条是否展开 */
   let filterOpen = $state(false);
@@ -270,7 +270,7 @@
   let filterHideEmpty = $state(false);
   /** 命中显示行号；null = 过滤未启用 */
   let filterRows = $state<number[] | null>(null);
-  // ---------- 折叠（P2-6b V-08：与过滤共用视图行通道；过滤优先，分屏路径暂不启用） ----------
+  // ---------- 折叠（与过滤共用视图行通道；过滤优先，分屏路径暂不启用） ----------
   let foldRegions = $state<FoldRegion[] | null>(null);
   let foldedRows = $state<Set<number>>(new Set());
   const foldingMode = $derived(disp?.folding ?? 'off');
@@ -622,7 +622,7 @@
       scrollScheduled = false;
       refreshWindow();
       // 实时记录顶部定位行（会话/标签切换共用数据源）；
-      // 此前仅在切换标签的清理阶段记录，导致「滚动后直接退出」恢复不到位置。
+      // 此前仅在切换标签时的清理中记录，导致「滚动后直接退出」恢复不到位置。
       // 过滤视图下跳过（显示行 ≠ 文件行）。
       if (viewRows === null && (readingSettings?.progressMemory ?? true)) {
         scrollMemory.set(
@@ -760,7 +760,7 @@
   /** 已处理的工作区跳转序号（普通变量：跨渲染保留且不参与响应式依赖）。 */
   let handledJumpSeq = 0;
 
-  // 工作区搜索跳转（P1-8b）：定位到目标显示行；与标签恢复共用滚动机制。
+  // 工作区搜索跳转：定位到目标显示行；与标签恢复共用滚动机制。
   // 过滤视图下显示行映射不同，跳转前先恢复全量视图。
   $effect(() => {
     const seq = jumpStore.seq;
@@ -849,14 +849,14 @@
     };
   });
 
-  // 进入编辑模式时关闭过滤（D61：过滤视图仅阅读模式）
+  // 进入编辑模式时关闭过滤（过滤视图仅阅读模式）
   $effect(() => {
     if (!tab.editing) return;
     if (filterRows !== null) clearFilter();
     filterOpen = false;
   });
 
-  // ---------- 分屏渲染路径（P2-4d：R-02 分栏 / R-10 翻页方式） ----------
+  // ---------- 分屏渲染路径（分栏 / 翻页方式） ----------
   /** 翻页方式（scroll / paged / double） */
   function pageModeSetting(): 'scroll' | 'paged' | 'double' {
     const mode = readingSettings?.pageMode ?? 'scroll';
@@ -1025,7 +1025,7 @@
       turnSpread(signal.kind === 'down' ? 1 : -1);
     }
   });
-  // ---------- 面包屑（P2-6c V-10：顶行所在章节路径；仅阅读滚动模式） ----------
+  // ---------- 面包屑（顶行所在章节路径；仅阅读滚动模式） ----------
   let outlineData = $state<{ row: number; level: number; title: string }[]>([]);
   const bcActive = $derived.by(
     () => (disp?.breadcrumb ?? true) && !tab.editing && !spreadMode && outlineData.length > 0,
@@ -1154,7 +1154,7 @@
       </nav>
     {/if}
     {#if rulerOn}
-      <!-- 标尺（P2-2 V-05）：位置相对正文列左缘（px），仅视觉参考 -->
+      <!-- 标尺：位置相对正文列左缘（px），仅视觉参考 -->
       <div
         class="ruler"
         data-ruler
@@ -1223,7 +1223,7 @@
     overflow-anchor: none;
   }
 
-  /* 分屏路径（P2-4d：分页/双页/双栏）：列内行绝对定位，滚轮整屏切换 */
+  /* 分屏路径（分页/双页/双栏）：列内行绝对定位，滚轮整屏切换 */
   .reader.spread {
     position: relative;
     overflow: hidden;
@@ -1269,7 +1269,7 @@
     color: var(--ink);
   }
 
-  /* 自动换行关闭（P2-2 V-04）：单行不折行，容器横向滚动 */
+  /* 自动换行关闭：单行不折行，容器横向滚动 */
   .page.nowrap {
     max-width: none;
     width: max-content;
@@ -1291,12 +1291,12 @@
     padding-bottom: var(--reading-para-spacing, 0);
   }
 
-  /* 当前行高亮（P2-2 V-03） */
+  /* 当前行高亮 */
   .row.current {
     background: var(--hover);
   }
 
-  /* 行号（P2-2 V-01/V-02）：不可选中、不参与复制（导出/复制仍走引擎文本） */
+  /* 行号：不可选中、不参与复制（导出/复制仍走引擎文本） */
   .ln {
     display: inline-block;
     text-align: right;
@@ -1366,7 +1366,7 @@
     display: inline;
   }
 
-  /* 行尾空白标记（P2-2 V-07）与换行标记 */
+  /* 行尾空白标记与换行标记 */
   .ts {
     color: var(--accent);
   }
@@ -1375,7 +1375,7 @@
     opacity: 0.7;
   }
 
-  /* 缩进参考线（P2-2 V-06） */
+  /* 缩进参考线 */
   .guide {
     position: absolute;
     top: 0;
@@ -1385,7 +1385,7 @@
     pointer-events: none;
   }
 
-  /* 标尺（P2-2 V-05） */
+  /* 标尺 */
   .ruler {
     position: absolute;
     top: 0;
@@ -1407,7 +1407,7 @@
     color: var(--muted);
   }
 
-  /* 过滤视图（P1-4）：阅读区顶部粘性条（不透明底，避免滚动内容透出） */
+  /* 过滤视图：阅读区顶部粘性条（不透明底，避免滚动内容透出） */
   .filter-host {
     position: sticky;
     top: 0;
@@ -1508,7 +1508,7 @@
     color: var(--danger, #c0392b);
   }
 
-  /* 标注渲染（P2-3）：书签丝带 / 高亮 / 注释点；绝对定位、不参与布局与文本 */
+  /* 标注渲染：书签丝带 / 高亮 / 注释点；绝对定位、不参与布局与文本 */
   .bmark {
     position: absolute;
     left: -8px;

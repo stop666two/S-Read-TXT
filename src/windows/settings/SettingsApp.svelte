@@ -1,5 +1,5 @@
 <!--
-  SettingsApp — 设置窗口外壳（P0-4：注册表驱动 + 全局搜索 + 左导航）。
+  SettingsApp — 设置窗口外壳（注册表驱动 + 全局搜索 + 左导航）。
   契约（自动化与外部依赖）：导航容器保留 .tabs、项为 .tab[role="tab"]；
   内容沿用 settings.css 的 .rows / .row / .label / .control 类；
   控件 data-setting = 设置项完整 id（如 reader.typography.fontSize）。
@@ -67,7 +67,7 @@ import DiskSection from './DiskSection.svelte';
     setLocale(settings.snapshot?.app.locale ?? 'zh-CN');
   });
 
-  /** 设置窗口自身主题（P0-5）：按当前主题解析令牌并写入 CSS 变量（失败保持默认浅色） */
+  /** 设置窗口自身主题：按当前主题解析令牌并写入 CSS 变量（失败保持默认浅色） */
   async function applySettingsWindowTheme(): Promise<void> {
     try {
       const resolved = await ipc.getTheme(settings.snapshot?.reader.theme ?? null);

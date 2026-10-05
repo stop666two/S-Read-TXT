@@ -1,5 +1,5 @@
 <!--
-  ThemeRow — 主题行（P0-5）：注册表 `reader.theme` 的专属控件。
+  ThemeRow — 主题行：注册表 `reader.theme` 的专属控件。
   组成：主题下拉（跟随系统 + 主题清单）+ 导入/导出动作 + 用户主题删除（二次确认）。
   契约：select 带 data-setting={setting}（值 = 主题 id）；名称按当前语言取自清单。
 -->

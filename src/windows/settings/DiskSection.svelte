@@ -1,5 +1,5 @@
 <!--
-  DiskSection — 磁盘占用与缓存清理（P0-8）。
+  DiskSection — 磁盘占用与缓存清理。
   分项展示（日志 / WebView 缓存 / 字体 / 备份 / 数据文件 / 其他）+ 总量；
   清理动作（日志 / WebView 缓存 / 备份文件）各自二次确认；被占用文件在 Toast 中提示 skipped。
   契约：data-disk-item / data-disk-total 供自动化断言；清理按钮 data-setting=clearLogs|clearWebview|clearBackups。

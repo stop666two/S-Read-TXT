@@ -3,5 +3,5 @@
 
 import type { CaretPos } from './caret';
 
-/** 标签 id → 光标位置（内存态；阶段 8 会话持久化时决定是否落盘）。 */
+/** 标签 id → 光标位置（内存态；会话持久化时决定是否落盘）。 */
 export const caretMemory = new Map<number, CaretPos>();

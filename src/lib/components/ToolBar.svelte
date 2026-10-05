@@ -1,5 +1,5 @@
 <script lang="ts">
-// 工具栏：打开 / 历史（阶段 6 起可用）/ 编码（共享下拉）/ 主题（循环）/ 设置。
+// 工具栏：打开 / 历史 / 编码（共享下拉）/ 主题（循环）/ 设置。
   import { t } from '../i18n/index.svelte';
   import EncodingMenu from './EncodingMenu.svelte';
   import Icon from './Icon.svelte';
@@ -26,7 +26,7 @@
     onEncodingChange: (label: string | null) => void;
     /** 打开文件回调 */
     onOpenFile?: () => void;
-    /** 历史面板回调（阶段 6 接线） */
+    /** 历史面板回调 */
     onHistory?: () => void;
     /** 设置窗口回调（打开独立设置窗口） */
     onSettings?: () => void;

@@ -1,6 +1,6 @@
 <script lang="ts">
   // 菜单栏（应用内自绘）：文件 / 编辑 / 查看 / 帮助。
-  // 阶段 2b：完成结构、下拉交互与主题动作；其余动作在后续切片接线（回调缺省即无操作）。
+  // 说明：结构、下拉交互与主题动作齐备；其余动作由父组件回调注入（缺省即无操作）。
   // 交互约定：点击标题开合；已有菜单打开时悬停切换；点击菜单项执行；Esc / 点击外部关闭。
   import { t } from '../i18n/index.svelte';
   import type { EditActionType } from '../edit/actions';
@@ -13,11 +13,11 @@
     themeEntries: { id: string; label: string }[];
     /** 主题切换回调 */
     onThemeChange: (id: string) => void;
-    /** 打开文件回调（阶段 2c 接线） */
+    /** 打开文件回调 */
     onOpenFile?: () => void;
-    /** 退出回调（阶段 2c 接线） */
+    /** 退出回调 */
     onQuit?: () => void;
-    /** 工作区（多文件）查找与替换回调（P1-8） */
+    /** 工作区（多文件）查找与替换回调 */
     onWorkspaceFind?: () => void;
     /** 多文件搜索是否开启（false 时菜单项禁用） */
     workspaceFindEnabled?: boolean;
@@ -49,13 +49,13 @@
   onToggleFocusMode?: () => void;
   /** 打字机模式状态（查看菜单） */
   typewriter?: boolean;
-  /** 折叠功能启用（显示设置 V-08 非关闭） */
+  /** 折叠功能启用（显示设置非关闭） */
   foldingEnabled?: boolean;
   onFoldAll?: () => void;
   onFoldNone?: () => void;
   outlineEnabled?: boolean;
   onToggleOutline?: () => void;
-  /** 版本历史（P3-1） */
+  /** 版本历史 */
   versionHistoryEnabled?: boolean;
   snapshotEditing?: boolean;
   onSnapshotNow?: () => void;
@@ -63,7 +63,7 @@
   onNewFile?: () => void;
   /** 新建窗口 */
   onNewWindow?: () => void;
-  /** 打开剪贴板中的路径（P3-3） */
+  /** 打开剪贴板中的路径 */
   onPastePathOpen?: () => void;
   onExport?: () => void;
   onPrint?: () => void;
@@ -159,7 +159,7 @@
   let recentOpen = $state(false);
   /** 「复制为」子菜单展开（悬停控制；P1-5） */
   let copyAsOpen = $state(false);
-  /** 清理子菜单展开态（P1-7）。 */
+  /** 清理子菜单展开态。 */
   let cleanupOpen = $state(false);
   let annotOpen = $state(false);
 

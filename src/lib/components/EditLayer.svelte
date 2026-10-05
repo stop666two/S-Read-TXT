@@ -1,5 +1,5 @@
 <!--
-  EditLayer — 编辑交互层（阶段 4b）。
+  EditLayer — 编辑交互层。
   职责：光标/选区叠加层渲染、隐藏输入框承接键入与 IME、键盘与鼠标交互、
         编辑操作下发（每次输入/按键 = 单个撤销步）。
   坐标：位置 = (行号, 行内 UTF-16 偏移)，与编辑引擎一致；叠加层坐标相对 .page。
@@ -71,7 +71,7 @@ import { annotations } from '../state/annotations.svelte';
     rowsTotal: number;
     /** 渲染版本号（文本到达/测量变化时驱动叠加层重算） */
     revision: number;
-    /** 快照恢复请求（P3-1；seq 去重，由父组件触发） */
+    /** 快照恢复请求（seq 去重，由父组件触发） */
     snapshotRestore?: { name: string; seq: number } | null;
     /** 已渲染行节点查询 */
     rowNode: (row: number) => HTMLElement | undefined;
@@ -99,9 +99,9 @@ import { annotations } from '../state/annotations.svelte';
     autoPairs?: AutoPairsSettings | null;
     /** 清理类操作设置（未就绪为 null 时使用兜底常量） */
     cleanupSettings?: CleanupSettings | null;
-    /** 状态栏：选区统计回报（无选区/失败为 null；P2-1） */
+    /** 状态栏：选区统计回报（无选区/失败为 null） */
     onSelectionStats?: (stats: TextStats | null) => void;
-    /** 状态栏：光标行列回报（1 基；P2-1） */
+    /** 状态栏：光标行列回报（1 基） */
     onCaretInfo?: (info: { row: number; column: number }) => void;
   }
   let {
@@ -148,7 +148,7 @@ import { annotations } from '../state/annotations.svelte';
   /** 已处理的工作区跳转序号（普通变量：不参与响应式依赖）。 */
   let handledJumpSeq = 0;
 
-  /** 选区/光标回报（P2-1 状态栏）：光标即时上报；选区 250ms 防抖统计。 */
+  /** 选区/光标回报（状态栏）：光标即时上报；选区 250ms 防抖统计。 */
   let statsTimer: ReturnType<typeof setTimeout> | null = null;
   let statsSeq = 0;
   $effect(() => {
@@ -175,7 +175,7 @@ import { annotations } from '../state/annotations.svelte';
     }, 250);
   });
 
-  // 工作区搜索跳转（P1-8b）：等待目标行加载后设置选区并移交键盘焦点
+  // 工作区搜索跳转：等待目标行加载后设置选区并移交键盘焦点
   // （滚动由 ReaderView 同序号请求统一处理）。
   $effect(() => {
     const seq = jumpStore.seq;
@@ -213,7 +213,7 @@ import { annotations } from '../state/annotations.svelte';
   const MATCH_HIGHLIGHT_MAX = 800;
   /** 文档内全部命中高亮盒（当前可见行窗口内） */
   let matchBoxes = $state<Box[]>([]);
-  /** 括号配对高亮盒（P1-7；空=无高亮）。 */
+  /** 括号配对高亮盒（空=无高亮）。 */
   let bracketBoxes = $state<Box[]>([]);
   /** 当前括号配对结果（[光标侧, 配对侧] 显示坐标；null=无）。 */
   let bracketMatch = $state<CaretPos[] | null>(null);
@@ -272,13 +272,13 @@ import { annotations } from '../state/annotations.svelte';
   /** 预览弹窗开关 */
   let previewOpen = $state(false);
 
-  /** 批量序号弹窗开关（P1-1） */
+  /** 批量序号弹窗开关 */
   let batchOpen = $state(false);
 
-  /** 行操作弹窗开关（P1-2） */
+  /** 行操作弹窗开关 */
   let lineOpsOpen = $state(false);
   let noteDialog = $state<{ kind: 'note' | 'todo' } | null>(null);
-/** 剪贴板历史弹窗与列表（P1-5）。 */
+  /** 剪贴板历史弹窗与列表。 */
 let clipboardOpen = $state(false);
 let clipboardEntries = $state<ClipboardEntry[]>([]);
 
@@ -682,7 +682,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     return { anchor: logicalOf(sel.anchor), head: logicalOf(sel.head) };
   }
 
-  /** 快照恢复（P3-1）：由父组件触发（seq 去重），结果走单撤销步。 */
+  /** 快照恢复：由父组件触发（seq 去重），结果走单撤销步。 */
   let restoreHandledSeq = 0;
   $effect(() => {
     const request = snapshotRestore;
@@ -1617,7 +1617,7 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     }
   }
 
-  // ---- 剪贴板历史与复制格式（P1-5） ----
+  // ---- 剪贴板历史与复制格式 ----
 
   /** 记录复制文本到历史（历史为辅助功能，失败静默不打扰阅读）。 */
   function recordClipboard(text: string): void {

@@ -1,5 +1,5 @@
 <!--
-  AnnotationsPanel — 标注面板（P2-3）：书签 / 高亮 / 注释（含待办）分区列表。
+  AnnotationsPanel — 标注面板：书签 / 高亮 / 注释（含待办）分区列表。
   交互：点击条目跳转（父组件经 jumpStore 定位）；逐条删除；待办可勾选完成；可清空本文件全部标注。
   契约：data-annotations-panel / [data-ann-section] / [data-ann-item] / [data-ann-del] / [data-ann-done] / [data-ann-close] / [data-ann-clear]
 -->

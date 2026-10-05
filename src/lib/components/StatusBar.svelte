@@ -1,5 +1,5 @@
 <script lang="ts">
-  // 状态栏 v2（P2-1）：按设置 `app.status.items` 驱动显示项与顺序。
+  // 状态栏：按设置 `app.status.items` 驱动显示项与顺序。
   // 显示项候选：lineCol（行:列 / 第 N 行）/ counts（字数）/ words（词数）/
   //             progress（阅读进度）/ size（大小）/ encoding（编码菜单）/
   //             eol（换行符 + 编辑态转换菜单）/ modified（修改标记）。
@@ -19,7 +19,7 @@
     version?: string;
     /** 是否只读（文件超过只读阈值：展示「只读」标记） */
     readOnly?: boolean;
-    /** 状态栏显示设置（P2-1；未就绪为 null 时用兜底顺序与默认值） */
+    /** 状态栏显示设置（未就绪为 null 时用兜底顺序与默认值） */
     statusSettings?: StatusSettings | null;
     /** 是否处于编辑模式（决定行列/选区统计/换行转换可用性） */
     editing?: boolean;
@@ -49,7 +49,7 @@
     topRow?: number | null;
     /** 是否有未保存修改 */
     dirty?: boolean;
-    /** 今日阅读秒数（P2-4c；null = 未就绪） */
+    /** 今日阅读秒数（null = 未就绪） */
     readingSeconds?: number | null;
     /** 跳转到行回调（点击行列时触发；1 基行号） */
     onGotoLine?: (row1: number) => void;

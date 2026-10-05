@@ -444,7 +444,7 @@ export const zhCN = {
   'shortcutIo.exported': '快捷键已导出（{bytes} 字节）',
   'shortcutIo.imported': '快捷键已导入',
 
-  // ---------- 设置窗口（P0-4：注册表驱动） ----------
+  // ---------- 设置窗口（注册表驱动） ----------
   'settings.title': '设置',
   'settings.category.general': '常规',
   'settings.category.reader': '阅读排版',
@@ -568,13 +568,13 @@ export const zhCN = {
   'setting.app.display.scrollbarMarkers': '滚动条标记',
   'setting.app.display.scrollbarMarkers.desc': '在滚动条旁标记搜索命中 / 书签 / 修改位置',
   'setting.app.display.folding': '折叠方式',
-  'setting.app.display.folding.desc': '编辑与阅读双模式的折叠：按缩进 / 按标题 / 按可编辑正则（V-08）',
+  'setting.app.display.folding.desc': '编辑与阅读双模式的折叠：按缩进 / 按标题 / 按可编辑正则',
   'setting.enum.folding.off': '关闭',
   'setting.enum.folding.indent': '按缩进',
   'setting.enum.folding.heading': '按标题',
   'setting.enum.folding.regex': '按正则',
   'setting.app.display.outline': '大纲面板',
-  'setting.app.display.outline.desc': '内置章节正则（可编辑）+ 点击跳转（V-09）',
+  'setting.app.display.outline.desc': '内置章节正则（可编辑）+ 点击跳转',
   'setting.app.display.breadcrumb': '面包屑',
   'setting.app.display.breadcrumb.desc': '在阅读区顶部显示当前行所在章节路径（V-10）',
   'setting.app.display.outlinePatterns': '大纲正则',
@@ -827,7 +827,7 @@ export const zhCN = {
   'batch.previewTitle': '预览（前 {shown} 条，共 {total} 行）',
   'batch.previewEmpty': '没有可插入的行（请检查范围或「跳过空行」）',
   'batch.applied': '已为 {count} 行插入序号（可 Ctrl+Z 撤销）',
-  // ---- 行操作（P1-2） ----
+  // ---- 行操作 ----
   'lineOps.title': '行操作',
   'lineOps.close': '关闭',
   'lineOps.preview': '预览',

@@ -91,7 +91,7 @@ class SettingsStore {
     }
   }
 
-  /** 设置项注册表（P0-4；窗口启动时载入一次，界面据此动态生成） */
+  /** 设置项注册表（窗口启动时载入一次，界面据此动态生成） */
   registry = $state<SettingSpec[]>([]);
 
   /** 载入设置项注册表 */
@@ -132,10 +132,10 @@ class SettingsStore {
     }
   }
 
-  /** 磁盘占用（P0-8；打开「常规」页时载入） */
+  /** 磁盘占用（打开「常规」页时载入） */
   disk = $state<DiskUsageReport | null>(null);
 
-  /** 主题清单（P0-5；主题行与设置窗口主题应用共用） */
+  /** 主题清单（主题行与设置窗口主题应用共用） */
   themes = $state<ThemeSummary[]>([]);
 
   /** 载入主题清单（内置 + 用户主题） */

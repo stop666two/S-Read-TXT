@@ -1,5 +1,5 @@
 <!--
-  NoteDialog — 注释/待办输入弹窗（P2-3）。
+  NoteDialog — 注释/待办输入弹窗。
   单文本框 + 确定/取消；Ctrl+Enter 快速确认，Esc 取消。
   契约：data-note-dialog / textarea[data-note-input] / [data-note-ok] / [data-note-cancel]。
 -->

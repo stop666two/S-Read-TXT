@@ -19,7 +19,7 @@ if (!target) {
 
 // 启动占位（index.html 内置）在挂载前清除：避免占位与 Svelte 首帧同屏重叠。
 target.replaceChildren();
-// FOUC 防护（P0-5）：挂载前先应用持久化主题令牌（后端解析 system/用户主题；失败保持默认浅色）。
+// FOUC 防护：挂载前先应用持久化主题令牌（后端解析 system/用户主题；失败保持默认浅色）。
 try {
   const resolved = await ipc.getTheme(null);
   applyThemeTokens(resolved);

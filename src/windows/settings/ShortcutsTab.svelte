@@ -104,7 +104,7 @@
   const isModified = (action: ShortcutAction): boolean =>
     effective[action] !== undefined && effective[action] !== defaults[action];
 
-  /** 导出快捷键（P0-9）：写「生效绑定」全表为 JSON 文件 */
+  /** 导出快捷键：写「生效绑定」全表为 JSON 文件 */
   async function exportShortcuts(): Promise<void> {
     if (ioBusy) return;
     const path = await save({
@@ -124,7 +124,7 @@
     }
   }
 
-  /** 导入快捷键（P0-9）：整体替换覆盖项；后端强校验（未知动作/空值/超长/超大拒绝） */
+  /** 导入快捷键：整体替换覆盖项；后端强校验（未知动作/空值/超长/超大拒绝） */
   async function importShortcuts(): Promise<void> {
     if (ioBusy) return;
     const selected = await open({

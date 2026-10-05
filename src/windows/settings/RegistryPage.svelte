@@ -1,5 +1,5 @@
 <!--
-  RegistryPage — 注册表驱动的设置页（P0-4）。
+  RegistryPage — 注册表驱动的设置页。
   能力：按分组卡片渲染（可折叠）、全局搜索、单项/分组恢复默认；控件按 SettingKind 分派。
   契约：沿用 settings.css 的 .rows/.row/.label/.control 类；data-setting = 完整设置项 id；
         行级恢复按钮 data-setting-reset；分组恢复 data-setting-reset-group。

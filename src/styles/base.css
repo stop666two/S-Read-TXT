@@ -1,7 +1,7 @@
 /*
  * 全局基础样式与主题令牌（src/styles/base.css）
  *
- * 主题策略（P0-5）：
+ * 主题策略：
  * - 颜色令牌由主题加载器（src/lib/theme.ts）在挂载前写入 `<html>`（--base/--ink/…），
  *   明暗基底写 `data-theme-base`；本文件只保留默认（浅色）保底值与基础布局。
  * - 全部颜色经 CSS 变量中转，UnoCSS 颜色令牌（uno.config.ts）映射到同一批变量，

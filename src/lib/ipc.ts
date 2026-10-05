@@ -43,7 +43,7 @@ export interface TabInfo {
   owner: string;
   path: string;
   name: string;
-  /** 未命名标签序号（P3-2；新建文件专用） */
+  /** 未命名标签序号（新建文件专用） */
   untitled?: number;
   encoding: string;
   encodingOverride: string | null;
@@ -55,7 +55,7 @@ export interface TabInfo {
   readOnly: boolean;
   rowsTotal: number;
   byteLen: number;
-  /** 换行符风格（P2-1c1：lf/crlf/cr/mixed/unknown） */
+  /** 换行符风格（lf/crlf/cr/mixed/unknown） */
   eol: string;
 }
 
@@ -456,7 +456,7 @@ export interface FindSettings {
   defaultScope: FindScope;
   /** 查找历史条数上限（0 = 不留历史） */
   historyLimit: number;
-  /** 多文件（工作区）搜索开关（P1-8） */
+  /** 多文件（工作区）搜索开关 */
   multifileEnabled: boolean;
   /** 多文件扫描并发数（1–16） */
   multifileConcurrency: number;
@@ -495,7 +495,7 @@ export interface FileSettings {
 /** 新建文件换行风格（与 Rust `NewEol` 对应）。 */
 export type NewEol = 'lf' | 'crlf' | 'cr';
 
-/** 快照条目（P3-1 版本历史）。 */
+/** 快照条目（版本历史）。 */
 export interface SnapshotInfo {
   name: string;
   createdMillis: number;
@@ -512,37 +512,37 @@ export interface AppSettings {
   saveBackupEnabled: boolean;
   showOnboarding: boolean;
   locale: 'zh-CN' | 'en';
-  /** 编辑器设置（P1-2 起） */
+  /** 编辑器设置 */
   editor: EditorSettings;
   file: FileSettings;
-  /** 查找设置（P1-6 起） */
+  /** 查找设置 */
   find: FindSettings;
-  /** 状态栏显示设置（P2-1 起） */
+  /** 状态栏显示设置 */
   status: StatusSettings;
-  /** 显示选项（P2-2 起） */
+  /** 显示选项 */
   display: DisplaySettings;
-  /** 正则设置（P1-6 起） */
+  /** 正则设置 */
   regex: RegexSettings;
   startup: StartupSettings;
 }
 
-/** 折叠方式（显示选项 V-08）。 */
+/** 折叠方式。 */
 export type FoldingMode = 'off' | 'indent' | 'heading' | 'regex';
 
-/** 大纲条目（P2-6 V-09；显示行坐标与渲染/跳转一致）。 */
+/** 大纲条目（显示行坐标与渲染/跳转一致）。 */
 export interface OutlineItem {
   row: number;
   title: string;
   level: number;
 }
 
-/** 折叠区间（P2-6b V-08；闭区间，startRow 为可点击的折叠标记行）。 */
+/** 折叠区间（闭区间，startRow 为可点击的折叠标记行）。 */
 export interface FoldRegion {
   startRow: number;
   endRow: number;
 }
 
-/** 显示选项（与 Rust `DisplaySettings` 对应，P2-2）。 */
+/** 显示选项（与 Rust `DisplaySettings` 对应）。 */
 export interface DisplaySettings {
   lineNumbers: boolean;
   relativeLineNumbers: boolean;
@@ -553,11 +553,11 @@ export interface DisplaySettings {
   indentGuides: boolean;
   invisible: string[];
   scrollbarMarkers: boolean;
-  /** 折叠方式（V-08：关闭/按缩进/按标题/按正则） */
+  /** 折叠方式（关闭/按缩进/按标题/按正则） */
   folding: FoldingMode;
-  /** 大纲面板（V-09） */
+  /** 大纲面板 */
   outline: boolean;
-  /** 面包屑（V-10） */
+  /** 面包屑 */
   breadcrumb: boolean;
   /** 大纲正则（空列表后端回退内置默认） */
   outlinePatterns: string[];
@@ -657,7 +657,7 @@ export interface ReaderSettings {
   themeAnimMs: number;
   typography: TypographySettings;
   margins: MarginSettings;
-  /** 阅读模式设置（P2-4：专注/打字机/自动滚动/提醒等） */
+  /** 阅读模式设置（专注/打字机/自动滚动/提醒等） */
   reading: ReadingSettings;
   background: BackgroundSettings;
 }
@@ -862,7 +862,7 @@ export interface SettingsSaveRequest {
 }
 
 /** 类型化 IPC 命令集合（参数名与 Tauri 的 camelCase 约定一致）。 */
-/** 剪贴板历史条目（P1-5）。 */
+/** 剪贴板历史条目。 */
 export interface ClipboardEntry {
   /** 条目文本（复制内容原样） */
   text: string;
@@ -1118,7 +1118,7 @@ export const ipc = {
   addFindHistory: (query: string) => invoke<string[]>('add_find_history', { query }),
   /** 清空查找历史（返回空列表）。 */
   clearFindHistory: () => invoke<string[]>('clear_find_history'),
-  /** 预览批量序号（容量预检在此阶段报 BATCH_INVALID）。 */
+  /** 预览批量序号（容量预检以 BATCH_INVALID 报错）。 */
   previewBatchNumbering: (tabId: number, config: BatchNumberingConfig) =>
     invoke<BatchPreview>('preview_batch_numbering', { tabId, config }),
   /** 执行批量序号（单撤销步）。 */
@@ -1130,15 +1130,15 @@ export const ipc = {
   /** 执行行操作（单撤销步）。 */
   applyLineOp: (tabId: number, config: LineOpConfig) =>
     invoke<LineOpOutcome>('apply_line_op', { tabId, config }),
-  /** 过滤扫描（P1-4，只读；返回命中显示行号）。 */
+  /** 过滤扫描（只读；返回命中显示行号）。 */
   filterRows: (tabId: number, query: FilterQuery) =>
     invoke<FilterResult>('filter_rows', { tabId, query }),
   /** 稀疏按行取文本（过滤视图虚拟窗口；单次 ≤512 行）。 */
   fetchRowsAt: (tabId: number, rows: number[]) =>
     invoke<RowsPayload['rows']>('fetch_rows_at', { tabId, rows }),
-  /** 大纲提取（P2-6 V-09；空正则列表后端回退内置默认）。 */
+  /** 大纲提取（空正则列表后端回退内置默认）。 */
   outlineItems: (tabId: number) => invoke<OutlineItem[]>('outline_items', { tabId }),
-  /** 折叠区间（P2-6b V-08；按当前折叠设置计算）。 */
+  /** 折叠区间（按当前折叠设置计算）。 */
   foldRegions: (tabId: number) => invoke<FoldRegion[]>('fold_regions', { tabId }),
   listSnapshots: (tabId: number) => invoke<SnapshotInfo[]>('list_snapshots', { tabId }),
   createSnapshot: (tabId: number) => invoke<SnapshotInfo | null>('create_snapshot', { tabId }),
@@ -1148,7 +1148,7 @@ export const ipc = {
     invoke<boolean>('delete_snapshot', { tabId, name }),
   markCleanExit: () => invoke<void>('mark_clean_exit'),
   takeCrashFlag: () => invoke<boolean>('take_crash_flag'),
-  /** 取走命令行/单实例待打开文件（P3-3）。 */
+  /** 取走命令行/单实例待打开文件。 */
   takeCliFiles: () => invoke<string[]>('take_cli_files'),
   newFile: () => invoke<TabInfo>('new_file'),
   /** 新建主窗口；可选物理坐标与尺寸（缺省级联偏移/1100×760）；返回新窗口 label。 */

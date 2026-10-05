@@ -1,7 +1,7 @@
 <!--
   App.svelte — 根组件：应用外壳与全局接线。
   已接线：打开（对话框/拖拽）、标签、空状态、Toast、虚拟阅读、编码切换、进度上报、
-  编辑/保存/冲突/未保存三态关闭流程（阶段 4b/4c）、冷启动就绪即显。
+  编辑/保存/冲突/未保存三态关闭流程、冷启动就绪即显。
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -58,7 +58,7 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   let version = $state('');
   /** 阅读百分比（由阅读区回报） */
   let readPercent = $state(0);
-  /** 状态栏 v2：文档统计 / 选区统计 / 顶部行 / 光标行列（P2-1） */
+  /** 状态栏：文档统计 / 选区统计 / 顶部行 / 光标行列 */
   let docStats = $state<TextStats | null>(null);
   let selectionStats = $state<TextStats | null>(null);
   let topRow = $state<number | null>(null);
@@ -68,7 +68,7 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   let bgLoadedFile: string | null = null;
   /** 支持的编码列表（后端提供） */
   let encodings = $state<string[]>([]);
-  /** 应用配置（阶段 6：启动加载；设置窗口变更后热刷新） */
+  /** 应用配置（启动加载；设置窗口变更后热刷新） */
   let appSettings = $state<AppSettings | null>(null);
   /** 阅读排版配置（主题 + 排版；变更实时应用） */
   let readerSettings = $state<ReaderSettings | null>(null);
@@ -582,7 +582,7 @@ let outlineOpen = $state(false);
     }
   }
 
-  /** 切换全屏（查看菜单 / F11；阶段 5 快捷键引擎接入后统一管理） */
+  /** 切换全屏（查看菜单 / F11；由全局快捷键引擎统一管理） */
   async function toggleFullscreen(): Promise<void> {
     try {
       const win = getCurrentWindow();
@@ -623,7 +623,7 @@ let outlineOpen = $state(false);
     await getCurrentWindow().close();
   }
 
-  // ---- 编辑与关闭流程（阶段 4b/4c） ----
+  // ---- 编辑与关闭流程 ----
 
   /** 保存询问请求（Promise 队列：关闭流程可逐个等待保存结果；
    *  targetPath 存在时表示「另存为」——保存到该路径而非原路径） */
@@ -632,7 +632,7 @@ let outlineOpen = $state(false);
     targetPath?: string;
     resolve: (ok: boolean) => void;
   } | null>(null);
-  /** 保存弹窗的备份默认值（首存默认勾选；阶段 8 接入设置后按设置项） */
+  /** 保存弹窗的备份勾选默认值 */
   const saveBackup = true;
   /** 外部修改冲突弹窗（Promise 化，覆盖/取消都回填原保存请求） */
   let conflictRequest = $state<{
@@ -686,7 +686,7 @@ let outlineOpen = $state(false);
   /** 打开保存弹窗（编辑态；编码询问走弹窗，默认保持当前编码） */
   function openSaveDialog(): void {
     if (!active?.editing) return;
-    // 未命名标签（P3-2）：保存入口重定向到另存为（先选路径，再走编码询问）
+    // 未命名标签：保存入口重定向到另存为（先选路径，再走编码询问）
     if (active.untitled != null) {
       void saveAsFlow();
       return;
@@ -726,7 +726,7 @@ let outlineOpen = $state(false);
     force: boolean,
   ): Promise<boolean> {
     if (!tabId) return false;
-    // 未命名标签（P3-2）：保存重定向到另存为；关闭链路会因未保存而中止，用户完成另存为后需再次关闭
+    // 未命名标签：保存重定向到另存为；关闭链路会因未保存而中止，用户完成另存为后需再次关闭
     if (active?.tabId === tabId && active.untitled != null) {
       await saveAsFlow();
       return false;
@@ -813,7 +813,7 @@ let outlineOpen = $state(false);
     saveRequest = { tabId: tab.tabId, targetPath: filePath, resolve: () => {} };
   }
 
-  /** 新建文件（P3-2）：后端生成未命名文件并以编辑模式打开 */
+  /** 新建文件：后端生成未命名文件并以编辑模式打开 */
   async function newFileFlow(): Promise<void> {
     try {
       await ipc.newFile();
@@ -832,7 +832,7 @@ let outlineOpen = $state(false);
     }
   }
 
-  /** 导出…（P3-2）：格式由扩展名推断，不改变标签状态 */
+  /** 导出…：格式由扩展名推断，不改变标签状态 */
   async function exportFlow(): Promise<void> {
     const tab = active;
     if (!tab) return;
@@ -863,7 +863,7 @@ let outlineOpen = $state(false);
     }
   }
 
-  /** 打印…（P3-2）：打开打印窗口，由页面自动调起系统打印 */
+  /** 打印…：打开打印窗口，由页面自动调起系统打印 */
   async function printFlow(): Promise<void> {
     const tab = active;
     if (!tab) return;
@@ -1022,7 +1022,7 @@ let outlineOpen = $state(false);
   /** 保存弹窗当前服务的标签信息（默认编码显示用） */
   const saveDialogTab = $derived(tabs.tabs.find((item) => item.tabId === saveRequest?.tabId) ?? null);
 
-  // 主题应用（P0-5）：设置变化时解析令牌写入 CSS 变量；跟随系统时监听系统明暗切换。
+  // 主题应用：设置变化时解析令牌写入 CSS 变量；跟随系统时监听系统明暗切换。
   $effect(() => {
     void themeId;
     void readerSettings?.themeAnimEnabled;
@@ -1166,7 +1166,7 @@ let outlineOpen = $state(false);
   /** 自动滚动（菜单开关；rAF 循环；用户主动滚动即停止） */
   let autoScrollOn = $state(false);
   let autoScrollRaf = 0;
-  /** 折叠指令（P2-6b V-08）：菜单广播给 ReaderView（seq 去重） */
+  /** 折叠指令：菜单广播给 ReaderView（seq 去重） */
   let foldCommand = $state<{ kind: 'all' | 'none'; seq: number } | null>(null);
   let foldSeq = 0;
   const foldingEnabled = $derived((appSettings?.display.folding ?? 'off') !== 'off');
@@ -1245,7 +1245,7 @@ let outlineOpen = $state(false);
     }
   });
 
-  /** 阅读时长 / 护眼提醒 / 番茄钟（P2-4c） */
+  /** 阅读时长 / 护眼提醒 / 番茄钟 */
   let readingSeconds = $state<number | null>(null);
   let pomodoroOn = $state(false);
   let windowFocused = $state(true);
@@ -1325,7 +1325,7 @@ let outlineOpen = $state(false);
     restartEyeCare();
   });
 
-  /** 打开剪贴板中的路径（P3-3 D-17）：取首行、去空白后走统一打开链路。 */
+  /** 打开剪贴板中的路径：取首行、去空白后走统一打开链路。 */
   async function pastePathOpen(): Promise<void> {
     let text = '';
     try {
@@ -1472,7 +1472,7 @@ onMount(() => {
         unlistenFocus = stop;
       });
 
-    // 全局快捷键（捕获阶段：先于编辑层与浏览器默认行为）
+    // 全局快捷键（捕获阶段先于编辑层与浏览器默认行为）
   const onGlobalKeydown = (event: KeyboardEvent): void => {
     // 专注模式：Esc 退出（阅读态专属；编辑/弹窗各自处理 Esc）
     if (event.key === 'Escape' && focusReading) {
@@ -1541,7 +1541,7 @@ onMount(() => {
     };
   });
 
-  /** 上次异常退出提示（P3-1）：首次拿到设置后检查一次。 */
+  /** 上次异常退出提示：首次拿到设置后检查一次。 */
   let crashChecked = false;
   $effect(() => {
     if (crashChecked || !appSettings) return;
