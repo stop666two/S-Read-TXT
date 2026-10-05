@@ -31,6 +31,7 @@ pub mod logging;
 pub mod outline;
 pub mod quit;
 pub mod reading_stats;
+pub mod rename;
 pub mod resources;
 pub mod session;
 pub mod settings;
