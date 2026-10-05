@@ -360,6 +360,26 @@ export const zhCN = {
   'tools.split.previewFirst': '请先预览确认分片',
   'tools.split.resultAria': '拆分结果',
 
+  // ---------- 比较 / 三方合并 ----------
+  'tools.compare.menu': '比较文件…',
+  'tools.merge.menu': '三方合并…',
+  'compare.title': '文件比较',
+  'compare.mergeTitle': '三方合并',
+  'compare.view': '视图模式',
+  'compare.sideBySide': '并排',
+  'compare.unified': '统一',
+  'compare.stats': '新增 +{added} 行 · 删除 −{removed} 行',
+  'compare.conflicts': '{count} 处冲突',
+  'compare.prev': '上一处',
+  'compare.next': '下一处',
+  'compare.loading': '正在比较…',
+  'compare.identical': '两个文件内容一致',
+  'compare.loadFailed': '加载比较失败：{reason}',
+  'compare.pickTitle': '选择两个文件进行比较',
+  'compare.pickMergeTitle': '依次选择：底本 → 我方 → 他方',
+  'compare.needTwo': '请选择两个文件',
+  'compare.needThree': '请选择三个文件（底本 → 我方 → 他方）',
+
   // ---------- 批量重命名 ----------
   'tools.rename.menu': '批量重命名…',
   'rename.title': '批量重命名',

@@ -7,7 +7,7 @@
 use crate::diff::{diff_lines, DiffError, DiffHunk, HunkKind};
 
 /// 合并内容来源。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MergedSource {
     Base,

@@ -368,6 +368,26 @@ export const en: Record<MessageKey, string> = {
   'tools.split.previewFirst': 'Preview the parts first',
   'tools.split.resultAria': 'Split result',
 
+  // ---------- Compare / 3-way merge ----------
+  'tools.compare.menu': 'Compare files…',
+  'tools.merge.menu': '3-way merge…',
+  'compare.title': 'File compare',
+  'compare.mergeTitle': '3-way merge',
+  'compare.view': 'View mode',
+  'compare.sideBySide': 'Side by side',
+  'compare.unified': 'Unified',
+  'compare.stats': '+{added} added · −{removed} removed',
+  'compare.conflicts': '{count} conflict(s)',
+  'compare.prev': 'Previous',
+  'compare.next': 'Next',
+  'compare.loading': 'Comparing…',
+  'compare.identical': 'The two files are identical',
+  'compare.loadFailed': 'Failed to load comparison: {reason}',
+  'compare.pickTitle': 'Pick two files to compare',
+  'compare.pickMergeTitle': 'Pick in order: base → ours → theirs',
+  'compare.needTwo': 'Please pick two files',
+  'compare.needThree': 'Please pick three files (base → ours → theirs)',
+
   // ---------- Batch rename ----------
   'tools.rename.menu': 'Batch rename…',
   'rename.title': 'Batch rename',

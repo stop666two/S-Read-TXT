@@ -33,12 +33,13 @@ export default defineConfig({
   // 暴露给前端的注入变量前缀（TAURI_ENV_* 由 Tauri CLI 注入平台/调试信息）
   envPrefix: ['VITE_', 'TAURI_ENV_*'],
   build: {
-    // 多入口构建：main = 主窗口；settings = 设置窗口；ghost = 拖拽拖影（独立小窗，按需创建）
+    // 多入口构建：main = 主窗口；settings = 设置窗口；ghost = 拖拽拖影；compare = 比较/合并窗口
     rollupOptions: {
       input: {
         main: 'index.html',
         settings: 'settings.html',
         ghost: 'drag-ghost.html',
+        compare: 'compare.html',
       },
     },
     // 浏览器编译目标：Windows WebView2 基线（Chromium 105）；其他平台保守目标

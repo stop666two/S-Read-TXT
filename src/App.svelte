@@ -193,6 +193,50 @@ let outlineOpen = $state(false);
     return index > 0 ? cleaned.slice(0, index) : null;
   });
 
+  /** 原生多选文件（返回选中路径数组；取消为空数组）。 */
+  async function pickFiles(title: string): Promise<string[]> {
+    const picked = await open({
+      multiple: true,
+      title,
+      filters: [{ name: t('app.filter.text'), extensions: ['txt', 'log', 'md'] }],
+    });
+    if (Array.isArray(picked)) return picked;
+    return typeof picked === 'string' ? [picked] : [];
+  }
+
+  /** 工具→比较文件：选两个文件并打开比较窗口。 */
+  async function openCompareFlow(): Promise<void> {
+    try {
+      const files = await pickFiles(t('compare.pickTitle'));
+      if (files.length < 2) {
+        toasts.show(t('compare.needTwo'));
+        return;
+      }
+      await ipc.openCompareWindow({ mode: 'diff', left: files[0], right: files[1], extra: null });
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 工具→三方合并：一次多选按顺序取 底本 → 我方 → 他方。 */
+  async function openMergeFlow(): Promise<void> {
+    try {
+      const files = await pickFiles(t('compare.pickMergeTitle'));
+      if (files.length < 3) {
+        toasts.show(t('compare.needThree'));
+        return;
+      }
+      await ipc.openCompareWindow({
+        mode: 'merge',
+        left: files[0],
+        right: files[1],
+        extra: files[2],
+      });
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
   /** 窗口 label（栏位键前缀；会话与拖放共用）。 */
   const windowLabel = getCurrentWindow().label;
   /** 初始栏位：窗口首栏（多栏布局建立前，所有标签操作作用于该栏）。 */
@@ -2026,6 +2070,8 @@ onMount(() => {
     onWorkspaceFind={() => (workspaceOpen = true)}
     onOpenSplit={() => (splitOpen = true)}
     onOpenRename={() => (renameOpen = true)}
+    onOpenCompare={() => void openCompareFlow()}
+    onOpenMerge={() => void openMergeFlow()}
     workspaceFindEnabled={appSettings?.find.multifileEnabled !== false}
     onSettings={() => void ipc.openSettings()}
     canSplit={paneCount < MAX_PANES}

@@ -13,6 +13,7 @@ mod tab_drag;
 use std::sync::Mutex;
 
 use s_read_txt::app_state::AppState;
+use s_read_txt::compare::CompareState;
 use s_read_txt::logging;
 use s_read_txt::session::store as session_store;
 use s_read_txt::settings::store as settings_store;
@@ -324,6 +325,8 @@ fn main() {
         .manage(tab_drag::TabDragState::default())
         // 命令行/单实例待打开队列
         .manage(s_read_txt::cli::PendingCliFiles::default())
+        // 比较/合并窗口文档状态
+        .manage(CompareState::new())
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,
             commands::data_dir_status,
@@ -389,6 +392,12 @@ fn main() {
         commands::apply_rename,
         commands::undo_rename,
         commands::read_rename_log,
+        commands::open_compare_window,
+        commands::take_compare_request,
+        commands::diff_docs,
+        commands::merge3_docs,
+        commands::compare_rows,
+        commands::merge_rows,
         commands::new_file,
         commands::export_text,
         commands::print_document,

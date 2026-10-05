@@ -26,6 +26,17 @@ pub fn hash_lines(bytes: &[u8]) -> Vec<u64> {
     lines
 }
 
+/// 单行哈希（FNV-1a 64 位；空行返回偏移基值，与 [`hash_lines`] 的空行一致）。
+pub fn hash_line(bytes: &[u8]) -> u64 {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut hash = OFFSET;
+    for &byte in bytes {
+        hash = (hash ^ u64::from(byte)).wrapping_mul(PRIME);
+    }
+    hash
+}
+
 /// diff 计算错误。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiffError {
@@ -253,8 +264,8 @@ fn myers(a: &[u64], b: &[u64]) -> Result<Vec<RawOp>, DiffError> {
 /// 从 trace 回溯出原始操作序列（正序返回）。
 fn backtrack(
     trace: &[Vec<i32>],
-    a: &[u64],
-    b: &[u64],
+    _a: &[u64],
+    _b: &[u64],
     n: i32,
     m: i32,
     found_d: i32,

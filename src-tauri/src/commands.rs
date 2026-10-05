@@ -19,6 +19,7 @@ use s_read_txt::app_state::{default_pane, is_pane_of, AppState, RowsPayload, Tab
 use s_read_txt::background::{self, BackgroundEntry};
 use s_read_txt::clipboard_history as clipboard_store;
 use s_read_txt::clipboard_history::ClipboardEntry;
+use s_read_txt::compare::{self, CompareRequest, CompareSide, CompareState};
 use s_read_txt::fonts::{self, FontEntry};
 use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
@@ -503,6 +504,113 @@ pub fn apply_split(
     let source = std::path::PathBuf::from(&path);
     let resolved = resolve_split_out_dir(&source, out_dir);
     s_read_txt::split::apply_file(&source, &mode, Some(&resolved)).map_err(split_ipc_error)
+}
+
+/// 命令：打开比较/合并窗口（已存在则更新请求、聚焦并通知重载）。
+#[tauri::command]
+pub async fn open_compare_window(
+    app: tauri::AppHandle,
+    request: CompareRequest,
+    state: State<'_, CompareState>,
+) -> Result<(), IpcError> {
+    let mode_title = if request.mode == compare::CompareMode::Merge {
+        "合并"
+    } else {
+        "比较"
+    };
+    state.set_request(request);
+    if let Some(window) = app.get_webview_window(compare::COMPARE_WINDOW) {
+        window
+            .show()
+            .map_err(|err| IpcError::new(CODE_IO, format!("显示{mode_title}窗口失败：{err}")))?;
+        window
+            .set_focus()
+            .map_err(|err| IpcError::new(CODE_IO, format!("聚焦{mode_title}窗口失败：{err}")))?;
+        let _ = app.emit_to(compare::COMPARE_WINDOW, compare::EVENT_COMPARE_REQUEST, ());
+        return Ok(());
+    }
+    let window = tauri::WebviewWindowBuilder::new(
+        &app,
+        compare::COMPARE_WINDOW,
+        tauri::WebviewUrl::App("compare.html".into()),
+    )
+    .title(format!("{mode_title} - S-Read-TXT"))
+    .inner_size(1200.0, 800.0)
+    .min_inner_size(900.0, 600.0)
+    .decorations(false)
+    .visible(false)
+    .build()
+    .map_err(|err| IpcError::new(CODE_IO, format!("打开{mode_title}窗口失败：{err}")))?;
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))
+        .ok()
+        .or_else(|| app.default_window_icon().cloned());
+    if let Some(icon) = icon {
+        let _ = window.set_icon(icon);
+    }
+    let (dir, _origin) = paths::resolve_data_dir();
+    let theme =
+        theme::resolve_theme(&dir, &settings_store::load_reader_settings(&dir).theme_id).ok();
+    let color = theme
+        .as_ref()
+        .map(crate::theme_background_color)
+        .unwrap_or(tauri::window::Color(0xFA, 0xF9, 0xF7, 0xFF));
+    let _ = window.set_background_color(Some(color));
+    window
+        .show()
+        .map_err(|err| IpcError::new(CODE_IO, format!("显示{mode_title}窗口失败：{err}")))?;
+    window
+        .set_focus()
+        .map_err(|err| IpcError::new(CODE_IO, format!("聚焦{mode_title}窗口失败：{err}")))?;
+    Ok(())
+}
+
+/// 命令：取走待处理比较请求（比较窗口启动时调用）。
+#[tauri::command]
+pub fn take_compare_request(state: State<'_, CompareState>) -> Option<CompareRequest> {
+    state.take_request()
+}
+
+/// 命令：加载双栏比较（两个磁盘文件）。
+#[tauri::command]
+pub fn diff_docs(
+    state: State<'_, CompareState>,
+    left: String,
+    right: String,
+) -> Result<compare::DiffDocsDto, IpcError> {
+    Ok(state.load_diff(&left, &right)?)
+}
+
+/// 命令：加载三方合并（base / ours / theirs）。
+#[tauri::command]
+pub fn merge3_docs(
+    state: State<'_, CompareState>,
+    base: String,
+    ours: String,
+    theirs: String,
+) -> Result<compare::MergeDocsDto, IpcError> {
+    Ok(state.load_merge(&base, &ours, &theirs)?)
+}
+
+/// 命令：取一侧行文本窗口（虚拟列表按可见区间调用）。
+#[tauri::command]
+pub fn compare_rows(
+    state: State<'_, CompareState>,
+    side: CompareSide,
+    start: u64,
+    count: u32,
+) -> Result<Vec<String>, IpcError> {
+    Ok(state.rows(side, start, count.min(10_000) as usize)?)
+}
+
+/// 命令：取合并输出行（按来源与区间）。
+#[tauri::command]
+pub fn merge_rows(
+    state: State<'_, CompareState>,
+    source: s_read_txt::merge3::MergedSource,
+    start: u64,
+    count: u32,
+) -> Result<Vec<String>, IpcError> {
+    Ok(state.merge_rows(source, start, count.min(10_000) as usize)?)
 }
 
 /// 重命名扫描返回体。

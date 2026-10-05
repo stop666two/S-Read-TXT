@@ -154,6 +154,20 @@ impl From<TextFileError> for IpcError {
     }
 }
 
+impl From<crate::compare::CompareError> for IpcError {
+    fn from(err: crate::compare::CompareError) -> Self {
+        match err {
+            crate::compare::CompareError::Text(err) => err.into(),
+            crate::compare::CompareError::Diff(crate::diff::DiffError::TooComplex) => {
+                Self::new(crate::diff::DIFF_TOO_COMPLEX, "差异规模过大，无法精细比较")
+            }
+            crate::compare::CompareError::NotLoaded => {
+                Self::internal("比较文档尚未加载或侧不存在")
+            }
+        }
+    }
+}
+
 impl From<EditError> for IpcError {
     fn from(err: EditError) -> Self {
         match err {

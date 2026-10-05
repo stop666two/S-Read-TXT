@@ -110,6 +110,10 @@
     onOpenSplit?: () => void;
     /** 打开「批量重命名」对话框 */
     onOpenRename?: () => void;
+    /** 打开「比较文件」窗口 */
+    onOpenCompare?: () => void;
+    /** 打开「三方合并」窗口 */
+    onOpenMerge?: () => void;
   }
   let {
     themeId,
@@ -170,6 +174,8 @@
     onClosePane,
     onOpenSplit,
     onOpenRename,
+    onOpenCompare,
+    onOpenMerge,
   }: Props = $props();
 
   /** 菜单名联合类型 */
@@ -489,6 +495,9 @@
     </div>
   {:else if openMenu === 'tools'}
     <div class="dropdown" role="menu" style="left: 130px">
+      <button class="item" onclick={() => run(() => onOpenCompare?.())}><span>{t('tools.compare.menu')}</span></button>
+      <button class="item" onclick={() => run(() => onOpenMerge?.())}><span>{t('tools.merge.menu')}</span></button>
+      <div class="separator"></div>
       <button class="item" onclick={() => run(() => onOpenSplit?.())}><span>{t('tools.split.menu')}</span></button>
       <button class="item" onclick={() => run(() => onOpenRename?.())}><span>{t('tools.rename.menu')}</span></button>
     </div>

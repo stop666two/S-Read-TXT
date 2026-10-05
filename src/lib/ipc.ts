@@ -987,6 +987,63 @@ export interface SplitResult {
   bytes: number;
 }
 
+/** 比较/合并窗口请求（diff：left/right；merge：left=base、right=ours、extra=theirs）。 */
+export interface CompareRequest {
+  mode: 'diff' | 'merge';
+  left: string;
+  right: string;
+  extra: string | null;
+}
+
+/** 差异块（行号从 0 开始）。 */
+export interface DiffHunkDto {
+  kind: 'equal' | 'change' | 'delete' | 'insert';
+  leftStart: number;
+  leftLen: number;
+  rightStart: number;
+  rightLen: number;
+}
+
+/** 双栏比较加载结果。 */
+export interface DiffDocs {
+  leftName: string;
+  rightName: string;
+  leftRows: number;
+  rightRows: number;
+  added: number;
+  removed: number;
+  hunks: DiffHunkDto[];
+}
+
+/** 非冲突区域合并来源。 */
+export interface MergeMergedSource {
+  source: 'base' | 'ours' | 'theirs';
+  start: number;
+  end: number;
+}
+
+/** 合并区域。 */
+export interface MergeRegionDto {
+  kind: 'stable' | 'oursOnly' | 'theirsOnly' | 'sameChange' | 'conflict';
+  baseRange: [number, number];
+  oursRange: [number, number];
+  theirsRange: [number, number];
+  merged: MergeMergedSource | null;
+}
+
+/** 三方合并加载结果。 */
+export interface MergeDocs {
+  baseName: string;
+  oursName: string;
+  theirsName: string;
+  baseRows: number;
+  oursRows: number;
+  theirsRows: number;
+  conflicts: number;
+  autoMergedLines: number;
+  regions: MergeRegionDto[];
+}
+
 /** 重命名扫描项（仅文件名与大小）。 */
 export interface RenameFileInfo {
   name: string;
@@ -1337,6 +1394,22 @@ export const ipc = {
     invoke<void>('undo_rename', { dir, pairs }),
   /** 读取撤销日志（无日志返回 null）。 */
   readRenameLog: () => invoke<RenameLog | null>('read_rename_log'),
+  /** 打开比较/合并窗口（已存在则更新请求并聚焦）。 */
+  openCompareWindow: (request: CompareRequest) =>
+    invoke<void>('open_compare_window', { request }),
+  /** 取走待处理比较请求（比较窗口启动/收到通知时调用）。 */
+  takeCompareRequest: () => invoke<CompareRequest | null>('take_compare_request'),
+  /** 加载双栏比较（两个磁盘文件）。 */
+  diffDocs: (left: string, right: string) => invoke<DiffDocs>('diff_docs', { left, right }),
+  /** 加载三方合并（base / ours / theirs）。 */
+  merge3Docs: (base: string, ours: string, theirs: string) =>
+    invoke<MergeDocs>('merge3_docs', { base, ours, theirs }),
+  /** 取一侧行文本窗口（最多 10000 行）。 */
+  compareRows: (side: 'left' | 'right' | 'extra', start: number, count: number) =>
+    invoke<string[]>('compare_rows', { side, start, count }),
+  /** 取合并输出行（按来源与区间）。 */
+  mergeRows: (source: 'base' | 'ours' | 'theirs', start: number, count: number) =>
+    invoke<string[]>('merge_rows', { source, start, count }),
   /** 剪贴板历史（读取最新列表）。 */
   listClipboardHistory: () => invoke<ClipboardEntry[]>('list_clipboard_history'),
   /** 记录一次复制到历史（空文本/禁用时后端 no-op；返回最新列表）。 */
