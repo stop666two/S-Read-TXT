@@ -264,7 +264,7 @@ impl PageMode {
     }
 }
 
-/// 阅读模式配置（`reader.json` 的 `reading` 节点；P2-4）。
+/// 阅读模式配置（`reader.json` 的 `reading` 节点）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ReadingSettings {
@@ -328,7 +328,7 @@ pub struct ReaderSettings {
     pub margins: MarginSettings,
     /// 背景图
     pub background: BackgroundSettings,
-    /// 阅读模式（分栏/自动滚动/专注/打字机/提醒/统计/翻页等；P2-4）
+    /// 阅读模式（分栏/自动滚动/专注/打字机/提醒/统计/翻页等）
     pub reading: ReadingSettings,
 }
 

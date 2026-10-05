@@ -69,11 +69,11 @@
   autoPairs?: AutoPairsSettings | null;
   /** 清理类操作设置（透传编辑层；未就绪为 null） */
   cleanupSettings?: CleanupSettings | null;
-    /** 状态栏：顶部可视行回报（1 基；P2-1） */
+    /** 状态栏：顶部可视行回报（1 基） */
     onTopRow?: (row: number) => void;
     /** 翻页信号（App 快捷键；分屏路径消费） */
     pageTurn?: { seq: number; kind: 'up' | 'down' | 'top' | 'bottom' } | null;
-    /** 状态栏：选区统计透传（编辑层；P2-1） */
+    /** 状态栏：选区统计透传（编辑层） */
     onSelectionStats?: (stats: TextStats | null) => void;
     /** 状态栏：光标行列透传（编辑层） */
     onCaretInfo?: (info: { row: number; column: number }) => void;

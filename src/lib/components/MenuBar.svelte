@@ -157,7 +157,7 @@
   let openMenu = $state<MenuName | null>(null);
   /** 「最近打开」子菜单展开（悬停/点击切换） */
   let recentOpen = $state(false);
-  /** 「复制为」子菜单展开（悬停控制；P1-5） */
+  /** 「复制为」子菜单展开（悬停控制） */
   let copyAsOpen = $state(false);
   /** 清理子菜单展开态。 */
   let cleanupOpen = $state(false);

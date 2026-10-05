@@ -120,7 +120,7 @@ pub const DEFAULT_MARGIN: u32 = 48;
 /// 页边距允许范围（px，闭区间）
 pub const MARGIN_RANGE: (u32, u32) = (0, 2000);
 
-// ---------- reader.json · reading（阅读模式；P2-4） ----------
+// ---------- reader.json · reading（阅读模式） ----------
 
 /// 默认分栏数（1 = 单栏）
 pub const DEFAULT_READING_COLUMNS: u32 = 1;
@@ -228,21 +228,21 @@ pub const DEFAULT_CLEANUP_TRAILING_NEWLINE: bool = true;
 
 // ---------- settings.json / 查找与正则 ----------
 
-/// 默认区分大小写（F-01）
+/// 默认区分大小写
 pub const DEFAULT_FIND_CASE_SENSITIVE: bool = false;
-/// 默认全词匹配（F-02；仅字面模式生效）
+/// 默认全词匹配（仅字面模式生效）
 pub const DEFAULT_FIND_WHOLE_WORD: bool = false;
-/// 默认循环查找（F-05）
+/// 默认循环查找
 pub const DEFAULT_FIND_WRAP_AROUND: bool = true;
-/// 默认高亮全部匹配（F-06）
+/// 默认高亮全部匹配
 pub const DEFAULT_FIND_HIGHLIGHT_ALL: bool = true;
-/// 默认显示匹配计数（F-07）
+/// 默认显示匹配计数
 pub const DEFAULT_FIND_MATCH_COUNT: bool = true;
-/// 默认替换预览（F-08）
+/// 默认替换预览
 pub const DEFAULT_FIND_REPLACE_PREVIEW: bool = true;
-/// 默认查找范围（F-09）
+/// 默认查找范围
 pub const DEFAULT_FIND_SCOPE: FindScope = FindScope::Document;
-/// 默认查找历史条数（F-10）
+/// 默认查找历史条数
 pub const DEFAULT_FIND_HISTORY_LIMIT: u32 = 50;
 /// 查找历史条数范围（闭区间）
 pub const FIND_HISTORY_LIMIT_RANGE: (u32, u32) = (0, 100_000);
@@ -252,15 +252,15 @@ pub const DEFAULT_FIND_MULTIFILE_ENABLED: bool = true;
 pub const DEFAULT_FIND_MULTIFILE_CONCURRENCY: u32 = 4;
 /// 多文件搜索并发数允许范围（闭区间）
 pub const FIND_MULTIFILE_CONCURRENCY_RANGE: (u32, u32) = (1, 128);
-/// 默认高亮颜色（空串 = 跟随主题内置色；F-11）
+/// 默认高亮颜色（空串 = 跟随主题内置色）
 pub const DEFAULT_FIND_HIGHLIGHT_COLOR: &str = "";
-/// 默认正则超时（毫秒；F-03）
+/// 默认正则超时（毫秒）
 pub const DEFAULT_REGEX_TIMEOUT_MS: u32 = 500;
 /// 正则超时范围（毫秒，闭区间）
 pub const REGEX_TIMEOUT_MS_RANGE: (u32, u32) = (10, 600_000);
-/// 正则库条目上限（F-14）
+/// 正则库条目上限
 pub const REGEX_LIBRARY_MAX_ITEMS: u32 = 200;
-/// 正则库单条最大字符数（F-14）
+/// 正则库单条最大字符数
 pub const REGEX_LIBRARY_MAX_CHARS: u32 = 512;
 
 // ---------- settings.json：状态栏 ----------
@@ -312,7 +312,7 @@ pub const DEFAULT_DISPLAY_SCROLLBAR_MARKERS: bool = true;
 pub const DEFAULT_DISPLAY_FOLDING: FoldingMode = FoldingMode::Off;
 /// 默认是否启用大纲面板
 pub const DEFAULT_DISPLAY_OUTLINE: bool = true;
-/// 默认是否显示面包屑（V-10）
+/// 默认是否显示面包屑
 pub const DEFAULT_DISPLAY_BREADCRUMB: bool = true;
 /// 大纲正则条目数量上限
 pub const OUTLINE_PATTERNS_MAX_ITEMS: u32 = 32;
@@ -324,7 +324,7 @@ pub const DEFAULT_OUTLINE_PATTERNS: &[&str] = &[
     r"^\s*(?:Chapter|CHAPTER|Part|PART)\s+(?:[0-9]+|[IVXLCDM]+)\b",
 ];
 
-// ---------- settings.json / file（文件与快照；P3-1） ----------
+// ---------- settings.json / file（文件与快照） ----------
 
 /// 新建文件默认编码（下拉取值见文档；非法回退此项）
 pub const DEFAULT_FILE_NEW_ENCODING: &str = "UTF-8";

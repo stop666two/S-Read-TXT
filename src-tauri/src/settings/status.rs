@@ -1,4 +1,4 @@
-//! 状态栏设置（`settings.json` 嵌套对象 `status`；P2-1 状态栏 v2）。
+//! 状态栏设置（`settings.json` 嵌套对象 `status`）。
 //!
 //! 字段、默认值与范围以 `docs/configuration.md` §2.1 为准（保持同步）。
 //! 显示项为字符串 id 列表（白名单见 [`crate::settings::defaults::STATUS_ITEM_IDS`]），

@@ -589,7 +589,7 @@ export const en: Record<MessageKey, string> = {
   'setting.app.display.outline': 'Outline panel',
   'setting.app.display.outline.desc': 'Built-in chapter regex (editable) with click-to-jump',
   'setting.app.display.breadcrumb': 'Breadcrumb',
-  'setting.app.display.breadcrumb.desc': 'Show the chapter path of the current row at the top of the reader (V-10)',
+  'setting.app.display.breadcrumb.desc': 'Show the chapter path of the current row at the top of the reader',
   'setting.app.display.outlinePatterns': 'Outline patterns',
   'setting.app.display.outlinePatterns.desc': 'One regex per entry; a matching row becomes a chapter (empty list falls back to defaults)',
   'setting.enum.display.invisible.space': 'Space ·',

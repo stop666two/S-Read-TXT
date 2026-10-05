@@ -1,4 +1,4 @@
-//! 显示选项设置（`settings.json` 嵌套对象 `display`；P2-2）。
+//! 显示选项设置（`settings.json` 嵌套对象 `display`）。
 //!
 //! 字段、默认值与范围以 `docs/configuration.md` §2.1 为准（保持同步）。
 //! 不可见字符标记为字符串 id 列表（白名单见
@@ -92,7 +92,7 @@ pub struct DisplaySettings {
     pub folding: FoldingMode,
     /// 大纲面板
     pub outline: bool,
-    /// 面包屑（V-10）
+    /// 面包屑
     pub breadcrumb: bool,
     /// 大纲正则（逐条正则；归一后空列表回退内置默认）
     pub outline_patterns: Vec<String>,

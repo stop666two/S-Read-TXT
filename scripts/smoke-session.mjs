@@ -249,7 +249,7 @@ async function main() {
     currentStep = 'T4 干净退出';
     winOp(second.child.pid, 'close');
     const exited2 = await waitGone(second.child.pid);
-    check('T4 第二阶段应用已退出', exited2 === true);
+    check('T4 步骤二应用已退出', exited2 === true);
     second.client?.close?.();
 
     // ---- 步骤 3：删除 b → 缺失文件跳过 ----

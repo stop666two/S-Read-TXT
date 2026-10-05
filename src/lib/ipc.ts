@@ -577,7 +577,7 @@ export interface MarginSettings {
   editing: Margin4;
 }
 
-/** 阅读模式设置（与 Rust `ReadingSettings` 对应；P2-4）。 */
+/** 阅读模式设置（与 Rust `ReadingSettings` 对应）。 */
 export interface ReadingSettings {
   columns: number;
   autoScrollSpeed: number;
@@ -936,9 +936,9 @@ export const ipc = {
   listTabs: () => invoke<TabsView>('list_tabs'),
   /** 关闭标签（返回剩余视图）。 */
   closeTab: (tabId: number) => invoke<TabsView>('close_tab', { tabId }),
-  /** 文档统计（全文件流式；P2-1）。 */
+  /** 文档统计（全文件流式）。 */
   documentStats: (tabId: number) => invoke<TextStats>('document_stats', { tabId }),
-  /** 选区统计（编辑态；半开 UTF-16 区间；P2-1）。 */
+  /** 选区统计（编辑态；半开 UTF-16 区间）。 */
   selectionStats: (
     tabId: number,
     fromRow: number,
@@ -946,7 +946,7 @@ export const ipc = {
     toRow: number,
     toUtf16: number,
   ) => invoke<TextStats>('selection_stats', { tabId, fromRow, fromUtf16, toRow, toUtf16 }),
-  /** 全文档换行符转换（编辑态；P2-1d）。 */
+  /** 全文档换行符转换（编辑态）。 */
   convertEol: (tabId: number, target: 'lf' | 'crlf' | 'cr') =>
     invoke<EolConvertOutcome>('convert_eol', { tabId, target }),
   /** 同步活动标签到后端（点击/快捷键选择后调用）。 */

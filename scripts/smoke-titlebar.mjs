@@ -187,7 +187,7 @@ async function main() {
       hit ?? '',
     );
 
-    // T9：标题栏「打开设置」齿轮 → 设置窗口打开 → 关闭（B 批次新增入口回归）
+    // T9：标题栏「打开设置」齿轮 → 设置窗口打开 → 关闭
     currentStep = 'T9 标题栏设置入口';
     await evalJs(
       `(() => { const o = document.querySelector('[role="dialog"][aria-label="使用向导"]');

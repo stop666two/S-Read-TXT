@@ -576,7 +576,7 @@ export const zhCN = {
   'setting.app.display.outline': '大纲面板',
   'setting.app.display.outline.desc': '内置章节正则（可编辑）+ 点击跳转',
   'setting.app.display.breadcrumb': '面包屑',
-  'setting.app.display.breadcrumb.desc': '在阅读区顶部显示当前行所在章节路径（V-10）',
+  'setting.app.display.breadcrumb.desc': '在阅读区顶部显示当前行所在章节路径',
   'setting.app.display.outlinePatterns': '大纲正则',
   'setting.app.display.outlinePatterns.desc': '逐条正则，行匹配成功即视为章节（空列表回退内置默认）',
   'setting.enum.display.invisible.space': '空格 ·',

@@ -56,7 +56,7 @@ pub fn runtime_override() -> Option<PathBuf> {
 /// 迁移指针文件名（位于程序目录）
 pub const POINTER_FILE: &str = "config.json";
 
-/// 迁移指针内容（`config.json`；P0-10 迁移写入，启动时读取）
+/// 迁移指针内容（`config.json`；迁移写入，启动时读取）
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DataDirPointer {
