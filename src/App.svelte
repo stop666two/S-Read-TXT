@@ -31,6 +31,7 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import ToolBar from './lib/components/ToolBar.svelte';
   import UnsavedDialog from './lib/components/UnsavedDialog.svelte';
   import WorkspaceFindDialog from './lib/components/WorkspaceFindDialog.svelte';
+  import SplitFileDialog from './lib/components/SplitFileDialog.svelte';
   import { formatBytes } from './lib/format';
   import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
@@ -121,6 +122,7 @@ let outlineOpen = $state(false);
   }
   /** 工作区查找与替换弹窗开关（编辑菜单入口） */
   let workspaceOpen = $state(false);
+  let splitOpen = $state(false);
 
   /** 跳转到工作区命中：必要时切换标签，然后广播定位请求（ReaderView/EditLayer 消费）。 */
   async function jumpToHit(file: WorkspaceFileResult, hit: WorkspaceHit): Promise<void> {
@@ -2012,6 +2014,7 @@ onMount(() => {
     onAnnotationsPanel={() => (annotationsOpen = true)}
     onClearAnnotations={() => (annotClearOpen = true)}
     onWorkspaceFind={() => (workspaceOpen = true)}
+    onOpenSplit={() => (splitOpen = true)}
     workspaceFindEnabled={appSettings?.find.multifileEnabled !== false}
     onSettings={() => void ipc.openSettings()}
     canSplit={paneCount < MAX_PANES}
@@ -2190,6 +2193,9 @@ onMount(() => {
     onClose={() => (workspaceOpen = false)}
     onJump={(file, hit) => void jumpToHit(file, hit)}
   />
+{/if}
+{#if splitOpen}
+  <SplitFileDialog currentPath={active?.path ?? null} onClose={() => (splitOpen = false)} />
 {/if}
   <DropOverlay visible={dragging} />
   <SaveDialog

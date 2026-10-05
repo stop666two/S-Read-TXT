@@ -945,6 +945,48 @@ export interface WorkspaceReplaceResponse {
   skipped: number;
 }
 
+/** 拆分模式：按行数。 */
+export interface SplitLinesMode {
+  kind: 'lines';
+  linesPerFile: number;
+}
+
+/** 拆分模式：按标记（匹配行前切割，匹配行归下一片）。 */
+export interface SplitMarkerMode {
+  kind: 'marker';
+  marker: string;
+  isRegex: boolean;
+}
+
+export type SplitMode = SplitLinesMode | SplitMarkerMode;
+
+/** 拆分预览中的单个分片。 */
+export interface SplitPart {
+  index: number;
+  name: string;
+  lines: number;
+  bytes: number;
+  head: string;
+  tail: string;
+  overwrites: boolean;
+}
+
+/** 拆分预览（不写盘；parts 仅为前若干片的样例）。 */
+export interface SplitPreview {
+  parts: SplitPart[];
+  totalParts: number;
+  totalLines: number;
+  totalBytes: number;
+  skippedEmpty: number;
+  outDir: string;
+}
+
+/** 拆分执行结果。 */
+export interface SplitResult {
+  files: string[];
+  bytes: number;
+}
+
 export const ipc = {
   /** 应用信息（版本 / 数据目录）。 */
   getAppInfo: () => invoke<AppInfo>('get_app_info'),
@@ -1220,6 +1262,12 @@ export const ipc = {
     }),
   exportText: (tabId: number, path: string) => invoke<number>('export_text', { tabId, path }),
   printDocument: (tabId: number) => invoke<void>('print_document', { tabId }),
+  /** 拆分预览（不写盘；outDir 缺省为源文件目录）。 */
+  previewSplit: (path: string, mode: SplitMode, outDir?: string) =>
+    invoke<SplitPreview>('preview_split', { path, mode, outDir: outDir ?? null }),
+  /** 执行拆分（流式 + 原子写；同名覆盖）。 */
+  applySplit: (path: string, mode: SplitMode, outDir?: string) =>
+    invoke<SplitResult>('apply_split', { path, mode, outDir: outDir ?? null }),
   /** 剪贴板历史（读取最新列表）。 */
   listClipboardHistory: () => invoke<ClipboardEntry[]>('list_clipboard_history'),
   /** 记录一次复制到历史（空文本/禁用时后端 no-op；返回最新列表）。 */

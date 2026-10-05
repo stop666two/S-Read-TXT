@@ -27,9 +27,16 @@ pub const PREVIEW_SNIPPET_BYTES: usize = 200;
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum SplitMode {
     /// 每 `lines_per_file` 行切一片（最后一片可少）。
-    Lines { lines_per_file: u64 },
+    Lines {
+        #[serde(rename = "linesPerFile")]
+        lines_per_file: u64,
+    },
     /// 匹配行前切割（匹配行归下一片）；纯文本用包含匹配，正则用行匹配。
-    Marker { marker: String, is_regex: bool },
+    Marker {
+        marker: String,
+        #[serde(rename = "isRegex")]
+        is_regex: bool,
+    },
 }
 
 /// 单个分片的元信息（预览用）。
@@ -46,11 +53,12 @@ pub struct SplitPart {
     pub overwrites: bool,
 }
 
-/// 拆分预览计划。
+/// 拆分预览计划（`parts` 仅保留前 `PREVIEW_PARTS` 片，`total_parts` 为真实总数）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SplitPlan {
     pub parts: Vec<SplitPart>,
+    pub total_parts: u32,
     pub total_lines: u64,
     pub total_bytes: u64,
     pub skipped_empty: u32,
@@ -191,6 +199,7 @@ pub fn plan_file(
     let matcher = Matcher::build(mode)?;
 
     let mut parts: Vec<SplitPart> = Vec::new();
+    let mut total_parts: u32 = 0;
     let mut total_lines: u64 = 0;
     let mut total_bytes: u64 = 0;
     let mut skipped_empty: u32 = 0;
@@ -206,19 +215,22 @@ pub fn plan_file(
             if lines == 0 || bytes == 0 {
                 return Ok(());
             }
-            let name = part_name(&target.stem, &target.ext, index);
-            let overwrites = target.out_dir.join(&name).is_file();
-            parts.push(SplitPart {
-                index,
-                name,
-                lines,
-                bytes,
-                head: snippet(head),
-                tail: snippet(tail),
-                overwrites,
-            });
-            if parts.len() > MAX_PARTS {
-                return Err(SplitError::TooManyParts(parts.len()));
+            total_parts += 1;
+            if total_parts as usize > MAX_PARTS {
+                return Err(SplitError::TooManyParts(total_parts as usize));
+            }
+            if parts.len() < PREVIEW_PARTS {
+                let name = part_name(&target.stem, &target.ext, index);
+                let overwrites = target.out_dir.join(&name).is_file();
+                parts.push(SplitPart {
+                    index,
+                    name,
+                    lines,
+                    bytes,
+                    head: snippet(head),
+                    tail: snippet(tail),
+                    overwrites,
+                });
             }
             Ok(())
         };
@@ -267,11 +279,12 @@ pub fn plan_file(
         flush(current_index, current_lines, current_bytes, &head, &tail)?;
     }
 
-    if parts.is_empty() {
+    if total_parts == 0 {
         return Err(SplitError::EmptyResult);
     }
     Ok(SplitPlan {
         parts,
+        total_parts,
         total_lines,
         total_bytes,
         skipped_empty,
@@ -339,7 +352,7 @@ pub fn apply_file(
     }
     flush(&mut buffer, &mut index)?;
 
-    debug_assert_eq!(files.len(), plan.parts.len());
+    debug_assert_eq!(files.len() as u32, plan.total_parts);
     Ok(AppliedSplit {
         files,
         bytes: written_bytes,

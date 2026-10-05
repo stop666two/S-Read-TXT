@@ -106,6 +106,8 @@
     onSplitDown?: () => void;
     /** 关闭当前栏（标签并入相邻栏） */
     onClosePane?: () => void;
+    /** 打开「拆分文件」对话框 */
+    onOpenSplit?: () => void;
   }
   let {
     themeId,
@@ -164,10 +166,11 @@
     onSplitRight,
     onSplitDown,
     onClosePane,
+    onOpenSplit,
   }: Props = $props();
 
   /** 菜单名联合类型 */
-  type MenuName = 'file' | 'edit' | 'view' | 'help';
+  type MenuName = 'file' | 'edit' | 'view' | 'tools' | 'help';
   /** 当前展开的菜单（null = 全部收起） */
   let openMenu = $state<MenuName | null>(null);
   /** 「最近打开」子菜单展开（悬停/点击切换） */
@@ -215,6 +218,7 @@
   <button class="title" class:open={openMenu === 'file'} onclick={(e) => { e.stopPropagation(); toggle('file'); }} onmouseenter={() => hoverSwitch('file')}>{t('menu.file')}</button>
   <button class="title" class:open={openMenu === 'edit'} onclick={(e) => { e.stopPropagation(); toggle('edit'); }} onmouseenter={() => hoverSwitch('edit')}>{t('menu.edit')}</button>
   <button class="title" class:open={openMenu === 'view'} onclick={(e) => { e.stopPropagation(); toggle('view'); }} onmouseenter={() => hoverSwitch('view')}>{t('menu.view')}</button>
+  <button class="title" class:open={openMenu === 'tools'} onclick={(e) => { e.stopPropagation(); toggle('tools'); }} onmouseenter={() => hoverSwitch('tools')}>{t('menu.tools')}</button>
   <button class="title" class:open={openMenu === 'help'} onclick={(e) => { e.stopPropagation(); toggle('help'); }} onmouseenter={() => hoverSwitch('help')}>{t('menu.help')}</button>
 
   {#if openMenu === 'file'}
@@ -480,8 +484,12 @@
       <button class="item" disabled={!canSplit} onclick={() => run(() => onSplitDown?.())}><span>{t('menu.view.splitDown')}</span><span class="hint">Ctrl+Shift+\</span></button>
       <button class="item" disabled={!canClosePane} onclick={() => run(() => onClosePane?.())}><span>{t('menu.view.closePane')}</span><span class="hint">Ctrl+Shift+W</span></button>
     </div>
-  {:else if openMenu === 'help'}
+  {:else if openMenu === 'tools'}
     <div class="dropdown" role="menu" style="left: 130px">
+      <button class="item" onclick={() => run(() => onOpenSplit?.())}><span>{t('tools.split.menu')}</span></button>
+    </div>
+  {:else if openMenu === 'help'}
+    <div class="dropdown" role="menu" style="left: 172px">
       <button class="item" onclick={() => run(() => onOpenShortcuts?.())}><span>{t('menu.help.shortcuts')}</span></button>
       <button class="item" onclick={() => run(() => onOpenAbout?.())}><span>{t('menu.help.about')}</span></button>
     </div>
