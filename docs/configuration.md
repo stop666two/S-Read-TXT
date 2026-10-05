@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `15` | `14` | 配置格式版本（当前 v15；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `16` | `15` | 配置格式版本（当前 v16；启动自动迁移旧版，见 §2.7） |
 | `display.lineNumbers` | boolean | `true`/`false` | `false` | 显示行号（显示行序号，1 基；P2-2） |
 | `display.relativeLineNumbers` | boolean | `true`/`false` | `false` | 相对行号（相对编辑光标 / 阅读顶部行） |
 | `display.highlightCurrentLine` | boolean | `true`/`false` | `true` | 高亮当前行 |
@@ -47,8 +47,12 @@
 | `saveBackupEnabled` | boolean | `true`/`false` | `true` | 首次保存前是否生成 `.bak` 备份 |
 | `showOnboarding` | boolean | `true`/`false` | `true` | 是否显示首启引导；用户选择「不再显示」后置 `false` |
 | `locale` | string | `zh-CN` / `en` | `zh-CN` | 界面语言（BCP 47 标签；未知值归一为默认；即时切换） |
-| `startup.restoreSession` | boolean | `true`/`false` | `true` | 启动时恢复上次会话（窗口数与各窗口标签及阅读位置；多窗口一并恢复） |
+| `startup.restoreSession` | boolean | `true`/`false` | `true` | 启动时恢复上次会话（窗口数与各窗口标签及阅读位置）；关闭后仍按窗口布局恢复窗口数量与几何，但不重开文件 |
 | `startup.restoreWindow` | boolean | `true`/`false` | `true` | 启动时恢复窗口位置与大小；关闭后使用默认几何（居中 1100×760） |
+| `startup.restoreItems.caret` | boolean | `true`/`false` | `false` | 会话恢复：编辑标签光标行列（0 基存储；越界裁剪到末行并提示） |
+| `startup.restoreItems.scroll` | boolean | `true`/`false` | `true` | 会话恢复：各标签滚动位置（文件行号；越界裁剪） |
+| `startup.restoreItems.folds` | boolean | `true`/`false` | `false` | 会话恢复：折叠区域（起始行 + 长度；不匹配当前区间时丢弃该条） |
+| `startup.restoreItems.layout` | boolean | `true`/`false` | `true` | 会话恢复：窗口数量、栏位切分与分隔比例；关闭时各窗合并为单栏 |
 | `status.items` | string[] | 白名单 id | `["lineCol","counts","progress","size","encoding","eol","modified"]` | 状态栏显示项与顺序（可选：`lineCol`/`counts`/`words`/`progress`/`size`/`encoding`/`eol`/`modified`） |
 | `status.countMode` | string | `grapheme`/`codepoint`/`byte` | `grapheme` | 字数统计口径（字素簇/码点/字节） |
 | `status.tabWidth` | number | 1–128 | `4` | Tab 字符的显示宽度 |
@@ -107,7 +111,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `15` | `14` | 配置格式版本（当前 v15；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `16` | `15` | 配置格式版本（当前 v16；启动自动迁移旧版，见 §2.7） |
 | `theme` | string | `system` / `light` / `dark` / `eye-green` / `paper-cream` / `high-contrast` / `minimal-gray` / 用户主题 id | `system` | 主题 id；`system` 跟随系统明暗解析；用户主题来自 `data/themes/<id>.json`（导入生成） |
 | `themeAnimEnabled` | boolean | `true`/`false` | `true` | 主题切换过渡动画（尊重系统「减少动态效果」） |
 | `themeAnimMs` | number | 0–10000 整数 | `200` | 主题过渡时长（ms；0 = 无过渡） |
@@ -144,7 +148,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `15` | `14` | 配置格式版本（当前 v15；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `16` | `15` | 配置格式版本（当前 v16；启动自动迁移旧版，见 §2.7） |
 | `bindings` | object | 动作 id → 组合键字符串 | 见下表 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
 
 组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`）。
@@ -169,7 +173,7 @@ v1 单窗口结构（顶层 `window`/`activeTabIndex`/`tabs`）在载入时自�
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `2` | `2` | 会话格式版本（独立于设置 schema：v1 → v2 = 单窗口 → 多窗口） |
+| `schemaVersion` | number | 固定 `4` | `4` | 会话格式版本（独立于设置 schema：v2 多窗口 → v3 栏位 panes/layout/focusedPane → v4 标签光标与折叠） |
 | `focusedLabel` | string \| null | 窗口 label | `null` | 最后聚焦的主窗口（`main` / `main-2`…）；启动时激活该窗口 |
 | `windows[]` | array | 见下 | `[]` | 各窗口会话切片（各窗口各自保存/恢复；关闭单个窗口移除其切片，整体退出保留） |
 | `windows[].label` | string | `main` / `main-2`… | — | 窗口标识（保存时由后端按调用窗口覆写） |
@@ -202,7 +206,7 @@ v1 单窗口结构（顶层 `window`/`activeTabIndex`/`tabs`）在载入时自�
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v15）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键；v12→v13 新增 `reading` 节；v13→v14 新增显示折叠/大纲/面包屑字段；v14→v15 新增 `file` 节与快照设置）：
+**schema 版本（当前 v16）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立，当前 v4）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键；v12→v13 新增 `reading` 节；v13→v14 新增显示折叠/大纲/面包屑字段；v14→v15 新增 `file` 节与快照设置；v15→v16 新增会话恢复内容细项 `startup.restoreItems`）：
 
 | 情况 | 行为 |
 |---|---|

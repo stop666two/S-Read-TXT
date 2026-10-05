@@ -437,10 +437,19 @@ export interface HistorySettings {
   retentionDays: number;
 }
 
+/** 会话恢复内容细项（与 Rust `RestoreItems` 对应）。 */
+export interface RestoreItems {
+  caret: boolean;
+  scroll: boolean;
+  folds: boolean;
+  layout: boolean;
+}
+
 /** 启动行为（与 Rust `StartupSettings` 对应）。 */
 export interface StartupSettings {
   restoreSession: boolean;
   restoreWindow: boolean;
+  restoreItems: RestoreItems;
 }
 
 /** 主配置（与 Rust `AppSettings` 对应；字段名以 Rust 序列化为准）。 */

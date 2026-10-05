@@ -24,7 +24,9 @@ use crate::settings::status::CountMode;
 /// v12：页边距改四向「阅读/编辑两套」（typography.pagePadding → margins，S4）。
 /// v13：新增阅读模式设置节（reading，P2-4）。
 /// v14：新增显示折叠/大纲/面包屑字段。
-pub const SCHEMA_VERSION: u32 = 15;
+/// v15：默认翻页平滑滚动字段补齐（空步迁移）。
+/// v16：新增会话恢复内容细项开关（startup.restoreItems）。
+pub const SCHEMA_VERSION: u32 = 16;
 
 // ---------- settings.json ----------
 
@@ -171,6 +173,14 @@ pub const DEFAULT_SMOOTH_SCROLL: bool = true;
 pub const DEFAULT_STARTUP_RESTORE_SESSION: bool = true;
 /// 启动默认恢复窗口位置与大小
 pub const DEFAULT_STARTUP_RESTORE_WINDOW: bool = true;
+/// 会话语义：默认恢复编辑标签光标位置（新能力，opt-in）
+pub const DEFAULT_STARTUP_RESTORE_CARET: bool = false;
+/// 会话语义：默认恢复滚动位置
+pub const DEFAULT_STARTUP_RESTORE_SCROLL: bool = true;
+/// 会话语义：默认恢复折叠状态（新能力，opt-in）
+pub const DEFAULT_STARTUP_RESTORE_FOLDS: bool = false;
+/// 会话语义：默认恢复窗口与栏位布局
+pub const DEFAULT_STARTUP_RESTORE_LAYOUT: bool = true;
 
 // ---------- settings.json / 编辑器行操作默认值 ----------
 

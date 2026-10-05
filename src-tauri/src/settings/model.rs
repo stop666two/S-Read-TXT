@@ -146,6 +146,8 @@ pub struct StartupSettings {
     pub restore_session: bool,
     /// 启动时恢复窗口位置与大小
     pub restore_window: bool,
+    /// 会话恢复内容细项（总开关关闭时仍按窗口布局恢复窗口数量与几何）
+    pub restore_items: RestoreItems,
 }
 
 impl Default for StartupSettings {
@@ -153,6 +155,32 @@ impl Default for StartupSettings {
         Self {
             restore_session: defaults::DEFAULT_STARTUP_RESTORE_SESSION,
             restore_window: defaults::DEFAULT_STARTUP_RESTORE_WINDOW,
+            restore_items: RestoreItems::default(),
+        }
+    }
+}
+
+/// 会话恢复内容细项（`startup.restoreItems`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RestoreItems {
+    /// 恢复编辑标签的光标位置
+    pub caret: bool,
+    /// 恢复滚动位置（所有标签）
+    pub scroll: bool,
+    /// 恢复折叠状态（起始行 + 长度校验）
+    pub folds: bool,
+    /// 恢复窗口与栏位布局（多窗口数量、切分与比例）
+    pub layout: bool,
+}
+
+impl Default for RestoreItems {
+    fn default() -> Self {
+        Self {
+            caret: defaults::DEFAULT_STARTUP_RESTORE_CARET,
+            scroll: defaults::DEFAULT_STARTUP_RESTORE_SCROLL,
+            folds: defaults::DEFAULT_STARTUP_RESTORE_FOLDS,
+            layout: defaults::DEFAULT_STARTUP_RESTORE_LAYOUT,
         }
     }
 }

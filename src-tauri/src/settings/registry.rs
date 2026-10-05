@@ -155,6 +155,26 @@ pub const SPECS: &[SettingSpec] = &[
         group: "app.startup",
         kind: SettingKind::Bool,
     },
+    SettingSpec {
+        id: "app.startup.restoreItems.caret",
+        group: "app.startup",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.startup.restoreItems.scroll",
+        group: "app.startup",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.startup.restoreItems.folds",
+        group: "app.startup",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.startup.restoreItems.layout",
+        group: "app.startup",
+        kind: SettingKind::Bool,
+    },
     // ---------- settings.json / 编辑器行操作 ----------
     SettingSpec {
         id: "app.editor.lines.defaultScope",

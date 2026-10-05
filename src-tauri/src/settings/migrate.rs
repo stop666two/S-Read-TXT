@@ -75,6 +75,7 @@ const STEPS: &[(u32, MigrationStep)] = &[
     (12, v12_to_v13),
     (13, v13_to_v14),
     (14, v14_to_v15),
+    (15, v15_to_v16),
 ];
 
 /// v7 → v8：新增 `editor.insert` / `editor.autoPairs` / `editor.cleanup` 字段（serde default 补齐）。
@@ -154,6 +155,9 @@ fn v12_to_v13(_value: &mut Value) {}
 /// v13→v14：新增显示折叠/大纲/面包屑字段（serde 默认补齐，空操作）。
 fn v13_to_v14(_value: &mut Value) {}
 fn v14_to_v15(_value: &mut Value) {}
+
+/// v15→v16：新增会话恢复内容细项（serde 默认补齐，空操作）。
+fn v15_to_v16(_value: &mut Value) {}
 
 /// 把 JSON 值从 `from` 版本沿迁移链推进到当前版本，并把 `schemaVersion` 字段改为当前值。
 ///
