@@ -493,4 +493,19 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 测试基线：Rust **457**（429 lib + 15 对抗 + 2 提权助手 + 6 统计流 + 5 集成）；vitest 115；svelte-check 0/0；E2E **39 套 ≈611 项**；verify-all **48 步**（smoke-uninstall 仍按用户 UAC 策略以 `--exclude` 排除）。
 - 最终全量自检：**47/47 通过（另有 1 项排除），总耗时 1063.1s**；报告 `docs/verify/latest.md`；期间修复 smoke-find 菜单点击重试与历史清空竞态、smoke-buttons D12b 断言表达式（16 行）。
 - 本阶段教训：PowerShell 改写文本会破坏 UTF-8（一律用 edit/write 工具）；CDP `Input.dispatchMouseEvent` 不会钳制越界坐标（拖出行为可自动化）；首启引导遮罩会拦截真实指针（E2E 必须先 `dismissOnboarding`）；`plugin:window|set_position` 的 value 须为 `{ Physical: { x, y } }` 枚举形状；`cargo build` 产物是 dev 语义不可实测（须 tauri CLI 构建）。
-- 下一切片：P3-5 分屏（D52 剩余：窗口内 ≤4 栏）；随后 P3-6、P3-7 会话扩展（`restoreItems` 多选项）。
+### P3-5 窗口内分屏、栏位独立标签组（完成）
+- 实现（按 `docs/plan/2026-10-05-p35-split-panes-plan.md` 任务 1-9，分提交存档）：
+  - 任务 1（8eb0fc7）：栏位键 `窗口label#序号` 与命令契约——`close_window_panes`（前缀批量关栏）、`move_tab_to_pane`、`new_file`/`open_file`/`list_tabs` 可选 `pane` 参数（默认 `#1`）、窗口聚合视图；
+  - 任务 2（05a1f3d）：会话 v3（`panes[]`/`layout`/`focusedPane`；v1/v2 自动迁移；布局净化回退）；
+  - 任务 3（52b7287）：拖放协议携带 `client_y`，跨窗/桌面落点定向默认栏 `#1`；
+  - 任务 4（35102b6）：前端标签状态按栏分组（`tabs-groups.ts` + TabStore groups/activePane），单栏行为零回归；
+  - 任务 5a（374201d）：分屏结构与交互——`pane-tree.ts` 布局纯函数、`PaneTree.svelte`（递归树 + 分隔条拖动 + 落点预览）、`PaneView.svelte`（每栏标签条 + 阅读器 + 空态）、拆分/关栏按钮与上限（4 栏）；
+  - 任务 5b（8656254）：菜单「查看 → 拆分」与快捷键 `splitRight`/`splitDown`/`closePane`（动作表 19 项，校验脚本/设置页/断言同步）；
+  - 任务 6（821895f）：激活栏作用域——焦点代理、自动滚动与编辑层焦点归属均限定激活栏；
+  - 任务 7（6b8fc68）：栏间与跨窗拖放——目标窗前端的栏位级落点解析（标签条插入 / 内容边缘分屏 / 居中并入）、悬停预览、Esc 取消、跨窗拖入指定栏；
+  - 任务 8（85d0fbe）：会话持久化落地——逐栏收集/恢复（激活项、滚动锚点、颜色）、比例持久化、v2 迁移端到端；
+  - 任务 9：smoke-split E2E 26 项并入 verify-all（现 49 步）+ README/CHANGELOG/覆盖矩阵收口。
+- 验收证据（真断言探针与套件）：probe-split 8/8、probe-panescope 5/5、probe-panedrag 4/4、probe-xwin 4/4、probe-session3 4/4；smoke-split **26/26**（拆分/独立组/上限/关栏并入/分隔条/快捷键/菜单/栏间拖拽/边缘分屏/Esc/跨窗拖入/重启恢复/v2 迁移）；回归：smoke-tabs 10/10、smoke-windows 19/19、smoke-session 11/11、smoke-cli 7/7。
+- 测试基线：Rust **463**（435 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest **126**；svelte-check 0/0；E2E **40 套 ≈637 项**；verify-all **49 步**。
+- 已知事项：本地（栏内）拖拽的 `Esc` 取由此阶段加入窗口级监听（此前仅原生拖出支持）；首次运行（无任何历史数据）会显示「上次异常退出」提示待评估（见后续登记）。
+- 下一切片：P3-6 比较/合并/拆分/重命名；随后 P3-7 会话扩展（`restoreItems` 多选项）。

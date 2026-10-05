@@ -187,10 +187,17 @@ let outlineOpen = $state(false);
   tabs.setActivePane(`${windowLabel}#1`);
   /** 窗口内分屏布局（叶子=栏位；随会话 v3 持久化）。 */
   let layout = $state<PaneLayout>(leaf(`${windowLabel}#1`));
-  /** 新栏位序号（栏位键 `label#n` 的 n 递增；会话恢复时按已有栏位推进）。 */
-  let paneSeq = 2;
   /** 布局中的全部栏位键（前序） */
   const paneKeys = $derived(collectLeaves(layout));
+  /** 下一个新栏位序号：现有栏位最大序号 + 1（折叠后可复用空闲序号，键保持紧凑稳定）。 */
+  function nextPaneSeq(): number {
+    return (
+      paneKeys.reduce((max, key) => {
+        const seq = Number(key.split('#').pop());
+        return Number.isFinite(seq) ? Math.max(max, seq) : max;
+      }, 0) + 1
+    );
+  }
   /** 栏位数量（多栏渲染与上限判断） */
   const paneCount = $derived(paneKeys.length);
   /** 拖拽悬停的栏位与落点区（预览；null = 无） */
@@ -422,11 +429,6 @@ let outlineOpen = $state(false);
         layoutKeys.every((key) => paneSet.has(key));
       layout = layoutOk ? sessionLayout : leaf(panes[0].pane);
       const restoredKeys = collectLeaves(layout);
-      const maxSeq = restoredKeys.reduce((max, key) => {
-        const seq = Number(key.split('#').pop());
-        return Number.isFinite(seq) ? Math.max(max, seq) : max;
-      }, 0);
-      paneSeq = maxSeq + 1;
       const focused =
         session.focusedPane && paneSet.has(session.focusedPane)
           ? session.focusedPane
@@ -1034,8 +1036,7 @@ let outlineOpen = $state(false);
       toasts.show(t('pane.limit'), 'warn');
       return null;
     }
-    const pane = `${windowLabel}#${paneSeq}`;
-    paneSeq += 1;
+    const pane = `${windowLabel}#${nextPaneSeq()}`;
     layout = replaceLeaf(layout, target, (old) =>
       side === 'before' ? makeSplit(dir, leaf(pane), leaf(old)) : makeSplit(dir, leaf(old), leaf(pane)),
     );

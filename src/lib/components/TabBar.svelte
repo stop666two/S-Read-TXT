@@ -234,14 +234,24 @@
     dragOrigin = null;
   }
 
-  /** 键盘：Esc 取消原生拖拽（拖出后释放）；本地排序不拦截。 */
+  /** 键盘：Esc 取消拖拽（原生拖出与栏内本地拖动均可）。 */
   function onKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || !nativeActive) return;
-    event.preventDefault();
-    nativeActive = false;
-    dropLineLeft = null;
-    dragOrigin = null;
-    void ipc.dragEnd(0, 0, true);
+    if (event.key !== 'Escape') return;
+    if (nativeActive) {
+      event.preventDefault();
+      nativeActive = false;
+      dropLineLeft = null;
+      dragOrigin = null;
+      void ipc.dragEnd(0, 0, true);
+      return;
+    }
+    if (drag?.active) {
+      event.preventDefault();
+      drag = null;
+      dropLineLeft = null;
+      dragOrigin = null;
+      onLocalDragCancel?.();
+    }
   }
 
   /** 标签点击（拖拽结束后的 click 忽略一次）。 */
