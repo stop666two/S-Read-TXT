@@ -113,6 +113,11 @@ class TabStore {
     const pane = this.paneOf(tabId) ?? this.activePane;
     if (pane === '') return;
     this.setActivePane(pane);
+    this.selectIn(pane, tabId);
+  }
+
+  /** 在指定栏选中活动标签但不切换全局激活栏（会话恢复逐栏应用）。 */
+  selectIn(pane: string, tabId: number): void {
     const group = this.groups[pane];
     if (group) {
       this.groups = { ...this.groups, [pane]: { ...group, activeId: tabId } };

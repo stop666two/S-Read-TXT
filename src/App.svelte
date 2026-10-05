@@ -49,7 +49,7 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import { EMPTY_GROUP } from './lib/state/tabs-groups';
   import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type TextStats, type ThemeSummary, type WindowOption, type WindowSession, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
-  import { saveSessionNow } from './lib/session';
+  import { saveSessionNow, setSessionLayout } from './lib/session';
   import { computeDropHit } from './lib/tab-dnd';
   import { dataDirStore } from './lib/state/data-dir.svelte';
   import { historyStore } from './lib/state/history.svelte';
@@ -199,6 +199,11 @@ let outlineOpen = $state(false);
   const PANE_EDGE_RATIO = 0.25;
   const PANE_EDGE_MIN = 40;
   const PANE_EDGE_MAX = 160;
+
+  // 同步会话来源（布局与聚焦栏；collectSession 异步采集时读取最新值）
+  $effect(() => {
+    setSessionLayout($state.snapshot(layout), tabs.activePane);
+  });
 
   /** 生效快捷键绑定（后端为唯一真源；启动加载，设置变更后刷新） */
   let shortcuts = $state<ShortcutMap>({});
@@ -393,55 +398,96 @@ let outlineOpen = $state(false);
       if (import.meta.env.DEV) console.error('[app] 读取会话失败', error);
     }
     try {
-      // v3 会话：取默认栏（`#1`）的锚点；v2 旧切片回退顶层 tabs/activeTabIndex
-      const sessionPanes = Array.isArray(session?.panes) ? session.panes : [];
-      const firstPane = sessionPanes.length > 0 ? sessionPanes[0] : null;
-      const sessionTabs = firstPane ? firstPane.tabs : (session?.tabs ?? []);
-      const activeIndex = firstPane ? firstPane.activeTabIndex : (session?.activeTabIndex ?? 0);
-      if (!session || sessionTabs.length === 0) {
+      const panes = Array.isArray(session?.panes)
+        ? session.panes.filter((item) => item.pane.startsWith(`${windowLabel}#`))
+        : [];
+      const legacyTabs = session?.tabs ?? [];
+      if (!session || (panes.length === 0 && legacyTabs.length === 0)) {
         // 无会话切片时仍需同步后端已有标签（如拖放迁入的新窗口/CLI 先到的文件）
         await tabs.refresh();
         return;
       }
-      const seeds: { tabId: number; row: number }[] = [];
-      for (const item of sessionTabs) {
-        try {
-          const info = await ipc.openFile(item.path, tabs.activePane);
-          if (item.encoding) {
-            await ipc.setEncoding(info.tabId, item.encoding);
-          }
-          if (item.editMode) {
-            try {
-              await ipc.toggleEdit(info.tabId);
-            } catch {
-              // 编辑态恢复失败（文件已变化等）：保持只读，不阻塞其余标签
-            }
-          }
-          if (item.color) {
-            try {
-              await ipc.setTabColor(info.tabId, item.color);
-            } catch {
-              // 颜色恢复失败（调色板变化等）：忽略，不影响其余标签
-            }
-          }
-          seeds.push({ tabId: info.tabId, row: item.scrollRow });
-        } catch (error) {
-          const payload = toIpcError(error);
-          toasts.error(t('app.session.restoreFailed', { path: item.path, reason: describeIpcError(payload) }));
-        }
+      if (panes.length === 0) {
+        // v2 旧切片（后端已迁移，理论不再出现）：并入首栏恢复
+        await restorePaneTabs(`${windowLabel}#1`, legacyTabs, session.activeTabIndex ?? 0, true);
+        return;
       }
-      // 先预热滚动锚点再应用视图：活动标签首次渲染即可恢复到记录位置
-      for (const seed of seeds) {
-        // 进度记忆关闭：不恢复历史位置（会话仍保存窗口与标签）
-        if (readerSettings?.reading.progressMemory !== false) {
-          scrollMemory.seed(seed.tabId, seed.row);
-        }
+      // 应用布局（后端已净化；此处再防御性校验叶子与栏位集合一致）
+      const sessionLayout = session.layout ?? null;
+      const layoutKeys = sessionLayout ? collectLeaves(sessionLayout) : [];
+      const paneSet = new Set(panes.map((item) => item.pane));
+      const layoutOk =
+        sessionLayout !== null &&
+        layoutKeys.length === paneSet.size &&
+        layoutKeys.every((key) => paneSet.has(key));
+      layout = layoutOk ? sessionLayout : leaf(panes[0].pane);
+      const restoredKeys = collectLeaves(layout);
+      const maxSeq = restoredKeys.reduce((max, key) => {
+        const seq = Number(key.split('#').pop());
+        return Number.isFinite(seq) ? Math.max(max, seq) : max;
+      }, 0);
+      paneSeq = maxSeq + 1;
+      const focused =
+        session.focusedPane && paneSet.has(session.focusedPane)
+          ? session.focusedPane
+          : restoredKeys[0];
+      // 逐栏恢复标签（含编码/编辑态/颜色）；先种子滚动位置再应用视图
+      for (const paneSession of panes) {
+        await restorePaneTabs(paneSession.pane, paneSession.tabs, paneSession.activeTabIndex, false);
       }
-      await tabs.refresh();
-      const target = tabs.tabs[activeIndex];
-      if (target) tabs.select(target.tabId);
+      tabs.setActivePane(focused);
     } finally {
       sessionReady = true;
+    }
+  }
+
+  /** 恢复单个栏位的标签（含编码/编辑态/颜色与活动下标）。 */
+  async function restorePaneTabs(
+    pane: string,
+    items: NonNullable<WindowSession['tabs']>,
+    activeIndex: number,
+    initialPane: boolean,
+  ): Promise<void> {
+    const seeds: { tabId: number; row: number }[] = [];
+    for (const item of items) {
+      try {
+        const info = await ipc.openFile(item.path, pane);
+        if (item.encoding) {
+          await ipc.setEncoding(info.tabId, item.encoding);
+        }
+        if (item.editMode) {
+          try {
+            await ipc.toggleEdit(info.tabId);
+          } catch {
+            // 编辑态恢复失败（文件已变化等）：保持只读，不阻塞其余标签
+          }
+        }
+        if (item.color) {
+          try {
+            await ipc.setTabColor(info.tabId, item.color);
+          } catch {
+            // 颜色恢复失败（调色板变化等）：忽略，不影响其余标签
+          }
+        }
+        seeds.push({ tabId: info.tabId, row: item.scrollRow });
+      } catch (error) {
+        const payload = toIpcError(error);
+        toasts.error(t('app.session.restoreFailed', { path: item.path, reason: describeIpcError(payload) }));
+      }
+    }
+    // 先预热滚动锚点再应用视图：活动标签首次渲染即可恢复到记录位置
+    for (const seed of seeds) {
+      // 进度记忆关闭：不恢复历史位置（会话仍保存窗口与标签）
+      if (readerSettings?.reading.progressMemory !== false) {
+        scrollMemory.seed(seed.tabId, seed.row);
+      }
+    }
+    await tabs.refresh(pane);
+    const group = tabs.groups[pane];
+    const target = group?.tabs[activeIndex];
+    if (target) {
+      if (initialPane) tabs.select(target.tabId);
+      else tabs.selectIn(pane, target.tabId);
     }
   }
 
