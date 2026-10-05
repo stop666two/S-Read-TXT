@@ -8,6 +8,7 @@
 #![windows_subsystem = "windows"]
 
 mod commands;
+mod tab_drag;
 
 use std::sync::Mutex;
 
@@ -320,6 +321,7 @@ fn main() {
         .manage(LastFocused::default())
         // 多窗口退出协调器（两阶段：请求 → 全部就绪 → 放行）
         .manage(s_read_txt::quit::QuitState::default())
+        .manage(tab_drag::TabDragState::default())
         // 命令行/单实例待打开队列
         .manage(s_read_txt::cli::PendingCliFiles::default())
         .invoke_handler(tauri::generate_handler![
@@ -397,6 +399,9 @@ fn main() {
             commands::set_tab_color,
             commands::list_windows,
             commands::move_tab_to_window,
+            tab_drag::begin_tab_drag,
+            tab_drag::drag_move,
+            tab_drag::drag_end,
             commands::reorder_tab,
             commands::open_settings,
             commands::take_settings_tab,

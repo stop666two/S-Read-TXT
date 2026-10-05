@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "主窗口（含多窗口 main-2…）与设置窗口的最小权限集（项目规则：最小权限）",
-  "windows": ["main*", "settings"],
+  "windows": ["main*", "settings", "drag-ghost"],
   "permissions": [
     "core:default",
     "dialog:default",

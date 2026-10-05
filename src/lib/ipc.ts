@@ -952,6 +952,14 @@ export const ipc = {
   /** 移动标签到其他主窗口（返回源窗口剩余视图；目标窗口经事件刷新）。 */
   moveTabToWindow: (tabId: number, targetLabel: string) =>
     invoke<TabsView>('move_tab_to_window', { tabId, targetLabel }),
+  /** 开始跨窗口拖拽（前端越出源窗口边界时调用；坐标由 drag_move 持续提供）。 */
+  beginTabDrag: (tabId: number, name: string, color: string | null, dark: boolean) =>
+    invoke<void>('begin_tab_drag', { tabId, name, color, dark }),
+  /** 拖拽移动（屏幕物理坐标）。 */
+  dragMove: (x: number, y: number) => invoke<void>('drag_move', { x, y }),
+  /** 结束拖拽（`cancelled` = Esc 取消；坐标用于落点裁决）。 */
+  dragEnd: (x: number, y: number, cancelled: boolean) =>
+    invoke<void>('drag_end', { x, y, cancelled }),
   /** 关闭调用窗口的全部标签（窗口关闭前清理全局标签表）。 */
   closeWindowTabs: () => invoke<TabsView>('close_window_tabs'),
   /** 主窗口数量（判断当前是否为最后一个主窗口）。 */

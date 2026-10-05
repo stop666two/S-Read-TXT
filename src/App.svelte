@@ -37,6 +37,7 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type TextStats, type ThemeSummary, type WindowOption, type WindowSession, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
   import { saveSessionNow } from './lib/session';
+  import { computeDropHit } from './lib/tab-dnd';
   import { dataDirStore } from './lib/state/data-dir.svelte';
   import { historyStore } from './lib/state/history.svelte';
   import { tabs } from './lib/state/tabs.svelte';
@@ -360,7 +361,11 @@ let outlineOpen = $state(false);
       if (import.meta.env.DEV) console.error('[app] 读取会话失败', error);
     }
     try {
-      if (!session || session.tabs.length === 0) return;
+      if (!session || session.tabs.length === 0) {
+        // 无会话切片时仍需同步后端已有标签（如拖放迁入的新窗口/CLI 先到的文件）
+        tabs.applyView(await ipc.listTabs());
+        return;
+      }
       const seeds: { tabId: number; row: number }[] = [];
       for (const item of session.tabs) {
         try {
@@ -1519,6 +1524,20 @@ onMount(() => {
       unlistenTabsChanged = stop;
     });
 
+    // 拖放落点：先刷新视图，再按内容坐标精确插入（拖拽源/落点窗都会收到）
+    let unlistenDropped: (() => void) | undefined;
+    void listen<{ tabId: number; clientX: number }>('srt://tab-drag-dropped', (event) => {
+      void (async () => {
+        await refreshTabsView();
+        const bar = document.querySelector<HTMLElement>('.tab-bar');
+        if (!bar) return;
+        const { index } = computeDropHit(bar, event.payload.clientX, event.payload.tabId);
+        tabs.reorder(event.payload.tabId, index);
+      })();
+    }).then((stop) => {
+      unlistenDropped = stop;
+    });
+
     // 文件拖拽（Tauri 原生事件：over → 遮罩；drop → 逐个打开）
     let unlisten: (() => void) | undefined;
     void getCurrentWebview()
@@ -1614,6 +1633,7 @@ onMount(() => {
       unlistenQuitProceed?.();
       unlistenQuitCancelled?.();
       unlistenTabsChanged?.();
+      unlistenDropped?.();
       unlistenSettings?.();
       unlistenFocus?.();
       unlistenMoved?.();

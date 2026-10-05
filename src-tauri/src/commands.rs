@@ -83,8 +83,11 @@ pub struct DataDirStatus {
     persisted: Option<String>,
 }
 
+/// 标签表变更广播事件（跨窗口移动/拖放后，各窗口刷新自身视图）。
+pub const EVENT_TABS_CHANGED: &str = "srt://tabs-changed";
+
 /// 获取应用状态锁（中毒视为内部错误）。
-fn lock_state<'a>(
+pub(crate) fn lock_state<'a>(
     state: &'a State<'_, Mutex<AppState>>,
 ) -> Result<MutexGuard<'a, AppState>, IpcError> {
     state
@@ -540,7 +543,7 @@ pub async fn new_window(
 }
 
 /// 生成下一个可用的主窗口 label（`main-2`、`main-3`…；已存在则递增）。
-fn next_window_label(app: &tauri::AppHandle) -> String {
+pub(crate) fn next_window_label(app: &tauri::AppHandle) -> String {
     use tauri::Manager;
     let existing = app.webview_windows();
     let mut index = 2u32;
@@ -1820,7 +1823,7 @@ pub fn move_tab_to_window(
                 active_tab_id: guard.active_tab(&source),
             }
         };
-        let _ = app.emit("srt://tabs-changed", ());
+        let _ = app.emit(EVENT_TABS_CHANGED, ());
         Ok(view)
     })
 }

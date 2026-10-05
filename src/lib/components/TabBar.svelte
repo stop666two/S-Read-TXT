@@ -3,10 +3,14 @@
   // 视觉规格：高 34px；活动标签顶部 2px 强调条 + 阅读区底色；
   // 宽度 90–180px、文本省略；关闭按钮悬停/活动时显现。
   // 拖拽采用指针事件自实现（非 HTML5 DnD）：跨平台一致且可被 CDP 自动化驱动。
+  import { listen } from '@tauri-apps/api/event';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
+
   import { t } from '../i18n/index.svelte';
+  import { ipc, type TabInfo } from '../ipc';
+  import { computeDropHit } from '../tab-dnd';
   import Icon from './Icon.svelte';
   import TabContextMenu from './TabContextMenu.svelte';
-  import type { TabInfo } from '../ipc';
 
   interface Props {
     /** 标签列表（后端展示顺序） */
@@ -62,6 +66,10 @@
   let drag = $state<{ tabId: number; startX: number; active: boolean } | null>(null);
   /** 落点指示线（相对标签栏内容的左偏移，px；null = 不显示） */
   let dropLineLeft = $state<number | null>(null);
+  /** 原生跨窗口拖拽是否进行中（越出源窗口后由 Rust 接管拖影与落点裁决） */
+  let nativeActive = $state(false);
+  /** 拖拽源窗口原点与缩放（物理坐标换算；阈值触发时捕获，失败时保持 null 仅本地排序） */
+  let dragOrigin: { x: number; y: number; scale: number } | null = null;
 
   /** 标签栏滚动容器 */
   let bar = $state<HTMLElement | null>(null);
@@ -78,33 +86,83 @@
     if (event.button !== 0) return;
     if ((event.target as HTMLElement).closest('.close')) return;
     drag = { tabId, startX: event.clientX, active: false };
+    dragOrigin = null;
+    // 指针捕获：越出窗口后仍能收到移动/抬起（Windows 隐式捕获 + 显式捕获双保险）
+    try {
+      (event.target as Element).setPointerCapture(event.pointerId);
+    } catch {
+      // 捕获失败不影响本地排序（越界由 Windows 隐式捕获兜底）
+    }
   }
 
   /** 计算拖拽落点：返回「移除后插入下标」与指示线位置（相对内容坐标）。 */
   function computeDrop(clientX: number, sourceId: number): { index: number; lineLeft: number } {
-    const el = bar;
-    if (!el) return { index: 0, lineLeft: 0 };
-    const others = [...el.querySelectorAll<HTMLElement>('[data-tab-id]')].filter(
-      (node) => Number(node.dataset.tabId) !== sourceId,
-    );
-    let index = 0;
-    for (const node of others) {
-      const rect = node.getBoundingClientRect();
-      if (clientX > rect.left + rect.width / 2) index += 1;
-    }
-    if (others.length === 0) return { index: 0, lineLeft: 0 };
-    const target = others[Math.min(index, others.length - 1)];
-    const lineLeft = index >= others.length ? target.offsetLeft + target.offsetWidth : target.offsetLeft;
-    return { index, lineLeft };
+    if (!bar) return { index: 0, lineLeft: 0 };
+    return computeDropHit(bar, clientX, sourceId);
   }
 
-  /** 窗口指针移动：激活拖拽并更新落点指示。 */
+  /** 指针是否越出本窗口边界 */
+  function isOutside(event: PointerEvent): boolean {
+    return (
+      event.clientX < 0 ||
+      event.clientY < 0 ||
+      event.clientX > window.innerWidth ||
+      event.clientY > window.innerHeight
+    );
+  }
+
+  /** 指针事件 → 屏幕物理坐标（拖拽会话使用） */
+  function screenPoint(event: PointerEvent): { x: number; y: number } {
+    const origin = dragOrigin ?? { x: 0, y: 0, scale: window.devicePixelRatio || 1 };
+    return {
+      x: origin.x + event.clientX * origin.scale,
+      y: origin.y + event.clientY * origin.scale,
+    };
+  }
+
+  /** 越出窗口：交给 Rust 原生拖拽（拖影窗口 + 跨窗口/桌面落点裁决）。 */
+  function startNativeDrag(event: PointerEvent): void {
+    const current = drag;
+    if (!current || nativeActive) return;
+    const tab = tabs.find((item) => item.tabId === current.tabId);
+    if (!tab) return;
+    nativeActive = true;
+    const point = screenPoint(event);
+    const label =
+      tab.untitled != null ? t('untitled.name', { n: tab.untitled }) : tab.name;
+    void ipc
+      .beginTabDrag(current.tabId, label, tab.color, document.documentElement.dataset.themeBase === 'dark')
+      .then(() => ipc.dragMove(point.x, point.y))
+      .catch(() => {
+        nativeActive = false;
+      });
+  }
+
+  /** 窗口指针移动：激活拖拽并更新落点指示（越界后转原生拖拽）。 */
   function onPointerMove(event: PointerEvent): void {
     const current = drag;
     if (!current) return;
     if (!current.active) {
       if (Math.abs(event.clientX - current.startX) < DRAG_THRESHOLD) return;
       drag = { ...current, active: true };
+      void getCurrentWindow()
+        .outerPosition()
+        .then((position) => {
+          dragOrigin = { x: position.x, y: position.y, scale: window.devicePixelRatio || 1 };
+        })
+        .catch(() => {
+          dragOrigin = null;
+        });
+    }
+    if (nativeActive) {
+      const point = screenPoint(event);
+      void ipc.dragMove(point.x, point.y);
+      dropLineLeft = null;
+      return;
+    }
+    if (isOutside(event) && dragOrigin) {
+      startNativeDrag(event);
+      return;
     }
     dropLineLeft = computeDrop(event.clientX, current.tabId).lineLeft;
   }
@@ -114,6 +172,15 @@
     const current = drag;
     drag = null;
     if (!current) return;
+    if (nativeActive) {
+      nativeActive = false;
+      dropLineLeft = null;
+      suppressClick = true;
+      const point = screenPoint(event);
+      dragOrigin = null;
+      void ipc.dragEnd(point.x, point.y, false);
+      return;
+    }
     if (current.active) {
       suppressClick = true;
       const { index } = computeDrop(event.clientX, current.tabId);
@@ -121,6 +188,17 @@
       if (from >= 0 && index !== from) onReorder(current.tabId, index);
     }
     dropLineLeft = null;
+    dragOrigin = null;
+  }
+
+  /** 键盘：Esc 取消原生拖拽（拖出后释放）；本地排序不拦截。 */
+  function onKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || !nativeActive) return;
+    event.preventDefault();
+    nativeActive = false;
+    dropLineLeft = null;
+    dragOrigin = null;
+    void ipc.dragEnd(0, 0, true);
   }
 
   /** 标签点击（拖拽结束后的 click 忽略一次）。 */
@@ -146,9 +224,41 @@
     host.addEventListener('wheel', onWheel, { passive: false });
     return () => host.removeEventListener('wheel', onWheel);
   });
+
+  // 跨窗口拖放事件：悬停目标显示插入指示；源窗口在拖拽结束（原生侧）清理状态。
+  $effect(() => {
+    let stopHover: (() => void) | undefined;
+    let stopEnd: (() => void) | undefined;
+    void listen<{ active: boolean; clientX: number }>('srt://tab-drag-hover', (event) => {
+      if (!event.payload.active) {
+        dropLineLeft = null;
+        return;
+      }
+      if (!bar) return;
+      dropLineLeft = computeDropHit(bar, event.payload.clientX, drag?.tabId).lineLeft;
+    }).then((stop) => {
+      stopHover = stop;
+    });
+    void listen('srt://tab-drag-end', () => {
+      nativeActive = false;
+      dropLineLeft = null;
+      dragOrigin = null;
+    }).then((stop) => {
+      stopEnd = stop;
+    });
+    return () => {
+      stopHover?.();
+      stopEnd?.();
+    };
+  });
 </script>
 
-<svelte:window onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={onPointerUp} />
+<svelte:window
+  onpointermove={onPointerMove}
+  onpointerup={onPointerUp}
+  onpointercancel={onPointerUp}
+  onkeydown={onKeydown}
+/>
 
 <div class="tab-shell" bind:this={shell}>
   <div class="tab-bar" role="tablist" aria-label={t('tabBar.aria')} bind:this={bar}>
