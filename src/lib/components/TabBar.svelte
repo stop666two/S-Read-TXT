@@ -25,12 +25,32 @@
     onReorder: (tabId: number, toIndex: number) => void;
     /** 设置标签颜色（右键菜单；null = 清除） */
     onSetColor?: (tabId: number, color: string | null) => void;
+    /** 其他主窗口（跨窗口移动目标） */
+    windows?: { label: string; title: string }[];
+    /** 请求刷新窗口列表（右键菜单打开时由父级拉取） */
+    onRequestWindows?: () => void;
+    /** 移动标签到目标窗口 */
+    onMoveToWindow?: (tabId: number, label: string) => void;
     /** 新建标签（标签栏右侧按钮） */
     onNewTab?: () => void;
     /** 新建窗口（标签栏右侧按钮） */
     onNewWindow?: () => void;
   }
-  let { tabs, activeId, onSelect, onClose, onCloseOthers, onCloseAll, onReorder, onSetColor, onNewTab, onNewWindow }: Props = $props();
+  let {
+    tabs,
+    activeId,
+    onSelect,
+    onClose,
+    onCloseOthers,
+    onCloseAll,
+    onReorder,
+    onSetColor,
+    windows = [],
+    onRequestWindows,
+    onMoveToWindow,
+    onNewTab,
+    onNewWindow,
+  }: Props = $props();
 
   /** 右键菜单状态（null = 关闭；坐标为视口像素） */
   let menu = $state<{ x: number; y: number; tabId: number } | null>(null);
@@ -146,6 +166,7 @@
       onclick={() => handleSelect(tab.tabId)}
       oncontextmenu={(event) => {
         event.preventDefault();
+        onRequestWindows?.();
         menu = { x: event.clientX, y: event.clientY, tabId: tab.tabId };
       }}
       onmousedown={(event) => {
@@ -216,10 +237,12 @@
     x={menu.x}
     y={menu.y}
     color={menuColor}
+    windows={windows}
     onClose={() => onClose(menu?.tabId ?? 0)}
     onCloseOthers={() => onCloseOthers(menu?.tabId ?? 0)}
     onCloseAll={onCloseAll}
     onSetColor={(color) => onSetColor?.(menu?.tabId ?? 0, color)}
+    onMoveTo={(label) => onMoveToWindow?.(menu?.tabId ?? 0, label)}
     onDismiss={() => (menu = null)}
   />
 {/if}

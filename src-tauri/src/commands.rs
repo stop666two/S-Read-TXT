@@ -1744,6 +1744,87 @@ pub fn set_tab_color(
     })
 }
 
+/// 主窗口选项（标签跨窗口移动菜单用）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowOption {
+    /// 窗口 label（`main` / `main-2`…）
+    label: String,
+    /// 展示标题（活动标签文件名；无活动标签时退回 label）
+    title: String,
+    /// 该窗口的标签数量
+    tab_count: u32,
+}
+
+/// 命令：列出全部主窗口（含调用窗口；前端按自身 label 过滤）。
+#[tauri::command]
+pub fn list_windows(
+    app: tauri::AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<WindowOption>, IpcError> {
+    with_context(LogContext::request(), || {
+        let guard = lock_state(&state)?;
+        let mut labels: Vec<String> = app
+            .webview_windows()
+            .keys()
+            .filter(|label| label.as_str() == "main" || label.starts_with("main-"))
+            .cloned()
+            .collect();
+        labels.sort_by_key(|label| {
+            label
+                .strip_prefix("main")
+                .and_then(|rest| rest.strip_prefix('-'))
+                .and_then(|n| n.parse::<u32>().ok())
+                .unwrap_or(0)
+        });
+        Ok(labels
+            .into_iter()
+            .map(|label| {
+                let tabs = guard.tabs_info(&label);
+                let active_name = guard
+                    .active_tab(&label)
+                    .and_then(|id| tabs.iter().find(|tab| tab.tab_id == id))
+                    .map(|tab| tab.name.clone());
+                WindowOption {
+                    title: active_name.unwrap_or_else(|| label.clone()),
+                    tab_count: tabs.len() as u32,
+                    label,
+                }
+            })
+            .collect())
+    })
+}
+
+/// 命令：把标签移动到其他主窗口（目标窗口已打开同一文件时合并并激活）。
+///
+/// 返回**源窗口**的剩余标签视图；目标窗口经 `srt://tabs-changed` 事件自行刷新。
+#[tauri::command]
+pub fn move_tab_to_window(
+    app: tauri::AppHandle,
+    tab_id: u64,
+    target_label: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<TabsView, IpcError> {
+    with_context(LogContext::request(), || {
+        let view = {
+            let mut guard = lock_state(&state)?;
+            let source = guard
+                .tab_info(tab_id)
+                .map(|info| info.owner)
+                .ok_or_else(|| IpcError::new(CODE_TAB_NOT_FOUND, "标签不存在"))?;
+            guard
+                .move_tab(tab_id, &target_label, usize::MAX)
+                .map_err(IpcError::from)?;
+            TabsView {
+                tabs: guard.tabs_info(&source),
+                active_tab_id: guard.active_tab(&source),
+            }
+        };
+        let _ = app.emit("srt://tabs-changed", ());
+        Ok(view)
+    })
+}
+
 /// 命令：文档级文本统计（供状态栏展示）。
 #[tauri::command]
 pub fn document_stats(

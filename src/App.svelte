@@ -34,7 +34,7 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import { formatBytes } from './lib/format';
   import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
-  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type TextStats, type ThemeSummary, type WindowSession, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
+  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type TextStats, type ThemeSummary, type WindowOption, type WindowSession, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
   import { saveSessionNow } from './lib/session';
   import { dataDirStore } from './lib/state/data-dir.svelte';
@@ -412,6 +412,41 @@ let outlineOpen = $state(false);
       const payload = toIpcError(error);
       if (import.meta.env.DEV) console.error('[app] 设置标签颜色失败', payload);
       toasts.error(describeIpcError(payload));
+    }
+  }
+
+  /** 其他主窗口列表（右键菜单「移动到窗口」用；排除自身） */
+  let windowOptions = $state<WindowOption[]>([]);
+
+  /** 刷新可移动目标窗口（右键菜单打开时调用；失败静默保留空列表）。 */
+  async function refreshWindowOptions(): Promise<void> {
+    try {
+      const self = getCurrentWindow().label;
+      windowOptions = (await ipc.listWindows()).filter((item) => item.label !== self);
+    } catch {
+      windowOptions = [];
+    }
+  }
+
+  /** 移动标签到其他主窗口（返回源窗口剩余视图；目标窗口经事件刷新）。 */
+  async function moveTabToWindow(tabId: number, targetLabel: string): Promise<void> {
+    try {
+      tabs.applyView(await ipc.moveTabToWindow(tabId, targetLabel));
+      void saveSessionNow();
+    } catch (error) {
+      const payload = toIpcError(error);
+      if (import.meta.env.DEV) console.error('[app] 移动标签失败', payload);
+      toasts.error(describeIpcError(payload));
+    }
+  }
+
+  /** 刷新本窗口标签视图（跨窗口移动广播后调用；失败保持现状）。 */
+  async function refreshTabsView(): Promise<void> {
+    try {
+      tabs.applyView(await ipc.listTabs());
+      void saveSessionNow();
+    } catch {
+      // 刷新失败保持现状（下一次交互会再次校准）
     }
   }
 
@@ -1478,6 +1513,12 @@ onMount(() => {
       unlistenQuitCancelled = stop;
     });
 
+    // 标签跨窗口移动：目标窗口收到广播后刷新自身标签视图
+    let unlistenTabsChanged: (() => void) | undefined;
+    void listen('srt://tabs-changed', () => void refreshTabsView()).then((stop) => {
+      unlistenTabsChanged = stop;
+    });
+
     // 文件拖拽（Tauri 原生事件：over → 遮罩；drop → 逐个打开）
     let unlisten: (() => void) | undefined;
     void getCurrentWebview()
@@ -1572,6 +1613,7 @@ onMount(() => {
       unlistenQuitRequest?.();
       unlistenQuitProceed?.();
       unlistenQuitCancelled?.();
+      unlistenTabsChanged?.();
       unlistenSettings?.();
       unlistenFocus?.();
       unlistenMoved?.();
@@ -1735,6 +1777,9 @@ onMount(() => {
   onCloseAll={() => void closeAllTabs()}
   onReorder={reorderTab}
   onSetColor={(tabId, color) => void setTabColor(tabId, color)}
+  windows={windowOptions}
+  onRequestWindows={() => void refreshWindowOptions()}
+  onMoveToWindow={(tabId, label) => void moveTabToWindow(tabId, label)}
   onNewTab={() => void newFileFlow()}
   onNewWindow={() => void newWindowFlow()}
 />

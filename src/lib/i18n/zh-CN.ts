@@ -339,6 +339,7 @@ export const zhCN = {
   'tabMenu.closeOthers': '关闭其他',
   'tabMenu.closeAll': '关闭全部',
   'tabMenu.color': '颜色',
+  'tabMenu.moveTo': '移动到窗口',
   'tabMenu.colorClear': '清除颜色',
   'tabMenu.color.red': '红色',
   'tabMenu.color.orange': '橙色',

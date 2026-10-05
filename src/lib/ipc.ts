@@ -76,6 +76,13 @@ export interface TabsView {
   activeTabId: number | null;
 }
 
+/** 主窗口选项（与 Rust commands::WindowOption 对齐；跨窗口移动菜单用）。 */
+export interface WindowOption {
+  label: string;
+  title: string;
+  tabCount: number;
+}
+
 /** 编辑操作（与 Rust textfile::editing::edit_doc::EditOp 对齐；kind 为外部标签）。 */
 export type EditOp =
   | { kind: 'insert'; row: number; utf16: number; text: string }
@@ -940,6 +947,11 @@ export const ipc = {
   listTabs: () => invoke<TabsView>('list_tabs'),
   /** 关闭标签（返回剩余视图）。 */
   closeTab: (tabId: number) => invoke<TabsView>('close_tab', { tabId }),
+  /** 主窗口列表（跨窗口移动菜单）。 */
+  listWindows: () => invoke<WindowOption[]>('list_windows'),
+  /** 移动标签到其他主窗口（返回源窗口剩余视图；目标窗口经事件刷新）。 */
+  moveTabToWindow: (tabId: number, targetLabel: string) =>
+    invoke<TabsView>('move_tab_to_window', { tabId, targetLabel }),
   /** 关闭调用窗口的全部标签（窗口关闭前清理全局标签表）。 */
   closeWindowTabs: () => invoke<TabsView>('close_window_tabs'),
   /** 主窗口数量（判断当前是否为最后一个主窗口）。 */

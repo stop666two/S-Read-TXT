@@ -395,6 +395,8 @@ fn main() {
             commands::report_quit_cancel,
             commands::set_active_tab,
             commands::set_tab_color,
+            commands::list_windows,
+            commands::move_tab_to_window,
             commands::reorder_tab,
             commands::open_settings,
             commands::take_settings_tab,

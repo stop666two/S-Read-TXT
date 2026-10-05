@@ -347,6 +347,7 @@ export const en: Record<MessageKey, string> = {
   'tabMenu.closeOthers': 'Close others',
   'tabMenu.closeAll': 'Close all',
   'tabMenu.color': 'Color',
+  'tabMenu.moveTo': 'Move to window',
   'tabMenu.colorClear': 'Clear color',
   'tabMenu.color.red': 'Red',
   'tabMenu.color.orange': 'Orange',

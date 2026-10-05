@@ -20,11 +20,26 @@
     onCloseAll: () => void;
     /** 设置标签颜色（null = 清除） */
     onSetColor: (color: string | null) => void;
+    /** 其他主窗口（跨窗口移动目标；空数组时不渲染该分组） */
+    windows: { label: string; title: string }[];
+    /** 移动标签到目标窗口 */
+    onMoveTo: (label: string) => void;
     /** 请求关闭菜单（点击外部 / Esc / 执行动作后） */
     onDismiss: () => void;
   }
 
-  let { x, y, color, onClose, onCloseOthers, onCloseAll, onSetColor, onDismiss }: Props = $props();
+  let {
+    x,
+    y,
+    color,
+    onClose,
+    onCloseOthers,
+    onCloseAll,
+    onSetColor,
+    windows,
+    onMoveTo,
+    onDismiss,
+  }: Props = $props();
 
   /** 调色板 id（与 Rust app_state::TAB_COLORS 同步） */
   const TAB_COLORS = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'gray'] as const;
@@ -97,6 +112,22 @@
   <button class="item" role="menuitem" onclick={() => run(onCloseOthers)}>{t('tabMenu.closeOthers')}</button>
   <button class="item" role="menuitem" onclick={() => run(onCloseAll)}>{t('tabMenu.closeAll')}</button>
   <div class="divider" role="separator"></div>
+  {#if windows.length > 0}
+    <div class="group" role="group" aria-label={t('tabMenu.moveTo')}>
+      <div class="group-label">{t('tabMenu.moveTo')}</div>
+      {#each windows as target (target.label)}
+        <button
+          class="item"
+          role="menuitem"
+          data-move-window={target.label}
+          onclick={() => run(() => onMoveTo(target.label))}
+        >
+          {target.title}
+        </button>
+      {/each}
+    </div>
+    <div class="divider" role="separator"></div>
+  {/if}
   <div class="group" role="group" aria-label={t('tabMenu.color')}>
     <div class="group-label">{t('tabMenu.color')}</div>
     <div class="swatches">
