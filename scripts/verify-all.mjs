@@ -104,6 +104,8 @@ const steps = [
   { name: 'E2E 多标签（smoke-tabs）', cmd: 'node scripts/smoke-tabs.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 多窗口（smoke-windows）', cmd: 'node scripts/smoke-windows.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 分屏（smoke-split）', cmd: 'node scripts/smoke-split.mjs', cwd: root, env: process.env, timeout: 900_000 },
+  { name: 'E2E 工具功能（smoke-utility）', cmd: 'node scripts/smoke-utility.mjs', cwd: root, env: process.env, timeout: 900_000 },
+  { name: 'E2E 比较与合并（smoke-compare）', cmd: 'node scripts/smoke-compare.mjs', cwd: root, env: process.env, timeout: 900_000 },
   { name: 'E2E 历史记录（smoke-history）', cmd: 'node scripts/smoke-history.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 会话恢复（smoke-session）', cmd: 'node scripts/smoke-session.mjs', cwd: root, env: process.env, timeout: 900_000 },
   { name: 'E2E 数据目录引导（smoke-datadir）', cmd: 'node scripts/smoke-datadir.mjs', cwd: root, env: process.env, timeout: 600_000 },

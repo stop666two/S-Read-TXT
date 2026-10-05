@@ -161,9 +161,7 @@ impl From<crate::compare::CompareError> for IpcError {
             crate::compare::CompareError::Diff(crate::diff::DiffError::TooComplex) => {
                 Self::new(crate::diff::DIFF_TOO_COMPLEX, "差异规模过大，无法精细比较")
             }
-            crate::compare::CompareError::NotLoaded => {
-                Self::internal("比较文档尚未加载或侧不存在")
-            }
+            crate::compare::CompareError::NotLoaded => Self::internal("比较文档尚未加载或侧不存在"),
             crate::compare::CompareError::Io(message) => Self::new(CODE_IO, message),
         }
     }

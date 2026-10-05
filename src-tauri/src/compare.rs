@@ -275,7 +275,10 @@ impl CompareState {
 
     /// 取走待处理请求（窗口启动时调用）。
     pub fn take_request(&self) -> Option<CompareRequest> {
-        self.inner.lock().ok().and_then(|mut guard| guard.request.take())
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|mut guard| guard.request.take())
     }
 
     /// 加载两个文件并计算行级差异。
@@ -346,23 +349,35 @@ impl CompareState {
     }
 
     /// 取侧行文本窗口。
-    pub fn rows(&self, side: CompareSide, start: u64, count: usize) -> Result<Vec<String>, CompareError> {
+    pub fn rows(
+        &self,
+        side: CompareSide,
+        start: u64,
+        count: usize,
+    ) -> Result<Vec<String>, CompareError> {
         let guard = self.inner.lock().map_err(|_| CompareError::NotLoaded)?;
         let doc = match side {
             CompareSide::Left => guard.left.as_ref(),
             CompareSide::Right => guard.right.as_ref(),
             CompareSide::Extra => guard.extra.as_ref(),
         };
-        doc.map(|doc| doc.rows(start, count)).ok_or(CompareError::NotLoaded)
+        doc.map(|doc| doc.rows(start, count))
+            .ok_or(CompareError::NotLoaded)
     }
 
     /// 合并结果引用（写回时取来源行）。
-    pub fn merge_snapshot(&self) -> Result<Option<(MergeResult, Vec<Vec<u64>>, Vec<PathBuf>)>, CompareError> {
+    pub fn merge_snapshot(
+        &self,
+    ) -> Result<Option<(MergeResult, Vec<Vec<u64>>, Vec<PathBuf>)>, CompareError> {
         let guard = self.inner.lock().map_err(|_| CompareError::NotLoaded)?;
         let Some(merge) = guard.merge.clone() else {
             return Ok(None);
         };
-        let docs = [guard.left.as_ref(), guard.right.as_ref(), guard.extra.as_ref()];
+        let docs = [
+            guard.left.as_ref(),
+            guard.right.as_ref(),
+            guard.extra.as_ref(),
+        ];
         let mut hashes = Vec::new();
         let mut paths = Vec::new();
         for doc in docs.into_iter().flatten() {
@@ -402,27 +417,28 @@ impl CompareState {
         let mut lines = 0u64;
         let mut first_line = true;
         let mut conflict_index = 0u32;
-        let mut push_span = |source: MergedSource, start: u64, end: u64| -> Result<(), CompareError> {
-            let doc = source_doc(source).ok_or(CompareError::NotLoaded)?;
-            let mut row = start;
-            while row < end {
-                let count = ((end - row) as usize).min(LOAD_BATCH_ROWS);
-                let batch = doc.session.rows(row, count);
-                if batch.is_empty() {
-                    break;
-                }
-                for item in &batch {
-                    if !first_line {
-                        text.push('\n');
+        let mut push_span =
+            |source: MergedSource, start: u64, end: u64| -> Result<(), CompareError> {
+                let doc = source_doc(source).ok_or(CompareError::NotLoaded)?;
+                let mut row = start;
+                while row < end {
+                    let count = ((end - row) as usize).min(LOAD_BATCH_ROWS);
+                    let batch = doc.session.rows(row, count);
+                    if batch.is_empty() {
+                        break;
                     }
-                    text.push_str(&item.text);
-                    first_line = false;
-                    lines += 1;
+                    for item in &batch {
+                        if !first_line {
+                            text.push('\n');
+                        }
+                        text.push_str(&item.text);
+                        first_line = false;
+                        lines += 1;
+                    }
+                    row += batch.len() as u64;
                 }
-                row += batch.len() as u64;
-            }
-            Ok(())
-        };
+                Ok(())
+            };
 
         for region in merge.regions.iter() {
             if region.kind == RegionKind::Conflict {
@@ -554,9 +570,7 @@ mod tests {
             .unwrap();
         assert_eq!(dto.conflicts, 1);
         assert!(dto.regions.iter().any(|region| region.kind == "conflict"));
-        let rows = state
-            .merge_rows(MergedSource::Theirs, 1, 1)
-            .unwrap();
+        let rows = state.merge_rows(MergedSource::Theirs, 1, 1).unwrap();
         assert_eq!(rows, vec!["Y".to_string()]);
         let paths = state.merge_paths().unwrap().unwrap();
         assert!(paths.1.ends_with("ours.txt"));
@@ -565,7 +579,9 @@ mod tests {
     #[test]
     fn missing_file_reports_text_error() {
         let state = CompareState::new();
-        let err = state.load_diff("Z:/definitely/missing.txt", "Z:/nope.txt").unwrap_err();
+        let err = state
+            .load_diff("Z:/definitely/missing.txt", "Z:/nope.txt")
+            .unwrap_err();
         assert!(matches!(err, CompareError::Text(_)));
     }
 
@@ -598,10 +614,17 @@ mod tests {
 
         // 选择他方：a / Y / c / D（备份保留上一次写回结果）
         state
-            .write_output(&target.to_string_lossy(), &[(0, "theirs".to_string())], true)
+            .write_output(
+                &target.to_string_lossy(),
+                &[(0, "theirs".to_string())],
+                true,
+            )
             .unwrap();
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "a\nY\nc\nD\n");
-        assert_eq!(std::fs::read_to_string(&backup_path).unwrap(), "a\nX\nc\nD\n");
+        assert_eq!(
+            std::fs::read_to_string(&backup_path).unwrap(),
+            "a\nX\nc\nD\n"
+        );
 
         // 撤销本次写回：恢复到写回前（上一次结果）
         assert!(state.undo_writeback(&target.to_string_lossy()).unwrap());

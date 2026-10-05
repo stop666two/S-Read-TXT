@@ -659,7 +659,10 @@ pub fn write_merge_output(
 
 /// 命令：撤销合并写回（以 `<目标>.bak` 覆盖目标；无备份返回 false）。
 #[tauri::command]
-pub fn undo_merge_writeback(state: State<'_, CompareState>, target: String) -> Result<bool, IpcError> {
+pub fn undo_merge_writeback(
+    state: State<'_, CompareState>,
+    target: String,
+) -> Result<bool, IpcError> {
     Ok(state.undo_writeback(&target)?)
 }
 
