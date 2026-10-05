@@ -50,7 +50,11 @@ where
     out
 }
 
-/// 推入待打开队列并通知前端（前端未就绪时事件自然无人接收，队列兜底不丢）。
+/// 推入待打开队列并通知前端。
+///
+/// 投递策略：定向到最后聚焦的主窗口（多窗口下文件应落在用户当前使用的窗口）；
+/// 目标缺失（正在关闭/尚未创建）时回退广播。事件仅作唤醒信号，前端统一经
+/// `take_cli_files` 原子排空队列——事件与队列叠加不丢失、不重复打开。
 pub fn push_pending(app: &AppHandle, paths: Vec<String>) {
     if paths.is_empty() {
         return;
@@ -60,7 +64,23 @@ pub fn push_pending(app: &AppHandle, paths: Vec<String>) {
             pending.extend(paths.iter().cloned());
         }
     }
-    let _ = app.emit(CLI_OPEN_EVENT, &paths);
+    let target = app
+        .try_state::<crate::window_registry::LastFocused>()
+        .map(|state| state.get());
+    let delivered = target
+        .as_deref()
+        .map(|label| app.emit_to(label, CLI_OPEN_EVENT, &paths).is_ok())
+        .unwrap_or(false);
+    if !delivered {
+        let _ = app.emit(CLI_OPEN_EVENT, &paths);
+    }
+    log::info!(
+        target: "sread::cli",
+        "运行期转发 {} 个待打开文件（目标窗口：{:?}，定向投递：{}）",
+        paths.len(),
+        target,
+        delivered
+    );
 }
 
 /// 取走全部待打开路径（前端启动排空）。

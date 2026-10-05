@@ -1369,21 +1369,21 @@ let outlineOpen = $state(false);
     await tabs.openPath(firstLine);
   }
 
-  // 命令行/单实例：启动队列排空 + 运行期转发监听（事件与队列叠加不丢失）。
-  // 多窗口下仅主窗口消费，避免其余窗口重复打开；定向到目标窗口的转发后续收敛。
-  const isMainWindow = getCurrentWindow().label === 'main';
+  // 命令行/单实例：启动队列由主窗口排空（先挂载）；运行期转发事件定向到目标窗口，
+  // 事件仅作唤醒信号，统一经 take_cli_files 原子排空（事件与队列叠加不丢失、不重复打开）。
+  const isPrimaryWindow = getCurrentWindow().label === 'main';
   onMount(() => {
-    if (!isMainWindow) return;
+    const drainCliFiles = (): void => {
+      void ipc
+        .takeCliFiles()
+        .then((paths) => {
+          for (const path of paths) void tabs.openPath(path);
+        })
+        .catch(() => {});
+    };
+    if (isPrimaryWindow) drainCliFiles();
     let unlistenCli: (() => void) | undefined;
-    void ipc
-      .takeCliFiles()
-      .then((paths) => {
-        for (const path of paths) void tabs.openPath(path);
-      })
-      .catch(() => {});
-    void listen<string[]>('srt://cli-open', (event) => {
-      for (const path of event.payload) void tabs.openPath(path);
-    }).then((stop) => {
+    void listen<unknown>('srt://cli-open', () => drainCliFiles()).then((stop) => {
       unlistenCli = stop;
     });
     return () => unlistenCli?.();
