@@ -987,6 +987,61 @@ export interface SplitResult {
   bytes: number;
 }
 
+/** 重命名扫描项（仅文件名与大小）。 */
+export interface RenameFileInfo {
+  name: string;
+  size: number;
+}
+
+/** 序号插入位置。 */
+export type RenameNumberAt = 'prefix' | 'suffix';
+
+/** 序号规则。 */
+export interface RenameNumbering {
+  start: number;
+  step: number;
+  digits: number;
+  at: RenameNumberAt;
+}
+
+/** 批量重命名规则（仅作用于茎部）。 */
+export interface RenameRules {
+  find: string | null;
+  replace: string;
+  prefix: string | null;
+  suffix: string | null;
+  numbering: RenameNumbering | null;
+}
+
+/** 单条重命名状态。 */
+export type RenameStatus = 'ok' | 'unchanged' | 'conflict' | 'exists' | 'invalid';
+
+/** 单条重命名计划项。 */
+export interface RenameEntry {
+  old: string;
+  new: string;
+  status: RenameStatus;
+}
+
+/** 重命名对（旧名 → 新名）。 */
+export interface RenamePair {
+  old: string;
+  new: string;
+}
+
+/** 重命名执行结果。 */
+export interface RenameApplied {
+  pairs: RenamePair[];
+  logSaved: boolean;
+}
+
+/** 重命名撤销日志。 */
+export interface RenameLog {
+  dir: string;
+  pairs: RenamePair[];
+  at: number;
+}
+
 export const ipc = {
   /** 应用信息（版本 / 数据目录）。 */
   getAppInfo: () => invoke<AppInfo>('get_app_info'),
@@ -1268,6 +1323,20 @@ export const ipc = {
   /** 执行拆分（流式 + 原子写；同名覆盖）。 */
   applySplit: (path: string, mode: SplitMode, outDir?: string) =>
     invoke<SplitResult>('apply_split', { path, mode, outDir: outDir ?? null }),
+  /** 扫描重命名目录（扩展名白名单；缺省 txt/log；上限 2000）。 */
+  scanRenameDir: (dir: string, extensions?: string[]) =>
+    invoke<RenameFileInfo[]>('scan_rename_dir', { dir, extensions: extensions ?? null }),
+  /** 重命名预览（纯计算）。 */
+  previewRename: (dir: string, files: string[], rules: RenameRules) =>
+    invoke<RenameEntry[]>('preview_rename', { dir, files, rules }),
+  /** 执行重命名（两阶段 + 失败回滚；成功后写撤销日志）。 */
+  applyRename: (dir: string, pairs: RenamePair[]) =>
+    invoke<RenameApplied>('apply_rename', { dir, pairs }),
+  /** 撤销本次重命名。 */
+  undoRename: (dir: string, pairs: RenamePair[]) =>
+    invoke<void>('undo_rename', { dir, pairs }),
+  /** 读取撤销日志（无日志返回 null）。 */
+  readRenameLog: () => invoke<RenameLog | null>('read_rename_log'),
   /** 剪贴板历史（读取最新列表）。 */
   listClipboardHistory: () => invoke<ClipboardEntry[]>('list_clipboard_history'),
   /** 记录一次复制到历史（空文本/禁用时后端 no-op；返回最新列表）。 */

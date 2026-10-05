@@ -32,6 +32,7 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import UnsavedDialog from './lib/components/UnsavedDialog.svelte';
   import WorkspaceFindDialog from './lib/components/WorkspaceFindDialog.svelte';
   import SplitFileDialog from './lib/components/SplitFileDialog.svelte';
+  import RenameDialog from './lib/components/RenameDialog.svelte';
   import { formatBytes } from './lib/format';
   import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
@@ -123,6 +124,7 @@ let outlineOpen = $state(false);
   /** 工作区查找与替换弹窗开关（编辑菜单入口） */
   let workspaceOpen = $state(false);
   let splitOpen = $state(false);
+  let renameOpen = $state(false);
 
   /** 跳转到工作区命中：必要时切换标签，然后广播定位请求（ReaderView/EditLayer 消费）。 */
   async function jumpToHit(file: WorkspaceFileResult, hit: WorkspaceHit): Promise<void> {
@@ -182,6 +184,14 @@ let outlineOpen = $state(false);
   /** 活动标签的关键原始值（用作 effect 依赖：避免 tabs 刷新重建对象时重复触发）。 */
   const activeTabId = $derived(active?.tabId);
   const activeRowsTotal = $derived(active?.rowsTotal);
+  /** 批量重命名默认目录：激活标签父目录（剥离 \\?\ 前缀）。 */
+  const renameDefaultDir = $derived.by(() => {
+    const path = active?.path ?? '';
+    if (!path) return null;
+    const cleaned = path.replace(/^\\\\\?\\/, '');
+    const index = Math.max(cleaned.lastIndexOf('\\'), cleaned.lastIndexOf('/'));
+    return index > 0 ? cleaned.slice(0, index) : null;
+  });
 
   /** 窗口 label（栏位键前缀；会话与拖放共用）。 */
   const windowLabel = getCurrentWindow().label;
@@ -2015,6 +2025,7 @@ onMount(() => {
     onClearAnnotations={() => (annotClearOpen = true)}
     onWorkspaceFind={() => (workspaceOpen = true)}
     onOpenSplit={() => (splitOpen = true)}
+    onOpenRename={() => (renameOpen = true)}
     workspaceFindEnabled={appSettings?.find.multifileEnabled !== false}
     onSettings={() => void ipc.openSettings()}
     canSplit={paneCount < MAX_PANES}
@@ -2196,6 +2207,9 @@ onMount(() => {
 {/if}
 {#if splitOpen}
   <SplitFileDialog currentPath={active?.path ?? null} onClose={() => (splitOpen = false)} />
+{/if}
+{#if renameOpen}
+  <RenameDialog initialDir={renameDefaultDir} onClose={() => (renameOpen = false)} />
 {/if}
   <DropOverlay visible={dragging} />
   <SaveDialog

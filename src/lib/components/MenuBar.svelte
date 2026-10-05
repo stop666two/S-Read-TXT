@@ -108,6 +108,8 @@
     onClosePane?: () => void;
     /** 打开「拆分文件」对话框 */
     onOpenSplit?: () => void;
+    /** 打开「批量重命名」对话框 */
+    onOpenRename?: () => void;
   }
   let {
     themeId,
@@ -167,6 +169,7 @@
     onSplitDown,
     onClosePane,
     onOpenSplit,
+    onOpenRename,
   }: Props = $props();
 
   /** 菜单名联合类型 */
@@ -487,6 +490,7 @@
   {:else if openMenu === 'tools'}
     <div class="dropdown" role="menu" style="left: 130px">
       <button class="item" onclick={() => run(() => onOpenSplit?.())}><span>{t('tools.split.menu')}</span></button>
+      <button class="item" onclick={() => run(() => onOpenRename?.())}><span>{t('tools.rename.menu')}</span></button>
     </div>
   {:else if openMenu === 'help'}
     <div class="dropdown" role="menu" style="left: 172px">
