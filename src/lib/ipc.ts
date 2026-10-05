@@ -785,9 +785,9 @@ export interface SessionTab {
   editMode: boolean;
 }
 
-/** 会话状态（与 Rust `SessionState` 对应）。 */
-export interface SessionState {
-  schemaVersion: number;
+/** 单个窗口的会话切片（与 Rust `WindowSession` 对应；label 由后端按调用窗口覆写）。 */
+export interface WindowSession {
+  label: string;
   window: WindowState;
   activeTabIndex: number;
   tabs: SessionTab[];
@@ -1254,8 +1254,10 @@ export const ipc = {
   /** 更新历史条目阅读进度（关闭标签/退出前调用；尽力而为，幂等）。 */
   updateHistoryProgress: (filePath: string, lastRow: number, lastPercent: number) =>
     invoke<void>('update_history_progress', { path: filePath, lastRow, lastPercent }),
-  /** 读取会话（窗口/标签/滚动；无会话返回默认值）。 */
-  getSession: () => invoke<SessionState>('get_session'),
-  /** 保存会话（返回归一化后的结果）。 */
-  saveSession: (session: SessionState) => invoke<SessionState>('save_session', { session }),
+  /** 读取本窗口的会话切片（无记录返回空切片）。 */
+  getSession: () => invoke<WindowSession>('get_session'),
+  /** 保存本窗口的会话切片（按窗口合并；返回归一化后的结果）。 */
+  saveSession: (session: WindowSession) => invoke<WindowSession>('save_session', { session }),
+  /** 移除本窗口的会话记录（单窗口关闭时调用；整体退出不调用）。 */
+  forgetWindowSession: () => invoke<void>('forget_window_session'),
 };

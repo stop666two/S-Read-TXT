@@ -47,7 +47,7 @@
 | `saveBackupEnabled` | boolean | `true`/`false` | `true` | 首次保存前是否生成 `.bak` 备份 |
 | `showOnboarding` | boolean | `true`/`false` | `true` | 是否显示首启引导；用户选择「不再显示」后置 `false` |
 | `locale` | string | `zh-CN` / `en` | `zh-CN` | 界面语言（BCP 47 标签；未知值归一为默认；即时切换） |
-| `startup.restoreSession` | boolean | `true`/`false` | `true` | 启动时恢复上次会话（标签与阅读位置） |
+| `startup.restoreSession` | boolean | `true`/`false` | `true` | 启动时恢复上次会话（窗口数与各窗口标签及阅读位置；多窗口一并恢复） |
 | `startup.restoreWindow` | boolean | `true`/`false` | `true` | 启动时恢复窗口位置与大小；关闭后使用默认几何（居中 1100×760） |
 | `status.items` | string[] | 白名单 id | `["lineCol","counts","progress","size","encoding","eol","modified"]` | 状态栏显示项与顺序（可选：`lineCol`/`counts`/`words`/`progress`/`size`/`encoding`/`eol`/`modified`） |
 | `status.countMode` | string | `grapheme`/`codepoint`/`byte` | `grapheme` | 字数统计口径（字素簇/码点/字节） |
@@ -165,18 +165,21 @@
 
 ### 2.4 `session.json`（会话；退出时写入，启动时读取）
 
+v1 单窗口结构（顶层 `window`/`activeTabIndex`/`tabs`）在载入时自动迁移为 v2 `windows[0]`（label = `main`）；写出时只写 v2 结构。
+
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `1` | `1` | 会话格式版本（独立于设置 schema：会话结构变更时递增，迁移在会话模块内提供） |
-| `window.x` / `window.y` | number \| null | 屏幕坐标或 `null` | `null`（居中） | 窗口位置；`null` 或越界（按当前显示器判定）时居中 |
-| `window.width` / `window.height` | number | 720–16384 | `1100×760` | 窗口尺寸；低于最小值/高于上限时回退默认（防手改配置导致窗口不可用） |
-| `window.maximized` | boolean | `true`/`false` | `false` | 是否最大化启动 |
-| `activeTabIndex` | number | ≥0 整数 | `0` | 活动标签下标；载入时收敛到 `tabs` 有效范围 |
-| `tabs[]` | array | 见下 | `[]` | 上次打开的标签（惰性恢复：仅激活标签建索引） |
-| `tabs[].path` | string | 文件绝对路径 | — | 文件不存在时启动跳过并 Toast 提示 |
-| `tabs[].encoding` | string \| null | 编码名或 `null` | `null` | `null` = 自动检测；手动切换过则记录 |
-| `tabs[].scrollRow` | number | ≥0 | `0` | 恢复的滚动锚点（显示行号） |
-| `tabs[].editMode` | boolean | `true`/`false` | `false` | 上次是否处于编辑态（未保存内容不持久化） |
+| `schemaVersion` | number | 固定 `2` | `2` | 会话格式版本（独立于设置 schema：v1 → v2 = 单窗口 → 多窗口） |
+| `focusedLabel` | string \| null | 窗口 label | `null` | 最后聚焦的主窗口（`main` / `main-2`…）；启动时激活该窗口 |
+| `windows[]` | array | 见下 | `[]` | 各窗口会话切片（各窗口各自保存/恢复；关闭单个窗口移除其切片，整体退出保留） |
+| `windows[].label` | string | `main` / `main-2`… | — | 窗口标识（保存时由后端按调用窗口覆写） |
+| `windows[].window` | object | 同 v1 `window` | 居中 1100×760 | 该窗口的位置、尺寸与最大化 |
+| `windows[].activeTabIndex` | number | ≥0 整数 | `0` | 该窗口的活动标签下标；载入时收敛到 `tabs` 有效范围 |
+| `windows[].tabs[]` | array | 见下 | `[]` | 该窗口上次打开的标签（惰性恢复：仅激活标签建索引） |
+| `windows[].tabs[].path` | string | 文件绝对路径 | — | 文件不存在时启动跳过并 Toast 提示 |
+| `windows[].tabs[].encoding` | string \| null | 编码名或 `null` | `null` | `null` = 自动检测；手动切换过则记录 |
+| `windows[].tabs[].scrollRow` | number | ≥0 | `0` | 恢复的滚动锚点（显示行号） |
+| `windows[].tabs[].editMode` | boolean | `true`/`false` | `false` | 上次是否处于编辑态（未保存内容不持久化） |
 
 ### 2.5 `history.jsonl`（历史；每行一条 JSON）
 

@@ -5,15 +5,15 @@
 
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
-import { ipc, type SessionState, type WindowState } from './ipc';
+import { ipc, type WindowSession, type WindowState } from './ipc';
 import { scrollMemory } from './reader/scroll-memory';
 import { tabs } from './state/tabs.svelte';
 
 /** 默认窗口几何（与 Rust 侧 DEFAULT_WINDOW 保持一致：1100×760） */
 const DEFAULT_WINDOW: WindowState = { x: null, y: null, width: 1100, height: 760, maximized: false };
 
-/** 采集当前会话快照（窗口查询失败时使用默认几何，不影响保存） */
-export async function collectSession(): Promise<SessionState> {
+/** 采集当前窗口的会话切片（窗口查询失败时使用默认几何，不影响保存） */
+export async function collectSession(): Promise<WindowSession> {
   const window_ = getCurrentWindow();
   let windowState: WindowState = { ...DEFAULT_WINDOW };
   try {
@@ -35,7 +35,7 @@ export async function collectSession(): Promise<SessionState> {
   }
   const activeIndex = tabs.tabs.findIndex((tab) => tab.tabId === tabs.activeId);
   return {
-    schemaVersion: 1,
+    label: window_.label,
     window: windowState,
     activeTabIndex: activeIndex >= 0 ? activeIndex : 0,
     tabs: tabs.tabs
@@ -49,7 +49,7 @@ export async function collectSession(): Promise<SessionState> {
   };
 }
 
-/** 立即保存会话（静默：保存失败不阻塞退出流程；错误由后端日志记录） */
+/** 立即保存会话切片（静默：保存失败不阻塞退出流程；错误由后端日志记录） */
 export async function saveSessionNow(): Promise<void> {
   try {
     await ipc.saveSession(await collectSession());

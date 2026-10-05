@@ -18,6 +18,7 @@ use s_read_txt::settings::store as settings_store;
 use s_read_txt::settings::theme;
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::paths;
+use s_read_txt::window_registry::LastFocused;
 use tauri::Manager;
 
 /// WebView2 启动附加参数（内存优化 + 离线加固；决策与实测见 docs/plan/progress.md）。
@@ -175,7 +176,7 @@ fn main() {
                         .startup
                         .restore_window;
                 let window_state = if restore_window {
-                    session_store::load(&startup_dir).window
+                    session_store::load_window(&startup_dir, "main").window
                 } else {
                     log::info!(target: "sread::main", "启动设置：不恢复窗口几何（使用默认）");
                     Default::default()
@@ -211,6 +212,72 @@ fn main() {
                     Err(err) => log::warn!(target: "sread::main", "显示主窗口失败：{err}"),
                 }
             }
+            // 多窗口会话恢复：按会话记录重建其余主窗口（各窗口前端自行恢复自己的标签切片）。
+            // 防御上限：手改会话写入超量窗口时避免一次性创建大量窗口。
+            const MAX_RESTORE_WINDOWS: usize = 16;
+            if startup_settings.startup.restore_session {
+                let session = session_store::load(&startup_dir);
+                let focused_label = session.focused_label.clone();
+                let extras: Vec<_> = session
+                    .windows
+                    .into_iter()
+                    .filter(|entry| {
+                        entry.label.starts_with("main-")
+                            && entry.label.len() > 5
+                            && entry
+                                .label
+                                .chars()
+                                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+                    })
+                    .take(MAX_RESTORE_WINDOWS)
+                    .collect();
+                if !extras.is_empty() {
+                    let app_handle = app.handle().clone();
+                    let restore_geometry = startup_settings.startup.restore_window;
+                    tauri::async_runtime::spawn(async move {
+                        for entry in extras {
+                            let (position, width, height, maximized) = if restore_geometry {
+                                (
+                                    match (entry.window.x, entry.window.y) {
+                                        (Some(x), Some(y)) => Some((x, y)),
+                                        _ => None,
+                                    },
+                                    f64::from(entry.window.width),
+                                    f64::from(entry.window.height),
+                                    entry.window.maximized,
+                                )
+                            } else {
+                                (None, 1100.0, 760.0, false)
+                            };
+                            match commands::build_main_window(
+                                &app_handle,
+                                &entry.label,
+                                position,
+                                width,
+                                height,
+                                maximized,
+                            ) {
+                                Ok(_) => {
+                                    log::info!(target: "sread::main", "会话恢复窗口：{}", entry.label)
+                                }
+                                Err(err) => log::warn!(
+                                    target: "sread::main",
+                                    "会话恢复窗口 {} 失败：{}",
+                                    entry.label,
+                                    err.message
+                                ),
+                            }
+                        }
+                        if let Some(label) = focused_label.as_deref() {
+                            if let Some(window) = app_handle.get_webview_window(label) {
+                                if let Err(err) = window.set_focus() {
+                                    log::warn!(target: "sread::main", "恢复窗口焦点失败：{err}");
+                                }
+                            }
+                        }
+                    });
+                }
+            }
             Ok(())
         })
         // 干净退出标记（多窗口并发收尾的安全网）：
@@ -219,10 +286,17 @@ fn main() {
         // 当销毁的是主窗口（`main` / `main-*`）且已无任何窗口时写入标记。
         // 进程被强杀（taskkill /F）不会触发销毁事件，标记保持缺失，崩溃恢复照常。
         .on_window_event(|window, event| {
+            let label = window.label();
+            // 焦点追踪：会话保存写入 focusedLabel，启动时激活最后使用的窗口。
+            if let tauri::WindowEvent::Focused(true) = event {
+                if label == "main" || label.starts_with("main-") {
+                    window.app_handle().state::<LastFocused>().set(label);
+                }
+                return;
+            }
             if !matches!(event, tauri::WindowEvent::Destroyed) {
                 return;
             }
-            let label = window.label();
             if label != "main" && !label.starts_with("main-") {
                 return;
             }
@@ -242,6 +316,8 @@ fn main() {
         })
         // 运行状态：打开标签集合（由命令层以 Mutex 访问）
         .manage(Mutex::new(AppState::new()))
+        // 最后聚焦主窗口追踪（会话 focusedLabel）
+        .manage(LastFocused::default())
         // 多窗口退出协调器（两阶段：请求 → 全部就绪 → 放行）
         .manage(s_read_txt::quit::QuitState::default())
         // 命令行/单实例待打开队列
@@ -251,6 +327,7 @@ fn main() {
             commands::data_dir_status,
             commands::take_cli_files,
             commands::new_window,
+            commands::forget_window_session,
             commands::set_data_dir,
             commands::get_settings,
             commands::save_settings,

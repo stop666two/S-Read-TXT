@@ -32,7 +32,7 @@ use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
 use s_read_txt::outline::{FoldRegion, OutlineItem};
 use s_read_txt::resources;
-use s_read_txt::session::model::SessionState;
+use s_read_txt::session::model::WindowSession;
 use s_read_txt::session::store as session_store;
 use s_read_txt::settings::registry::{self, SettingSpec};
 use s_read_txt::settings::reset::{self as settings_reset, ResetScope};
@@ -53,6 +53,7 @@ use s_read_txt::textfile::editing::search::{
 };
 use s_read_txt::textfile::encoding::FileEncoding;
 use s_read_txt::time_util;
+use s_read_txt::window_registry::LastFocused;
 
 /// 应用信息（IPC 返回体；字段序列化为 camelCase 供前端直接消费）
 #[derive(Serialize)]
@@ -450,6 +451,57 @@ pub fn new_file(
         .map_err(Into::into)
 }
 
+/// 构建并显示一个主窗口（「新建窗口」命令与启动多窗口恢复共用）。
+///
+/// `position`：物理坐标（`None` = 保持系统默认）；`maximized` 在显示前应用。
+pub fn build_main_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    position: Option<(i32, i32)>,
+    width: f64,
+    height: f64,
+    maximized: bool,
+) -> Result<tauri::WebviewWindow, IpcError> {
+    let new_window =
+        tauri::WebviewWindowBuilder::new(app, label, tauri::WebviewUrl::App("index.html".into()))
+            .title("S-Read-TXT")
+            .inner_size(width, height)
+            .min_inner_size(720.0, 480.0)
+            .decorations(false)
+            .visible(false)
+            .build()
+            .map_err(|err| IpcError::new(CODE_IO, format!("新建窗口失败：{err}")))?;
+    if let Some((px, py)) = position {
+        if let Err(err) = new_window.set_position(tauri::PhysicalPosition::new(px, py)) {
+            log::warn!(target: "sread::ipc", "新建窗口定位失败：{err}");
+        }
+    }
+    // 图标与主题背景（与主窗口启动装配一致；失败不阻塞窗口使用）。
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))
+        .ok()
+        .or_else(|| app.default_window_icon().cloned());
+    if let Some(icon) = icon {
+        let _ = new_window.set_icon(icon);
+    }
+    let (dir, _origin) = paths::resolve_data_dir();
+    let theme =
+        theme::resolve_theme(&dir, &settings_store::load_reader_settings(&dir).theme_id).ok();
+    let color = theme
+        .as_ref()
+        .map(crate::theme_background_color)
+        .unwrap_or(tauri::window::Color(0xFA, 0xF9, 0xF7, 0xFF));
+    let _ = new_window.set_background_color(Some(color));
+    if maximized {
+        if let Err(err) = new_window.maximize() {
+            log::warn!(target: "sread::ipc", "最大化新窗口失败：{err}");
+        }
+    }
+    new_window
+        .show()
+        .map_err(|err| IpcError::new(CODE_IO, format!("显示新窗口失败：{err}")))?;
+    Ok(new_window)
+}
+
 /// 命令：新建主窗口。
 ///
 /// 参数（均可选）：`x`/`y` 新窗口左上角**物理坐标**（缺省 = 相对调用窗口级联 +32px）；
@@ -466,18 +518,6 @@ pub async fn new_window(
 ) -> Result<String, IpcError> {
     with_context(LogContext::request(), || {
         let label = next_window_label(&app);
-        let new_window = tauri::WebviewWindowBuilder::new(
-            &app,
-            &label,
-            tauri::WebviewUrl::App("index.html".into()),
-        )
-        .title("S-Read-TXT")
-        .inner_size(width.unwrap_or(1100.0), height.unwrap_or(760.0))
-        .min_inner_size(720.0, 480.0)
-        .decorations(false)
-        .visible(false)
-        .build()
-        .map_err(|err| IpcError::new(CODE_IO, format!("新建窗口失败：{err}")))?;
         // 初始位置：显式坐标优先；否则相对来源窗口级联偏移 +32px。
         let (init_x, init_y) = match (x, y) {
             (Some(px), Some(py)) => (px.round() as i32, py.round() as i32),
@@ -486,27 +526,14 @@ pub async fn new_window(
                 Err(_) => (120, 120),
             },
         };
-        if let Err(err) = new_window.set_position(tauri::PhysicalPosition::new(init_x, init_y)) {
-            log::warn!(target: "sread::ipc", "新建窗口定位失败：{err}");
-        }
-        // 图标与主题背景（与主窗口启动装配一致；失败不阻塞窗口使用）。
-        let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))
-            .ok()
-            .or_else(|| app.default_window_icon().cloned());
-        if let Some(icon) = icon {
-            let _ = new_window.set_icon(icon);
-        }
-        let (dir, _origin) = paths::resolve_data_dir();
-        let theme =
-            theme::resolve_theme(&dir, &settings_store::load_reader_settings(&dir).theme_id).ok();
-        let color = theme
-            .as_ref()
-            .map(crate::theme_background_color)
-            .unwrap_or(tauri::window::Color(0xFA, 0xF9, 0xF7, 0xFF));
-        let _ = new_window.set_background_color(Some(color));
-        new_window
-            .show()
-            .map_err(|err| IpcError::new(CODE_IO, format!("显示新窗口失败：{err}")))?;
+        build_main_window(
+            &app,
+            &label,
+            Some((init_x, init_y)),
+            width.unwrap_or(1100.0),
+            height.unwrap_or(760.0),
+            false,
+        )?;
         log::info!(target: "sread::ipc", "已新建窗口：{label}");
         Ok(label)
     })
@@ -896,28 +923,48 @@ pub fn clear_history() -> Result<(), IpcError> {
     })
 }
 
-/// 命令：读取会话（窗口状态 + 标签锚点；自愈载入，损坏回退默认）。
+/// 命令：读取**调用窗口**的会话切片（自愈载入；无记录时返回空切片）。
 #[tauri::command]
-pub fn get_session() -> SessionState {
+pub fn get_session(window: tauri::WebviewWindow) -> WindowSession {
     with_context(LogContext::request(), || {
         let (dir, _origin) = paths::resolve_data_dir();
-        session_store::load(&dir)
+        session_store::load_window(&dir, window.label())
     })
 }
 
-/// 命令：保存会话（退出/周期性调用；返回保存后的会话以便前端确认）。
+/// 命令：保存**调用窗口**的会话切片（按窗口合并写入，多窗口互不覆盖）。
+/// `focused`：后端记录的最后聚焦主窗口 label，随保存写入。
+/// 返回保存后的切片以便前端确认。
 #[tauri::command]
-pub fn save_session(session: SessionState) -> Result<SessionState, IpcError> {
+pub fn save_session(
+    window: tauri::WebviewWindow,
+    session: WindowSession,
+    focused: State<'_, LastFocused>,
+) -> Result<WindowSession, IpcError> {
     with_context(LogContext::request(), || {
         let (dir, _origin) = paths::resolve_data_dir();
-        session_store::save(&dir, &session)
+        let label = window.label();
+        session_store::save_window(&dir, label, &session, Some(&focused.get()))
             .map_err(|err| IpcError::new(CODE_SESSION_SAVE, format!("保存会话失败：{err}")))?;
         log::debug!(
             target: "sread::ipc",
-            "会话已保存（{} 个标签）",
+            "会话切片已保存（窗口 {label}，{} 个标签）",
             session.tabs.len()
         );
-        Ok(session_store::load(&dir))
+        Ok(session_store::load_window(&dir, label))
+    })
+}
+
+/// 命令：移除**调用窗口**的会话切片（单窗口关闭时调用；应用整体退出保持记录）。
+#[tauri::command]
+pub fn forget_window_session(window: tauri::WebviewWindow) -> Result<(), IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let label = window.label();
+        session_store::forget_window(&dir, label)
+            .map_err(|err| IpcError::new(CODE_SESSION_SAVE, format!("移除窗口会话失败：{err}")))?;
+        log::info!(target: "sread::ipc", "已移除窗口会话记录：{label}");
+        Ok(())
     })
 }
 

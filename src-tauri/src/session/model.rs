@@ -1,4 +1,4 @@
-//! `session.json` 模型（会话：窗口状态 + 打开标签锚点）。
+//! `session.json` 模型（会话：多窗口几何 + 各窗口打开标签锚点）。
 //! 字段以 `docs/configuration.md` §2.4 为准（保持同步）。
 //!
 //! 语义：退出时写入、启动时读取；标签**惰性恢复**（先出标签栏，
@@ -17,7 +17,7 @@ pub const MIN_WINDOW_HEIGHT: u32 = 480;
 /// 窗口尺寸上限（px；防御手改配置导致窗口不可用的异常值）
 pub const MAX_WINDOW_DIMENSION: u32 = 16384;
 /// 会话配置格式版本（独立于设置 schema：会话结构变更时递增并在会话模块内提供迁移）
-pub const SESSION_SCHEMA_VERSION: u32 = 1;
+pub const SESSION_SCHEMA_VERSION: u32 = 2;
 
 /// 窗口状态。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -72,12 +72,12 @@ impl Default for SessionTab {
     }
 }
 
-/// 会话（`session.json`）。
+/// 单个窗口的会话（几何 + 标签锚点 + 活动标签）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct SessionState {
-    /// 会话格式版本（保存时写入当前 [`SESSION_SCHEMA_VERSION`]）
-    pub schema_version: u32,
+pub struct WindowSession {
+    /// 窗口 label（`main` / `main-2`…；保存时由后端按调用窗口覆写）
+    pub label: String,
     /// 窗口状态
     pub window: WindowState,
     /// 活动标签下标（归一后保证落在 `tabs` 范围内）
@@ -86,13 +86,47 @@ pub struct SessionState {
     pub tabs: Vec<SessionTab>,
 }
 
+impl Default for WindowSession {
+    fn default() -> Self {
+        Self {
+            label: String::new(),
+            window: WindowState::default(),
+            active_tab_index: 0,
+            tabs: Vec::new(),
+        }
+    }
+}
+
+/// 会话（`session.json`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SessionState {
+    /// 会话格式版本（保存时写入当前 [`SESSION_SCHEMA_VERSION`]）
+    pub schema_version: u32,
+    /// 各窗口会话（v2 起；顺序即窗口创建顺序）
+    pub windows: Vec<WindowSession>,
+    /// 最后聚焦的主窗口 label（启动时激活；`None` = 主窗口）
+    pub focused_label: Option<String>,
+    /// v1 兼容字段：单窗口状态（读取旧文件时迁移，写出时省略）
+    #[serde(skip_serializing, rename = "window")]
+    pub legacy_window: WindowState,
+    /// v1 兼容字段：单窗口活动下标（读取旧文件时迁移，写出时省略）
+    #[serde(skip_serializing, rename = "activeTabIndex")]
+    pub legacy_active_tab_index: u32,
+    /// v1 兼容字段：单窗口标签（读取旧文件时迁移，写出时省略）
+    #[serde(skip_serializing, rename = "tabs")]
+    pub legacy_tabs: Vec<SessionTab>,
+}
+
 impl Default for SessionState {
     fn default() -> Self {
         Self {
             schema_version: SESSION_SCHEMA_VERSION,
-            window: WindowState::default(),
-            active_tab_index: 0,
-            tabs: Vec::new(),
+            windows: Vec::new(),
+            focused_label: None,
+            legacy_window: WindowState::default(),
+            legacy_active_tab_index: 0,
+            legacy_tabs: Vec::new(),
         }
     }
 }

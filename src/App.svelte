@@ -34,7 +34,7 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import { formatBytes } from './lib/format';
   import type { EditActionType, EditorAction } from './lib/edit/actions';
   import { focusEditorProxy } from './lib/edit/focus';
-  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type SessionState, type TextStats, type ThemeSummary, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
+  import { describeIpcError, ipc, toIpcError, type AppSettings, type EditApplied, type ReaderSettings, type TextStats, type ThemeSummary, type WindowSession, type WorkspaceFileResult, type WorkspaceHit } from './lib/ipc';
   import { scrollMemory } from './lib/reader/scroll-memory';
   import { saveSessionNow } from './lib/session';
   import { dataDirStore } from './lib/state/data-dir.svelte';
@@ -353,7 +353,7 @@ let outlineOpen = $state(false);
   async function restoreSession(): Promise<void> {
     // 启动行为设置：关闭「恢复上次会话」时直接进入空状态
     if (appSettings?.startup.restoreSession === false) return;
-    let session: SessionState | null = null;
+    let session: WindowSession | null = null;
     try {
       session = await ipc.getSession();
     } catch (error) {
@@ -621,10 +621,13 @@ let outlineOpen = $state(false);
     await finalizeClose();
   }
 
-  /** 落盘会话并关闭当前窗口；仅最后一个主窗口写「干净退出」标记。 */
-  async function finalizeClose(): Promise<void> {
+  /** 落盘/移除会话记录并关闭当前窗口；仅最后一个主窗口写「干净退出」标记。
+   *  keepSlice=false（多窗口下关闭单个窗口、应用继续运行）时移除本窗口会话记录；
+   *  整体退出（quit / quit-all / 最后窗口）保留记录以便下次启动恢复。 */
+  async function finalizeClose(keepSlice = true): Promise<void> {
     historyStore.flushAll(tabs.tabs);
-    await saveSessionNow();
+    if (keepSlice) await saveSessionNow();
+    else await ipc.forgetWindowSession().catch(() => {});
     await ipc.closeWindowTabs().catch(() => {});
     const remaining = await ipc.mainWindowCount().catch(() => 1);
     if (remaining <= 1) await ipc.markCleanExit().catch(() => {});
@@ -1019,6 +1022,8 @@ let outlineOpen = $state(false);
     } else if (pending.kind === 'quit-all') {
       // 本窗口确认完毕 → 报就绪；等全部窗口就绪后由 proceed 事件统一关闭
       await ipc.reportQuitReady().catch(() => {});
+    } else if (pending.kind === 'close-window') {
+      await finalizeClose(false);
     } else {
       await finalizeClose();
     }
@@ -1424,7 +1429,10 @@ onMount(() => {
         event.preventDefault();
         void (async () => {
           if (!tabs.tabs.some((tab) => tab.dirty)) {
-            await finalizeClose();
+            // 多窗口下关闭单个窗口：应用继续运行 → 移除本窗口会话记录；
+            // 最后一个窗口：应用退出 → 保留记录供下次恢复。
+            const count = await ipc.mainWindowCount().catch(() => 1);
+            await finalizeClose(count <= 1);
             return;
           }
           const count = await ipc.mainWindowCount().catch(() => 1);

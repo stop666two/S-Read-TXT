@@ -39,4 +39,5 @@ pub mod stats;
 pub mod storage;
 pub mod textfile;
 pub mod time_util;
+pub mod window_registry;
 pub mod workspace_scan;
