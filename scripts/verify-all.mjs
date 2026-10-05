@@ -12,6 +12,7 @@
 //   node scripts/verify-all.mjs --skip-longline # 跳过 100MB 套件（快速回归）
 //   node scripts/verify-all.mjs --only cargo,svelte-check  # 仅跑名称包含逗号子串的步骤
 //   node scripts/verify-all.mjs --skip-build    # 跳过构建（复用现有 exe；仍会跑冒烟）
+//   node scripts/verify-all.mjs --exclude smoke-uninstall  # 排除环境受限步骤（附原因，计入「排除项」，不影响退出码）
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -44,6 +45,14 @@ const skipLongline = process.argv.includes('--skip-longline');
 const skipBuild = process.argv.includes('--skip-build');
 const onlyArg = process.argv.indexOf('--only');
 const only = onlyArg >= 0 && process.argv[onlyArg + 1] ? process.argv[onlyArg + 1].split(',') : null;
+const excludeArg = process.argv.indexOf('--exclude');
+const exclude =
+  excludeArg >= 0 && process.argv[excludeArg + 1] ? process.argv[excludeArg + 1].split(',') : [];
+
+/** 已知环境排除项及原因（`--exclude` 按键命中时随报告与终端附注）。 */
+const KNOWN_EXCLUSIONS = {
+  'smoke-uninstall': '需提权运行安装包（UAC）；同意提权时可不带 --exclude 运行',
+};
 
 /** 检查步骤定义（cmd 全为受控字符串；shell 执行以便直接用 npm/npx） */
 const steps = [
@@ -139,13 +148,30 @@ function gitInfo() {
 }
 
 function main() {
-  const selected = steps.filter((step) => !only || only.some((key) => step.name.includes(key)));
-  if (selected.length === 0) {
+  const selectedAll = steps.filter((step) => !only || only.some((key) => step.name.includes(key)));
+  if (selectedAll.length === 0) {
     console.error(`--only 未匹配到任何步骤：${only?.join(',')}`);
     process.exit(2);
   }
 
-  console.log(`全量自检开始：${selected.length} 个步骤（串行）\n`);
+  const selected = [];
+  const excludedSteps = [];
+  for (const step of selectedAll) {
+    const matchedKey = exclude.find((key) => step.name.includes(key));
+    if (matchedKey) {
+      const reason = KNOWN_EXCLUSIONS[matchedKey] ?? '用户指定排除';
+      excludedSteps.push({ name: step.name, reason });
+    } else {
+      selected.push(step);
+    }
+  }
+  for (const item of excludedSteps) {
+    console.log(`⏭ 排除：${item.name}（${item.reason}）`);
+  }
+
+  console.log(
+    `全量自检开始：${selected.length} 个步骤（串行${excludedSteps.length > 0 ? `，另有 ${excludedSteps.length} 项排除` : ''}）\n`,
+  );
   const results = [];
   const startedAt = Date.now();
 
@@ -204,7 +230,9 @@ function main() {
     '',
     `- 时间（UTC）：${now}`,
     `- 提交：${commit}（未提交变更 ${dirtyCount} 项）`,
-    `- 结果：**${results.length - failed.length}/${results.length} 通过**，总耗时 ${totalSec}s`,
+    `- 结果：**${results.length - failed.length}/${results.length} 通过**${
+      excludedSteps.length > 0 ? `（另有 ${excludedSteps.length} 项排除）` : ''
+    }，总耗时 ${totalSec}s`,
     '',
     '| 步骤 | 结果 | 耗时(s) |',
     '| --- | --- | --- |',
@@ -212,8 +240,16 @@ function main() {
       (item) =>
         `| ${item.name} | ${item.passed ? `✅${item.retried ? '（重跑通过）' : ''}` : '❌'} | ${item.durationSec} |`,
     ),
+    ...excludedSteps.map((item) => `| ${item.name} | ⏭ 排除 | — |`),
     '',
   ];
+  if (excludedSteps.length > 0) {
+    lines.push('## 排除项', '');
+    for (const item of excludedSteps) {
+      lines.push(`- ${item.name}：${item.reason}`);
+    }
+    lines.push('');
+  }
   if (failed.length > 0) {
     lines.push('## 失败详情', '');
     for (const item of failed) {
@@ -222,7 +258,11 @@ function main() {
   }
     writeFileSync(join(reportDir, 'latest.md'), `${lines.join('\n').replace(/\r\n?/g, '\n')}\n`, 'utf8');
 
-  console.log(`\n全量自检：${results.length - failed.length}/${results.length} 通过，总耗时 ${totalSec}s`);
+  console.log(
+    `\n全量自检：${results.length - failed.length}/${results.length} 通过${
+      excludedSteps.length > 0 ? `（另有 ${excludedSteps.length} 项排除）` : ''
+    }，总耗时 ${totalSec}s`,
+  );
   console.log(`报告：docs/verify/latest.md`);
   if (failed.length > 0) {
     console.error(`失败步骤：${failed.map((item) => item.name).join('；')}`);

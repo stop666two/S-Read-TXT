@@ -472,6 +472,7 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
   - **滚动永久空白根治**：快速滚动/滚轮连发时 IPC 取行响应偶发丢失且 `inflight` 无超时 → 看门狗（1.2s 超时重取）+ 并发上限（≤4）+ 大行文件自适应批次（8KB 段文件 16 行/批、并发 2）+ 指数退避（300ms→5s 封顶）；smoke-scroll **0/4→4/4**、smoke-longline **8/9→9/9**；
   - smoke-clipboard 清空确认竞态（列表刷新前点击 disabled 按钮）与 smoke-history 历史重开陈旧条目竞态，均已加固（19/19、13/13）。
 - 最终全量自检 **46/47**（2049s）：唯一失败 smoke-uninstall（该套件需以提权方式运行 NSIS 安装包；用户当夜临时拒 UAC → 解释排除、非回归；同日早些时候该套件 46.5s 通过，机器无残余安装/注册表）。其余功能性套件全绿：find 27/27、settings 57/57、disk 6/6、scroll 4/4、longline 9/9、clipboard 19/19、history 13/13、settings-io EXIT=0。
+- 排除机制（2026-10-05 补）：`verify-all` 新增 `--exclude <名称>[,<名称>]`——命中步骤计入报告「## 排除项」并附已知原因（`KNOWN_EXCLUSIONS`），不影响退出码；UAC 受限轮次用 `node scripts/verify-all.mjs --exclude smoke-uninstall` 出绿报告。
 - 自检基建修复：smoke-disk/clipboard/settings-v2 端口段避开 Windows 保留区间 10008–10107（WebView2 调试端口无法绑定曾致 smoke-disk 必然超时）；find/settings 判定改轮询式。
 - 测试基线：Rust **444**；vitest 115；svelte-check 0/0；E2E **38 套 ≈592 项**；verify-all **47 步**。
 - 下一切片：P3-4 多窗口（计划 `docs/plan/2026-10-04-p34-multiwindow-plan.md`；维护者已定：完整原生拖放 + 标签颜色；从任务 1 AppState 按窗口分区开始）。
