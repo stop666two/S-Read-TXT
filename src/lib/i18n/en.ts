@@ -374,6 +374,8 @@ export const en: Record<MessageKey, string> = {
   'app.reload.message': '"{name}" has unsaved changes. Reloading will discard them.',
   'app.close.keptDirty': 'Kept {count} tab(s) with unsaved changes',
   'app.close.quitMessage': '{count} tab(s) have unsaved changes. Quitting will discard them.',
+  'app.close.quitAllMessage': 'Before closing all windows, {count} tab(s) have unsaved changes.',
+  'app.close.closeWindowMessage': 'Before closing this window, {count} tab(s) have unsaved changes.',
   'app.close.tabMessage': '"{name}" has unsaved changes. Closing will discard them.',
   'app.close.quitTitle': 'Quit',
   'app.close.tabTitle': 'Close tab',

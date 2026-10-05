@@ -29,6 +29,7 @@ pub mod history;
 pub mod ipc_error;
 pub mod logging;
 pub mod outline;
+pub mod quit;
 pub mod reading_stats;
 pub mod resources;
 pub mod session;

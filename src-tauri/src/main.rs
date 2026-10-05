@@ -18,6 +18,7 @@ use s_read_txt::settings::store as settings_store;
 use s_read_txt::settings::theme;
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::paths;
+use tauri::Manager;
 
 /// WebView2 启动附加参数（内存优化 + 离线加固；决策与实测见 docs/plan/progress.md）。
 ///
@@ -212,8 +213,37 @@ fn main() {
             }
             Ok(())
         })
+        // 干净退出标记（多窗口并发收尾的安全网）：
+        // 「退出所有窗口」协议下每扇窗各自收尾，前端查询剩余窗口数存在竞态
+        // （两窗会同时看到对方而都不写标记）；这里在主窗口销毁事件里裁决：
+        // 当销毁的是主窗口（`main` / `main-*`）且已无任何窗口时写入标记。
+        // 进程被强杀（taskkill /F）不会触发销毁事件，标记保持缺失，崩溃恢复照常。
+        .on_window_event(|window, event| {
+            if !matches!(event, tauri::WindowEvent::Destroyed) {
+                return;
+            }
+            let label = window.label();
+            if label != "main" && !label.starts_with("main-") {
+                return;
+            }
+            let app = window.app_handle();
+            let remaining = app
+                .webview_windows()
+                .keys()
+                .filter(|other| other.as_str() != label)
+                .count();
+            if remaining > 0 {
+                return;
+            }
+            let (dir, _origin) = paths::resolve_data_dir();
+            if let Err(err) = s_read_txt::snapshots::mark_clean_exit(&dir) {
+                log::warn!(target: "sread::main", "写入干净退出标记失败：{err}");
+            }
+        })
         // 运行状态：打开标签集合（由命令层以 Mutex 访问）
         .manage(Mutex::new(AppState::new()))
+        // 多窗口退出协调器（两阶段：请求 → 全部就绪 → 放行）
+        .manage(s_read_txt::quit::QuitState::default())
         // 命令行/单实例待打开队列
         .manage(s_read_txt::cli::PendingCliFiles::default())
         .invoke_handler(tauri::generate_handler![
@@ -281,6 +311,11 @@ fn main() {
             commands::list_encodings,
             commands::list_tabs,
             commands::close_tab,
+            commands::close_window_tabs,
+            commands::main_window_count,
+            commands::begin_quit_all,
+            commands::report_quit_ready,
+            commands::report_quit_cancel,
             commands::set_active_tab,
             commands::reorder_tab,
             commands::open_settings,

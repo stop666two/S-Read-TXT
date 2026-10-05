@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 use serde::Serialize;
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
 use s_read_txt::annotations::{FileAnnotations, NoteKind};
 use s_read_txt::app_state::{AppState, RowsPayload, TabInfo};
@@ -1061,6 +1061,102 @@ pub fn close_tab(
             );
         }
         Ok(view)
+    })
+}
+
+/// 命令：关闭**调用窗口**的全部标签（窗口关闭前清理全局标签表）。
+#[tauri::command]
+pub fn close_window_tabs(
+    window: tauri::WebviewWindow,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<TabsView, IpcError> {
+    with_context(LogContext::request(), || {
+        let mut guard = lock_state(&state)?;
+        let owner = window.label().to_string();
+        let closed = guard.close_window_tabs(&owner);
+        let view = TabsView {
+            tabs: guard.tabs_info(&owner),
+            active_tab_id: guard.active_tab(&owner),
+        };
+        log::info!(
+            target: "sread::ipc",
+            "关闭窗口标签：窗口 {}，共 {} 个",
+            owner,
+            closed.len()
+        );
+        Ok(view)
+    })
+}
+
+/// 主窗口 label 列表（`main`、`main-N`；设置/打印/拖影等辅助窗口不计）。
+fn main_window_labels(app: &tauri::AppHandle) -> Vec<String> {
+    let mut labels: Vec<String> = app
+        .webview_windows()
+        .keys()
+        .filter(|label| label.as_str() == "main" || label.starts_with("main-"))
+        .cloned()
+        .collect();
+    labels.sort();
+    labels
+}
+
+/// 命令：主窗口数量（前端判断「最后一个窗口」用于干净退出标记）。
+#[tauri::command]
+pub fn main_window_count(app: tauri::AppHandle) -> usize {
+    main_window_labels(&app).len()
+}
+
+/// 命令：发起「退出所有窗口」。
+///
+/// 多窗口：建立协调会话并广播 `srt://quit-request`，返回 `true`；
+/// 单窗口：不建会话、返回 `false`（前端按窗口本地退出流程处理）。
+#[tauri::command]
+pub fn begin_quit_all(
+    app: tauri::AppHandle,
+    state: State<'_, s_read_txt::quit::QuitState>,
+) -> Result<bool, IpcError> {
+    with_context(LogContext::request(), || {
+        let labels = main_window_labels(&app);
+        if !state.begin(labels) {
+            return Ok(false);
+        }
+        log::info!(target: "sread::ipc", "发起退出所有窗口");
+        let _ = app.emit(s_read_txt::quit::EVENT_QUIT_REQUEST, ());
+        Ok(true)
+    })
+}
+
+/// 命令：回报「本窗口已就绪」；全部就绪时广播 `srt://quit-proceed` 放行。
+#[tauri::command]
+pub fn report_quit_ready(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    state: State<'_, s_read_txt::quit::QuitState>,
+) -> Result<(), IpcError> {
+    with_context(LogContext::request(), || {
+        if matches!(
+            state.mark_ready(window.label()),
+            s_read_txt::quit::ReadyOutcome::AllReady
+        ) {
+            log::info!(target: "sread::ipc", "全部窗口就绪，放行退出");
+            let _ = app.emit(s_read_txt::quit::EVENT_QUIT_PROCEED, ());
+        }
+        Ok(())
+    })
+}
+
+/// 命令：取消「退出所有窗口」并广播 `srt://quit-cancelled`。
+#[tauri::command]
+pub fn report_quit_cancel(
+    app: tauri::AppHandle,
+    state: State<'_, s_read_txt::quit::QuitState>,
+) -> Result<(), IpcError> {
+    with_context(LogContext::request(), || {
+        if state.cancel() {
+            log::info!(target: "sread::ipc", "退出所有窗口已取消");
+            let _ = app.emit(s_read_txt::quit::EVENT_QUIT_CANCELLED, ());
+        }
+        Ok(())
     })
 }
 

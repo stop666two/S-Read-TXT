@@ -936,6 +936,16 @@ export const ipc = {
   listTabs: () => invoke<TabsView>('list_tabs'),
   /** 关闭标签（返回剩余视图）。 */
   closeTab: (tabId: number) => invoke<TabsView>('close_tab', { tabId }),
+  /** 关闭调用窗口的全部标签（窗口关闭前清理全局标签表）。 */
+  closeWindowTabs: () => invoke<TabsView>('close_window_tabs'),
+  /** 主窗口数量（判断当前是否为最后一个主窗口）。 */
+  mainWindowCount: () => invoke<number>('main_window_count'),
+  /** 发起「退出所有窗口」；false = 单窗口（由本窗本地流程处理）。 */
+  beginQuitAll: () => invoke<boolean>('begin_quit_all'),
+  /** 回报本窗口已就绪（退出所有窗口协议）。 */
+  reportQuitReady: () => invoke<void>('report_quit_ready'),
+  /** 取消「退出所有窗口」（广播取消）。 */
+  reportQuitCancel: () => invoke<void>('report_quit_cancel'),
   /** 文档统计（全文件流式）。 */
   documentStats: (tabId: number) => invoke<TextStats>('document_stats', { tabId }),
   /** 选区统计（编辑态；半开 UTF-16 区间）。 */

@@ -364,6 +364,8 @@ export const zhCN = {
   'app.reload.message': '「{name}」有未保存的修改，重新加载将丢弃这些修改。',
   'app.close.keptDirty': '已保留 {count} 个有未保存修改的标签',
   'app.close.quitMessage': '有 {count} 个标签存在未保存的修改，退出将丢失这些修改。',
+  'app.close.quitAllMessage': '退出所有窗口前，有 {count} 个标签存在未保存的修改。',
+  'app.close.closeWindowMessage': '关闭此窗口前，有 {count} 个标签存在未保存的修改。',
   'app.close.tabMessage': '「{name}」有未保存的修改，关闭将丢失这些修改。',
   'app.close.quitTitle': '退出应用',
   'app.close.tabTitle': '关闭标签',

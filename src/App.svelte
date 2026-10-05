@@ -610,17 +610,35 @@ let outlineOpen = $state(false);
     }
   }
 
-  /** 退出应用：脏标签走「保存/不保存/取消」三态确认（窗口 X 同样被拦截） */
+  /** 退出应用：多窗口走两阶段「退出所有窗口」协议（广播后各窗自行确认）；单窗口本地处理。 */
   async function quit(): Promise<void> {
+    const multiWindow = await ipc.beginQuitAll().catch(() => false);
+    if (multiWindow) return; // 广播会到达本窗口，统一由 handleQuitRequest 处理
     if (tabs.tabs.some((tab) => tab.dirty)) {
       pendingClose = { kind: 'quit' };
       return;
     }
+    await finalizeClose();
+  }
+
+  /** 落盘会话并关闭当前窗口；仅最后一个主窗口写「干净退出」标记。 */
+  async function finalizeClose(): Promise<void> {
     historyStore.flushAll(tabs.tabs);
-    await ipc.markCleanExit().catch(() => {});
-        await saveSessionNow();
+    await saveSessionNow();
+    await ipc.closeWindowTabs().catch(() => {});
+    const remaining = await ipc.mainWindowCount().catch(() => 1);
+    if (remaining <= 1) await ipc.markCleanExit().catch(() => {});
     allowClose = true;
     await getCurrentWindow().close();
+  }
+
+  /** 收到「退出所有窗口」请求：本窗口处理脏标签，无脏直接报就绪。 */
+  async function handleQuitRequest(): Promise<void> {
+    if (tabs.tabs.some((tab) => tab.dirty)) {
+      pendingClose = { kind: 'quit-all' };
+      return;
+    }
+    await ipc.reportQuitReady().catch(() => {});
   }
 
   // ---- 编辑与关闭流程 ----
@@ -641,8 +659,10 @@ let outlineOpen = $state(false);
     backup: boolean;
     resolve: (ok: boolean) => void;
   } | null>(null);
-  /** 关闭确认待办（脏标签关闭 / 退出应用） */
-  let pendingClose = $state<{ kind: 'tab'; tabId: number } | { kind: 'quit' } | null>(null);
+  /** 关闭确认待办（脏标签关闭 / 退出应用 / 退出所有窗口 / 关闭窗口） */
+  let pendingClose = $state<
+    { kind: 'tab'; tabId: number } | { kind: 'quit' } | { kind: 'quit-all' } | { kind: 'close-window' } | null
+  >(null);
   /** 允许窗口关闭（绕过 onCloseRequested 拦截；仅在用户确认后置 true） */
   let allowClose = false;
 
@@ -974,6 +994,7 @@ let outlineOpen = $state(false);
     if (!pending) return;
     if (action === 'cancel') {
       pendingClose = null;
+      if (pending.kind === 'quit-all') await ipc.reportQuitCancel().catch(() => {});
       return;
     }
     const dirtyIds =
@@ -995,12 +1016,11 @@ let outlineOpen = $state(false);
       if (closingTab) historyStore.flushTab(closingTab);
       await tabs.close(pending.tabId);
       focusEditorProxy();
+    } else if (pending.kind === 'quit-all') {
+      // 本窗口确认完毕 → 报就绪；等全部窗口就绪后由 proceed 事件统一关闭
+      await ipc.reportQuitReady().catch(() => {});
     } else {
-      historyStore.flushAll(tabs.tabs);
-      await ipc.markCleanExit().catch(() => {});
-      await saveSessionNow();
-      allowClose = true;
-      await getCurrentWindow().close();
+      await finalizeClose();
     }
   }
 
@@ -1008,12 +1028,15 @@ let outlineOpen = $state(false);
   const closeMessage = $derived.by(() => {
     const pending = pendingClose;
     if (!pending) return '';
-    if (pending.kind === 'quit') {
-      const count = tabs.tabs.filter((item) => item.dirty).length;
-      return t('app.close.quitMessage', { count });
+    if (pending.kind === 'tab') {
+      const name =
+        tabs.tabs.find((item) => item.tabId === pending.tabId)?.name ?? t('app.currentFile');
+      return t('app.close.tabMessage', { name });
     }
-    const name = tabs.tabs.find((item) => item.tabId === pending.tabId)?.name ?? t('app.currentFile');
-    return t('app.close.tabMessage', { name });
+    const count = tabs.tabs.filter((item) => item.dirty).length;
+    if (pending.kind === 'quit-all') return t('app.close.quitAllMessage', { count });
+    if (pending.kind === 'close-window') return t('app.close.closeWindowMessage', { count });
+    return t('app.close.quitMessage', { count });
   });
 
   /** 三态弹窗可见性（保存询问/冲突弹窗进行中时让位，避免叠层） */
@@ -1392,28 +1415,41 @@ onMount(() => {
     // 历史记录预载（面板与「最近打开」子菜单共用数据源）
     void historyStore.load();
 
-    // 窗口关闭拦截（X 按钮/系统关闭）：统一走退出流程——
-    // 保存会话 → 脏标签三态确认 → 关闭（避免 X 直关时丢失最后滚动位置）
+    // 窗口关闭拦截（X 按钮/系统关闭）：仅处理**本窗口**标签——
+    // 有脏标签走三态确认；确认后落盘会话并关闭（最后一窗写干净退出标记）
     let unlistenClose: (() => void) | undefined;
     void getCurrentWindow()
       .onCloseRequested((event) => {
         if (allowClose) return;
         event.preventDefault();
-        if (tabs.tabs.some((tab) => tab.dirty)) {
-          pendingClose = { kind: 'quit' };
-          return;
-        }
         void (async () => {
-          historyStore.flushAll(tabs.tabs);
-          await ipc.markCleanExit().catch(() => {});
-          await saveSessionNow();
-          allowClose = true;
-          await getCurrentWindow().close();
+          if (!tabs.tabs.some((tab) => tab.dirty)) {
+            await finalizeClose();
+            return;
+          }
+          const count = await ipc.mainWindowCount().catch(() => 1);
+          pendingClose = { kind: count > 1 ? 'close-window' : 'quit' };
         })();
       })
       .then((stop) => {
         unlistenClose = stop;
       });
+
+    // 退出所有窗口（多窗口两阶段协议）：请求 → 各窗确认 → 放行关闭 / 取消
+    let unlistenQuitRequest: (() => void) | undefined;
+    let unlistenQuitProceed: (() => void) | undefined;
+    let unlistenQuitCancelled: (() => void) | undefined;
+    void listen('srt://quit-request', () => void handleQuitRequest()).then((stop) => {
+      unlistenQuitRequest = stop;
+    });
+    void listen('srt://quit-proceed', () => void finalizeClose()).then((stop) => {
+      unlistenQuitProceed = stop;
+    });
+    void listen('srt://quit-cancelled', () => {
+      if (pendingClose?.kind === 'quit-all') pendingClose = null;
+    }).then((stop) => {
+      unlistenQuitCancelled = stop;
+    });
 
     // 文件拖拽（Tauri 原生事件：over → 遮罩；drop → 逐个打开）
     let unlisten: (() => void) | undefined;
@@ -1506,6 +1542,9 @@ onMount(() => {
       void flushReadingSeconds();
       unlisten?.();
       unlistenClose?.();
+      unlistenQuitRequest?.();
+      unlistenQuitProceed?.();
+      unlistenQuitCancelled?.();
       unlistenSettings?.();
       unlistenFocus?.();
       unlistenMoved?.();
@@ -1819,7 +1858,7 @@ onMount(() => {
   />
   <UnsavedDialog
     open={unsavedOpen}
-    title={pendingClose?.kind === 'quit' ? t('app.close.quitTitle') : t('app.close.tabTitle')}
+        title={pendingClose?.kind === 'tab' ? t('app.close.tabTitle') : t('app.close.quitTitle')}
     message={closeMessage}
     onSave={() => void resolvePendingClose('save')}
     onDiscard={() => void resolvePendingClose('discard')}
