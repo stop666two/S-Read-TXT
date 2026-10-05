@@ -1,5 +1,6 @@
 <script lang="ts">
   // 双栏比较视图：并排 / 统一两种呈现；虚拟列表按需向后端取行文本。
+  import { untrack } from 'svelte';
   import { ipc, type DiffDocs } from '../../lib/ipc';
   import {
     buildSideModel,
@@ -113,7 +114,7 @@
     scrollTop = scrollEl.scrollTop;
   }
 
-  onNavReady?.({ prev: () => nav(false), next: () => nav(true) });
+  untrack(() => onNavReady)?.({ prev: () => nav(false), next: () => nav(true) });
 
   $effect(() => {
     if (!scrollEl || typeof ResizeObserver === 'undefined') return;

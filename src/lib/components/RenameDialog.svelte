@@ -3,6 +3,7 @@
   // 扫描目录 → 组合规则（查找替换 / 前后缀 / 序号）→ 预览（冲突/重名/非法标红）→ 执行；
   // 执行成功后提供「撤销本次重命名」（后端撤销日志）。
   import { open as openDialog } from '@tauri-apps/plugin-dialog';
+  import { untrack } from 'svelte';
   import { t } from '../i18n/index.svelte';
   import {
     ipc,
@@ -24,7 +25,7 @@
 
   let { initialDir, onClose }: Props = $props();
 
-  let dir = $state(initialDir ?? '');
+  let dir = $state(untrack(() => initialDir ?? ''));
   let extensions = $state('txt,log');
   let find = $state('');
   let replace = $state('');
@@ -191,6 +192,7 @@
 <div
   class="mask"
   role="dialog"
+  tabindex="-1"
   aria-modal="true"
   aria-label={t('rename.title')}
   data-rename-dialog

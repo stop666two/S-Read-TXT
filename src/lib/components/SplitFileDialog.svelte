@@ -2,6 +2,7 @@
   // SplitFileDialog —— 「工具 → 拆分文件…」对话框：
   // 填写源文件与拆分方式（行数 / 标记），预览分片后执行；结果可一键打开第一份。
   import { open as openDialog } from '@tauri-apps/plugin-dialog';
+  import { untrack } from 'svelte';
   import { formatBytes } from '../format';
   import { t } from '../i18n/index.svelte';
   import { ipc, toIpcError, type SplitMode, type SplitPreview, type SplitResult } from '../ipc';
@@ -15,7 +16,7 @@
 
   let { currentPath, onClose }: Props = $props();
 
-  let sourcePath = $state(currentPath ?? '');
+  let sourcePath = $state(untrack(() => currentPath ?? ''));
   let mode = $state<'lines' | 'marker'>('lines');
   let linesPerFile = $state(1000);
   let marker = $state('');
@@ -107,6 +108,7 @@
 <div
   class="mask"
   role="dialog"
+  tabindex="-1"
   aria-modal="true"
   aria-label={t('tools.split.title')}
   data-split-dialog

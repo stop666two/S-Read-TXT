@@ -33,7 +33,7 @@
   });
 
   const model = $derived(buildOutputModel(merge.regions, choices));
-  const totalConflicts = countConflicts(merge.regions);
+  const totalConflicts = $derived(countConflicts(merge.regions));
 
   let outputEl = $state<HTMLElement | null>(null);
   let scrollTop = $state(0);
