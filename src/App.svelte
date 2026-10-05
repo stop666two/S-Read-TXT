@@ -1480,10 +1480,8 @@ let outlineOpen = $state(false);
   $effect(() => {
     void activeTabId;
     if (!sessionReady) return;
-    untrack(() => {
-      selectionStats = null;
-      caretInfo = null;
-    });
+    selectionStats = null;
+    caretInfo = null;
   });
 
   /** 排版变更键（传给 ReaderView 触发行高失效重排；值变化即重排） */

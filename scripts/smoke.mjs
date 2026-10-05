@@ -8,10 +8,11 @@
 // 退出码：0 = 全部通过；1 = 存在失败。
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 const exeArg = args.indexOf('--exe');
@@ -37,9 +38,18 @@ if (!existsSync(EXE)) {
   process.exit(1);
 }
 
+// 独立数据目录：避免便携目录残留会话导致「空状态」等断言受历史状态污染
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const workDir = join(root, 'tmp', `e2e-basics-${Date.now()}`);
+const dataDir = join(workDir, 'data');
+rmSync(workDir, { recursive: true, force: true });
+mkdirSync(dataDir, { recursive: true });
+
 const child = spawn(EXE, [], {
   env: {
     ...process.env,
+    SRT_DATA_DIR: dataDir,
+    SRT_NO_ELEVATION: '1',
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
   },
   stdio: 'ignore',
