@@ -120,13 +120,22 @@ async function main() {
         `(() => { const b = [...document.querySelectorAll('.find-bar button')].find((n) => n.textContent.trim() === '${text}'); b?.click(); return !!b; })()`,
       );
     const menuClick = async (title, itemText) => {
-      await evalJs(
-        `(() => { const t = [...document.querySelectorAll('.menu-bar .title')].find((n) => n.textContent.trim() === '${title}'); t?.click(); return !!t; })()`,
-      );
-      await delay(150);
-      return evalJs(
-        `(() => { const it = [...document.querySelectorAll('.menu-bar .item')].find((n) => n.textContent.trim().startsWith('${itemText}')); it?.click(); return !!it; })()`,
-      );
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await evalJs(`(document.body.click(), true)`);
+        await delay(80);
+        await evalJs(
+          `(() => { const t = [...document.querySelectorAll('.menu-bar .title')].find((n) => n.textContent.trim() === '${title}'); t?.click(); return !!t; })()`,
+        );
+        const clicked = await waitForValue(
+          () =>
+            evalJs(
+              `(() => { const it = [...document.querySelectorAll('.menu-bar .item')].find((n) => n.textContent.trim().startsWith('${itemText}')); if (!it) return null; it.click(); return true; })()`,
+            ),
+          2000,
+        );
+        if (clicked === true) return true;
+      }
+      return false;
     };
     const toastText = () =>
       evalJs(`[...document.querySelectorAll('.toast')].map((n) => n.textContent).join('|')`);
@@ -515,12 +524,29 @@ async function main() {
         3000,
       );
     }
-    await evalJs(`(document.querySelector('[data-find-history-clear]')?.click(), true)`);
-    const historyEmpty = await waitForValue(async () => {
-      const text = await evalJs(`document.querySelector('.history-panel')?.textContent ?? ''`);
-      return text.includes('暂无历史') ? text : null;
-    }, 5000);
-    check('F22c 清空历史显示空态', historyEmpty !== null);
+    // 清空历史：面板开合与异步清空存在竞态，采用「有则点、无则开」的轮询式驱动
+    let historyEmpty = null;
+    let afterClearText = '';
+    for (let round = 0; round < 5 && historyEmpty === null; round += 1) {
+      const openNow = await evalJs(`document.querySelector('.history-panel') !== null`);
+      if (!openNow) {
+        await evalJs(`(document.querySelector('[data-find-history]')?.click(), true)`);
+      } else {
+        const hasClear = await evalJs(`document.querySelector('[data-find-history-clear]') !== null`);
+        if (hasClear) {
+          await evalJs(`(document.querySelector('[data-find-history-clear]')?.click(), true)`);
+        }
+        historyEmpty = await waitForValue(async () => {
+          const text = await evalJs(`document.querySelector('.history-panel')?.textContent ?? ''`);
+          afterClearText = text;
+          return text.includes('暂无历史') ? text : null;
+        }, 1500);
+      }
+    }
+    if (historyEmpty === null) {
+      afterClearText = await evalJs(`document.querySelector('.history-panel')?.textContent ?? '(面板已关闭)'`);
+    }
+    check('F22c 清空历史显示空态', historyEmpty !== null, `text=${afterClearText}`);
     await evalJs(`(document.querySelector('[data-find-history]')?.click(), true)`);
 
     // F23：范围=指定行（计数过滤为 1）+ 范围内命中可选中

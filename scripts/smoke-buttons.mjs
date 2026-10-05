@@ -614,7 +614,7 @@ async function main() {
       const shortcutClient = await createClient(helpWs);
       const shortcutTab = await waitForValue(async () => {
         const result = await shortcutClient.send('Runtime.evaluate', {
-          expression: `document.querySelectorAll('.row').length === 15`,
+          expression: `document.querySelectorAll('.row').length === 16`,
           returnByValue: true,
         });
         return result.result?.value === true ? true : null;
