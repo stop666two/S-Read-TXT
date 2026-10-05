@@ -526,4 +526,15 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 测试基线：Rust **506**（478 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest **138**；svelte-check 0/0；E2E **42 套 ≈667 项**；verify-all **51 步**（smoke-uninstall 仍按 UAC 策略排除）。
 - 本阶段教训（新增）：Serde 枚举 `rename_all` 只作用变体名，字段需显式 `rename`（拆分模式踩坑）；PowerShell 改写源文件会造成 GBK 往返损坏（merge3.rs 事故，已用 write 工具重建并编码自检）；冲突选择索引语义（全区块下标 vs 冲突序号）需在前后端逐字对齐。
 - 环境已知行为（WebView2 空闲 IPC 唤醒延迟）：窗口输入空闲约 1s+ 后，页面→Rust 的首条 invoke 可能延迟 ~16-19s 才投递（Rust 侧日志证明请求未达；CDP eval 不受影响）；合成鼠标移动（真实用户任一输入等价）或 Rust→页面事件可立即唤醒（实测 4ms/250ms）。已实测产品关键路径不受影响：真实用户操作自带输入；后台空闲下第二实例打开文件（CLI 转发）总时延 **250ms**。纯 eval 自动化套件需显式唤醒：`smoke-cdp.mjs` 新增 `wakeChannel()`，smoke-longline C3 先「唤醒 + 轻量往返」确认通道已热再滚动（此刻即使吃满一次 19s 排空也确定性通过）。
-- 下一切片：P3-7 会话扩展（D76 `restoreItems`：文件/光标/滚动/折叠/主题/窗口布局多选项）。
+- 下一切片（已完成）：P3-7 会话扩展——见下节。
+
+### P3-7 会话恢复扩展（restoreItems，完成）
+- 实现（按 `docs/plan/2026-10-05-p37-restore-items-plan.md` 任务 1-6，分提交存档）：
+  - 任务 1（80b83d7）：设置 schema **v16**——`startup.restoreItems{caret,scroll,folds,layout}`（注册表 4 项、迁移空步、默认 caret/folds 关、scroll/layout 开）、i18n 与 `configuration.md` 同步；
+  - 任务 2（05a1f3d）：会话 **v4**——`SessionTab` 增 `caretRow/caretCol/folds`（`FoldSpan{startRow,len}`），归一净化（去重/零长剔除/≤512 条），v1-v3 迁移测试补齐；
+  - 任务 3-4（b92a274）：`fold-memory` / `caretMemory` 快照与 seed 接入、ReaderView 折叠恢复（行号+长度校验、显示/文件行映射）、折叠与光标变化按防抖触发会话保存、恢复期不清空光标、总开关关闭仍按布局恢复窗口（`restore_session || restore_items.layout`）；
+  - 任务 5-6（4bd59e7 + 本节）：smoke-restore 13/13、并入 verify-all（现 **52 步**）。
+- 真实缺陷修复（测试暴露）：① 折叠切换未清行缓存（按显示行键控，视图集变化需重建）→ 折叠后显示旧内容；② 折叠/光标变化不触发会话保存；③ 恢复期切标签清空光标覆盖已恢复值；④ 设置窗口快速连点因过期快照补丁回退前项（字段级挂起态合并修复，滑块实时预览同源）。
+- 验收证据：smoke-restore **13/13**（开关/折叠保存恢复/折叠失效丢弃/光标恢复/越界裁剪 30:3+提示/滚动关闭回顶/布局关闭合并单栏/总开关语义两窗口零标签/布局激活栏恢复/截图）；回归 smoke-session 11/11、smoke-windows 19/19、smoke-split 26/26、smoke-utility 11/11、smoke-compare 19/19。
+- 测试基线：Rust **506**（478 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest **138**；svelte-check 0/0；E2E **43 套 ≈680 项**；verify-all **52 步（默认全量、无排除；smoke-uninstall 需 UAC，运行时弹一次提权确认）**。
+- 下一切片：P4 收尾（release 打包与安装级验证、发布与备份流程）。

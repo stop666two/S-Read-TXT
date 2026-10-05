@@ -12,7 +12,7 @@
 //   node scripts/verify-all.mjs --skip-longline # 跳过 100MB 套件（快速回归）
 //   node scripts/verify-all.mjs --only cargo,svelte-check  # 仅跑名称包含逗号子串的步骤
 //   node scripts/verify-all.mjs --skip-build    # 跳过构建（复用现有 exe；仍会跑冒烟）
-//   node scripts/verify-all.mjs --exclude smoke-uninstall  # 排除环境受限步骤（附原因，计入「排除项」，不影响退出码）
+//   node scripts/verify-all.mjs --exclude <名>  # 临时排除步骤（默认无排除项；完整测试不得跳过）
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -49,10 +49,9 @@ const excludeArg = process.argv.indexOf('--exclude');
 const exclude =
   excludeArg >= 0 && process.argv[excludeArg + 1] ? process.argv[excludeArg + 1].split(',') : [];
 
-/** 已知环境排除项及原因（`--exclude` 按键命中时随报告与终端附注）。 */
-const KNOWN_EXCLUSIONS = {
-  'smoke-uninstall': '需提权运行安装包（UAC）；同意提权时可不带 --exclude 运行',
-};
+/** 已知环境排除项及原因（`--exclude` 按键命中时随报告与终端附注）。
+ *  当前无默认排除项：全部步骤默认执行（含需 UAC 的 smoke-uninstall，运行时会弹一次提权确认）。 */
+const KNOWN_EXCLUSIONS = {};
 
 /** 检查步骤定义（cmd 全为受控字符串；shell 执行以便直接用 npm/npx） */
 const steps = [
@@ -108,6 +107,7 @@ const steps = [
   { name: 'E2E 比较与合并（smoke-compare）', cmd: 'node scripts/smoke-compare.mjs', cwd: root, env: process.env, timeout: 900_000 },
   { name: 'E2E 历史记录（smoke-history）', cmd: 'node scripts/smoke-history.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 会话恢复（smoke-session）', cmd: 'node scripts/smoke-session.mjs', cwd: root, env: process.env, timeout: 900_000 },
+  { name: 'E2E 会话恢复内容（smoke-restore）', cmd: 'node scripts/smoke-restore.mjs', cwd: root, env: process.env, timeout: 1_500_000 },
   { name: 'E2E 数据目录引导（smoke-datadir）', cmd: 'node scripts/smoke-datadir.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 卸载清理（smoke-uninstall）', cmd: 'node scripts/smoke-uninstall.mjs', cwd: root, env: process.env, timeout: 900_000 },
   { name: 'E2E 对抗（smoke-abuse）', cmd: 'node scripts/smoke-abuse.mjs', cwd: root, env: process.env, timeout: 900_000 },

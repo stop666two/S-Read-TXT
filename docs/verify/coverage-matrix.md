@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 506（478 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 138；E2E 42 套 ≈667 项；verify-all 51 步。
+- 计数口径：Rust 506（478 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 138；E2E 43 套 ≈680 项；verify-all 52 步（默认全量、无排除）。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -35,6 +35,7 @@
 | smoke-compare | 19 | 比较/合并：工具菜单入口/并排行号对齐与懒加载/统一视图 +/-/统计/上一处下一处/一致提示/合并冲突卡片/默认我方与他方自动合并/我方他方双方不用选择/写回（.bak 备份）/撤销写回 |
 | smoke-history | 13 | 历史：面板/搜索/进度/删除/清空/最近打开/**长列表虚拟滚动** |
 | smoke-session | 11 | 会话：窗口几何/标签/编码/滚动恢复/缺失跳过 |
+| smoke-restore | 13 | 会话恢复内容：restoreItems 四项开关/折叠保存与恢复及失效丢弃/光标保存与恢复/越界裁剪提示/滚动关闭回顶/布局关闭合并单栏/总开关关闭仍恢复窗口几何 |
 | smoke-datadir | 15 | 数据目录：弹窗/重定向/日志落位/只读 ACL 修复助手 |
 | smoke-uninstall | 6 | 卸载：静默安装/卸载/注册表/数据清理 |
 | smoke-abuse | 41 | 对抗：空文件/换行族/BOM/连打/撤销狂按/冲突/长行 |
@@ -173,4 +174,5 @@
 - 2026-10-04 夜终轮（46/47）：smoke-find 27/27、smoke-settings 57/57、smoke-disk 6/6（根因=Windows 保留端口段 10008–10107 吞 WebView2 调试端口，端口段已避开）；smoke-uninstall 因用户临时拒绝 UAC（套件需提权运行安装包，脚本头注明 ELEVATION_REQUIRED）被解释排除，非回归。
 - 2026-10-04/05 P3-4：多窗口（按窗口状态分区、new_window、关闭语义两阶段协议、会话 v2、CLI 定向）、标签颜色（8 色 + 主题感知色条 + 持久化）、跨窗移动与完整原生拖放（拖影窗/命中测试/桌面落点）；smoke-windows 19/19 并入 verify-all（现 48 步）；Rust 457；命令新增 set_tab_color/list_windows/move_tab_to_window/begin_tab_drag/drag_move/drag_end。
 - 2026-10-05 P3-5：窗口内分屏与栏位独立标签组（≤4 栏树形切分、分隔条、栏间与跨窗拖放支持栏位级落点、会话 v3 逐栏恢复、v1/v2 迁移）；smoke-split 26/26 并入 verify-all（现 49 步）；Rust 463；命令新增 move_tab_to_pane（new_file/open_file/list_tabs 增 pane 参数）。
+- 2026-10-05 P3-7：会话恢复扩展（设置 schema v16 `startup.restoreItems`：光标/滚动/折叠/窗口布局；会话 v4 光标与折叠锚点；恢复期越界裁剪提示与总开关语义；设置字段级挂起态合并修复连点竞态）；smoke-restore 13/13 并入 verify-all（现 **52 步；默认全量、无排除**，smoke-uninstall 运行时弹一次 UAC 确认）；Rust 506；vitest 138。
 - 2026-10-05 P3-6：工具（拆分/批量重命名/比较/三方合并）——首运提示修复（仅确有快照才提示）；拆分引擎（行数/标记双模式）；重命名引擎（组合规则+两阶段改名+撤销日志）；diff（Myers hash）与 diff3 引擎；比较窗口（并排/统一、懒加载、导航）；三方合并（冲突逐块选择、写回 + .bak + 撤销）；smoke-utility 11/11、smoke-compare 19/19 并入 verify-all（现 51 步）；Rust 506；vitest 138；命令新增 preview_split/apply_split/scan_rename_dir/preview_rename/apply_rename/undo_rename/read_rename_log/open_compare_window/take_compare_request/diff_docs/merge3_docs/compare_rows/merge_rows/write_merge_output/undo_merge_writeback；窗口能力白名单增补 compare。
