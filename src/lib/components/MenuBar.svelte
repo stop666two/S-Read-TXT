@@ -96,6 +96,16 @@
     onSettings?: () => void;
     /** 是否存在活动标签（重新加载可用性） */
     hasTab: boolean;
+    /** 是否可继续拆分栏位（未达 4 栏上限） */
+    canSplit?: boolean;
+    /** 是否可关闭栏位（多栏时可用） */
+    canClosePane?: boolean;
+    /** 向右拆分当前栏 */
+    onSplitRight?: () => void;
+    /** 向下拆分当前栏 */
+    onSplitDown?: () => void;
+    /** 关闭当前栏（标签并入相邻栏） */
+    onClosePane?: () => void;
   }
   let {
     themeId,
@@ -149,6 +159,11 @@
     workspaceFindEnabled = true,
     onSettings,
     hasTab,
+    canSplit = true,
+    canClosePane = false,
+    onSplitRight,
+    onSplitDown,
+    onClosePane,
   }: Props = $props();
 
   /** 菜单名联合类型 */
@@ -460,6 +475,10 @@
           ></button
         >
       <button class="item" onclick={() => run(onToggleFullscreen)}><span>{t('menu.view.fullscreen')}</span><span class="hint">F11</span></button>
+      <div class="separator"></div>
+      <button class="item" disabled={!canSplit} onclick={() => run(() => onSplitRight?.())}><span>{t('menu.view.splitRight')}</span><span class="hint">Ctrl+\</span></button>
+      <button class="item" disabled={!canSplit} onclick={() => run(() => onSplitDown?.())}><span>{t('menu.view.splitDown')}</span><span class="hint">Ctrl+Shift+\</span></button>
+      <button class="item" disabled={!canClosePane} onclick={() => run(() => onClosePane?.())}><span>{t('menu.view.closePane')}</span><span class="hint">Ctrl+Shift+W</span></button>
     </div>
   {:else if openMenu === 'help'}
     <div class="dropdown" role="menu" style="left: 130px">

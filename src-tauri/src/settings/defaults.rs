@@ -378,6 +378,9 @@ pub const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("find", "Ctrl+F"),
     ("replace", "Ctrl+H"),
     ("historyPanel", "Ctrl+Shift+H"),
+    ("splitRight", "Ctrl+\\"),
+    ("splitDown", "Ctrl+Shift+\\"),
+    ("closePane", "Ctrl+Shift+W"),
 ];
 
 /// 构造默认绑定表（`BTreeMap`：序列化顺序稳定，便于文件 diff 与人工核对）。
@@ -405,7 +408,7 @@ mod tests {
     fn default_bindings_are_unique_and_wellformed() {
         assert_eq!(
             DEFAULT_BINDINGS.len(),
-            16,
+            19,
             "默认动作数量变化须同步引擎与文档"
         );
         let mut actions: BTreeSet<&str> = BTreeSet::new();
@@ -459,7 +462,7 @@ mod tests {
         if base.len() == 1 {
             return base
                 .chars()
-                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '\\');
         }
         base.strip_prefix('F')
             .and_then(|num| num.parse::<u8>().ok())

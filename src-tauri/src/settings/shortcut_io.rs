@@ -165,7 +165,7 @@ mod tests {
         tempfile::tempdir().expect("创建临时目录失败")
     }
 
-    /// 导出：包含格式字段与全部 16 个生效绑定。
+    /// 导出：包含格式字段与全部 19 个生效绑定。
     #[test]
     fn export_renders_effective_bindings() {
         let dir = data_dir();
@@ -174,7 +174,7 @@ mod tests {
         assert_eq!(value["bundleVersion"], 1);
         assert_eq!(value["schemaVersion"], defaults::SCHEMA_VERSION);
         let bindings = value["bindings"].as_object().expect("bindings 对象");
-        assert_eq!(bindings.len(), 16);
+        assert_eq!(bindings.len(), 19);
         assert_eq!(bindings["openFile"], "Ctrl+O");
     }
 

@@ -592,9 +592,18 @@ let outlineOpen = $state(false);
       case 'replace':
         if (active?.editing) dispatchEditorAction('replace');
         break;
-    case 'historyPanel':
-      historyOpen = true;
-      break;
+      case 'historyPanel':
+        historyOpen = true;
+        break;
+      case 'splitRight':
+        splitPane(tabs.activePane, 'row');
+        break;
+      case 'splitDown':
+        splitPane(tabs.activePane, 'column');
+        break;
+      case 'closePane':
+        void closePane(tabs.activePane);
+        break;
     }
   }
 
@@ -1848,6 +1857,11 @@ onMount(() => {
     onWorkspaceFind={() => (workspaceOpen = true)}
     workspaceFindEnabled={appSettings?.find.multifileEnabled !== false}
     onSettings={() => void ipc.openSettings()}
+    canSplit={paneCount < MAX_PANES}
+    canClosePane={paneCount > 1}
+    onSplitRight={() => splitPane(tabs.activePane, 'row')}
+    onSplitDown={() => splitPane(tabs.activePane, 'column')}
+    onClosePane={() => void closePane(tabs.activePane)}
   />
   <ToolBar
     {themeId}

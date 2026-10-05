@@ -254,6 +254,9 @@ export const zhCN = {
   'menu.view.fontDecrease': '字号减小',
   'menu.view.fontReset': '重置字号',
   'menu.view.fullscreen': '全屏',
+  'menu.view.splitRight': '向右拆分',
+  'menu.view.splitDown': '向下拆分',
+  'menu.view.closePane': '关闭栏位',
   'menu.view.autoScroll': '自动滚动',
   'menu.view.focusMode': '专注模式',
   'menu.view.typewriter': '打字机模式',
@@ -451,6 +454,9 @@ export const zhCN = {
   'shortcut.find': '查找（编辑态）',
   'shortcut.replace': '替换（编辑态）',
   'shortcut.historyPanel': '历史记录面板',
+  'shortcut.splitRight': '向右拆分（分屏）',
+  'shortcut.splitDown': '向下拆分（分屏）',
+  'shortcut.closePane': '关闭栏位',
 
   // ---------- 快捷键录制校验提示 ----------
   'shortcutRecorder.empty': '未识别到有效按键，请重试',

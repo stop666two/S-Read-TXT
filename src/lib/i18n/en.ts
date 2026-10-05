@@ -262,6 +262,9 @@ export const en: Record<MessageKey, string> = {
   'menu.view.fontDecrease': 'Decrease font size',
   'menu.view.fontReset': 'Reset font size',
   'menu.view.fullscreen': 'Full screen',
+  'menu.view.splitRight': 'Split right',
+  'menu.view.splitDown': 'Split down',
+  'menu.view.closePane': 'Close pane',
   'menu.view.autoScroll': 'Auto scroll',
   'menu.view.focusMode': 'Focus mode',
   'menu.view.typewriter': 'Typewriter mode',
@@ -462,6 +465,9 @@ export const en: Record<MessageKey, string> = {
   'shortcut.find': 'Find (edit mode)',
   'shortcut.replace': 'Replace (edit mode)',
   'shortcut.historyPanel': 'History panel',
+  'shortcut.splitRight': 'Split right',
+  'shortcut.splitDown': 'Split down',
+  'shortcut.closePane': 'Close pane',
 
   // ---------- Shortcut recorder validation ----------
   'shortcutRecorder.empty': 'No valid key detected; please try again',
