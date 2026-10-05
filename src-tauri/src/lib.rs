@@ -29,6 +29,7 @@ pub mod fonts;
 pub mod history;
 pub mod ipc_error;
 pub mod logging;
+pub mod merge3;
 pub mod outline;
 pub mod quit;
 pub mod reading_stats;
