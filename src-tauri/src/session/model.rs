@@ -1,4 +1,4 @@
-//! `session.json` 模型（会话：多窗口几何 + 各窗口打开标签锚点）。
+//! `session.json` 模型（会话：多窗口几何 + 各窗口分栏布局与标签锚点）。
 //! 字段以 `docs/configuration.md` §2.4 为准（保持同步）。
 //!
 //! 语义：退出时写入、启动时读取；标签**惰性恢复**（先出标签栏，
@@ -16,8 +16,10 @@ pub const MIN_WINDOW_WIDTH: u32 = 720;
 pub const MIN_WINDOW_HEIGHT: u32 = 480;
 /// 窗口尺寸上限（px；防御手改配置导致窗口不可用的异常值）
 pub const MAX_WINDOW_DIMENSION: u32 = 16384;
+/// 单窗口分栏上限（叶栏位数量）
+pub const MAX_PANES: usize = 4;
 /// 会话配置格式版本（独立于设置 schema：会话结构变更时递增并在会话模块内提供迁移）
-pub const SESSION_SCHEMA_VERSION: u32 = 2;
+pub const SESSION_SCHEMA_VERSION: u32 = 3;
 
 /// 窗口状态。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,7 +77,59 @@ impl Default for SessionTab {
     }
 }
 
-/// 单个窗口的会话（几何 + 标签锚点 + 活动标签）。
+/// 分栏方向（`row` = 左右并排；`column` = 上下堆叠）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PaneSplitDir {
+    /// 子栏横向并排（左右）
+    Row,
+    /// 子栏纵向堆叠（上下）
+    Column,
+}
+
+/// 分栏布局树：叶子引用栏位键；`Split` 的 `sizes` 与 `children` 等长且合计归一为 1。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum PaneLayout {
+    /// 叶：一个栏位
+    Leaf {
+        /// 栏位键（`窗口标签#栏号`）
+        pane: String,
+    },
+    /// 分支：按 `dir` 排列的多个子布局
+    Split {
+        /// 排列方向
+        dir: PaneSplitDir,
+        /// 各子布局占比（与 `children` 等长；合计 1）
+        sizes: Vec<f64>,
+        /// 子布局（至少 2 个）
+        children: Vec<PaneLayout>,
+    },
+}
+
+/// 单个栏位的会话（标签锚点 + 活动标签）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PaneSession {
+    /// 栏位键（`窗口标签#栏号`）
+    pub pane: String,
+    /// 活动标签下标（归一后保证落在 `tabs` 范围内）
+    pub active_tab_index: u32,
+    /// 上次打开的标签列表（惰性恢复）
+    pub tabs: Vec<SessionTab>,
+}
+
+impl Default for PaneSession {
+    fn default() -> Self {
+        Self {
+            pane: String::new(),
+            active_tab_index: 0,
+            tabs: Vec::new(),
+        }
+    }
+}
+
+/// 单个窗口的会话（几何 + 分栏布局 + 各栏标签锚点 + 聚焦栏）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WindowSession {
@@ -83,10 +137,18 @@ pub struct WindowSession {
     pub label: String,
     /// 窗口状态
     pub window: WindowState,
-    /// 活动标签下标（归一后保证落在 `tabs` 范围内）
-    pub active_tab_index: u32,
-    /// 上次打开的标签列表（惰性恢复）
-    pub tabs: Vec<SessionTab>,
+    /// 各栏位的标签锚点（v3 起；顺序即栏位键顺序）
+    pub panes: Vec<PaneSession>,
+    /// 分栏布局树（v3 起；叶集合应与 `panes` 一致）
+    pub layout: Option<PaneLayout>,
+    /// 最后聚焦的栏位键（启动激活；`None` = 第一个栏位）
+    pub focused_pane: Option<String>,
+    /// v2 兼容字段：单栏活动下标（读取旧文件时迁移，写出时省略）
+    #[serde(skip_serializing, rename = "activeTabIndex")]
+    pub legacy_active_tab_index: u32,
+    /// v2 兼容字段：单栏标签（读取旧文件时迁移，写出时省略）
+    #[serde(skip_serializing, rename = "tabs")]
+    pub legacy_tabs: Vec<SessionTab>,
 }
 
 impl Default for WindowSession {
@@ -94,8 +156,11 @@ impl Default for WindowSession {
         Self {
             label: String::new(),
             window: WindowState::default(),
-            active_tab_index: 0,
-            tabs: Vec::new(),
+            panes: Vec::new(),
+            layout: None,
+            focused_pane: None,
+            legacy_active_tab_index: 0,
+            legacy_tabs: Vec::new(),
         }
     }
 }

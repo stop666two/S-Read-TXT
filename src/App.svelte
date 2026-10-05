@@ -361,13 +361,18 @@ let outlineOpen = $state(false);
       if (import.meta.env.DEV) console.error('[app] 读取会话失败', error);
     }
     try {
-      if (!session || session.tabs.length === 0) {
+      // v3 会话：取默认栏（`#1`）的锚点；v2 旧切片回退顶层 tabs/activeTabIndex
+      const sessionPanes = Array.isArray(session?.panes) ? session.panes : [];
+      const firstPane = sessionPanes.length > 0 ? sessionPanes[0] : null;
+      const sessionTabs = firstPane ? firstPane.tabs : (session?.tabs ?? []);
+      const activeIndex = firstPane ? firstPane.activeTabIndex : (session?.activeTabIndex ?? 0);
+      if (!session || sessionTabs.length === 0) {
         // 无会话切片时仍需同步后端已有标签（如拖放迁入的新窗口/CLI 先到的文件）
         tabs.applyView(await ipc.listTabs());
         return;
       }
       const seeds: { tabId: number; row: number }[] = [];
-      for (const item of session.tabs) {
+      for (const item of sessionTabs) {
         try {
           const info = await ipc.openFile(item.path);
           if (item.encoding) {
@@ -401,7 +406,7 @@ let outlineOpen = $state(false);
         }
       }
       tabs.applyView(await ipc.listTabs());
-      const target = tabs.tabs[session.activeTabIndex];
+      const target = tabs.tabs[activeIndex];
       if (target) tabs.select(target.tabId);
     } finally {
       sessionReady = true;

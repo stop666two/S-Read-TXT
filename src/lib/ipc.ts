@@ -796,12 +796,31 @@ export interface SessionTab {
   color: string | null;
 }
 
+/** 分栏布局树（v3 会话；与 Rust `PaneLayout` 对应）。 */
+export type PaneLayout =
+  | { type: 'leaf'; pane: string }
+  | { type: 'split'; dir: 'row' | 'column'; sizes: number[]; children: PaneLayout[] };
+
+/** 单个栏位的会话（v3；标签锚点 + 活动下标）。 */
+export interface PaneSession {
+  pane: string;
+  activeTabIndex: number;
+  tabs: SessionTab[];
+}
+
 /** 单个窗口的会话切片（与 Rust `WindowSession` 对应；label 由后端按调用窗口覆写）。 */
 export interface WindowSession {
   label: string;
   window: WindowState;
-  activeTabIndex: number;
-  tabs: SessionTab[];
+  /** v3：各栏位锚点（顺序即栏位键顺序） */
+  panes?: PaneSession[];
+  /** v3：分栏布局树 */
+  layout?: PaneLayout | null;
+  /** v3：最后聚焦的栏位键 */
+  focusedPane?: string | null;
+  /** v2 兼容（旧切片读取用；新写入不再携带） */
+  activeTabIndex?: number;
+  tabs?: SessionTab[];
 }
 
 /** 设置项类型（与 Rust `SettingKind` 对应；tag = type）。 */

@@ -963,7 +963,7 @@ pub fn save_session(
         log::debug!(
             target: "sread::ipc",
             "会话切片已保存（窗口 {label}，{} 个标签）",
-            session.tabs.len()
+            session.panes.iter().map(|pane| pane.tabs.len()).sum::<usize>()
         );
         Ok(session_store::load_window(&dir, label))
     })
