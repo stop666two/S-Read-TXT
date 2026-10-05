@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 全按钮审计（阶段 5 前置）：逐个点击所有可见且已实现的按钮/菜单项，断言其真实效果。
+// 全按钮审计：逐个点击所有可见且已实现的按钮/菜单项，断言其真实效果。
 // 覆盖：空状态、标题栏（见 smoke-titlebar）、工具栏、菜单栏（文件/编辑/查看/帮助全部项）、
 //       标签栏关闭、查找条关闭、状态栏编码菜单、退出流（含确认与退出）。
 // 规则：未实现的功能保持灰态（本套件断言语义），绝不测试灰按钮的点击效果。
@@ -619,7 +619,7 @@ async function main() {
         });
         return result.result?.value === true ? true : null;
       }, 6000);
-      check('D12b 定位到「快捷键」页签（15 行）', shortcutTab === true);
+      check('D12b 定位到「快捷键」页签（16 行）', shortcutTab === true);
       await closeSettingsWindow(shortcutClient);
     }
     await menuClick('帮助', '关于 S-Read-TXT');
@@ -639,7 +639,7 @@ async function main() {
       check('D12c 关于页显示版本 0.0.1-beta', false, '设置窗口未出现');
     }
 
-    // D13：设置入口扩充（B 批次）——工具栏文字标签 + 文件菜单项
+    // D13：设置入口扩充——工具栏文字标签 + 文件菜单项
     currentStep = 'D13 工具栏/菜单设置入口';
     const toolbarText = await evalJs(
       `(() => { const b = document.querySelector('.toolbar button[title="设置"]'); return b ? (b.textContent ?? '').trim() : ''; })()`,

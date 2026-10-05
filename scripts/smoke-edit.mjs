@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 编辑流程冒烟（阶段 4b）：真实应用 + CDP 驱动，验证「进入编辑 → 输入 → 撤销 → 再输入 → 保存」。
+// 编辑流程冒烟：真实应用 + CDP 驱动，验证「进入编辑 → 输入 → 撤销 → 再输入 → 保存」。
 //
 // 前置：已构建 debug 可执行文件（`npm run tauri build -- --debug --no-bundle`）。
 // 用法：node scripts/smoke-edit.mjs [--exe <路径>] [--port 9223] [--screenshot <路径>]

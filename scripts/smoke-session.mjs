@@ -169,8 +169,8 @@ async function main() {
   let second = null;
   let third = null;
   try {
-    // ---- 阶段 1：建立现场（两个标签、滚动、编码覆盖、移动窗口）----
-    currentStep = 'T1 第一阶段：建立现场';
+    // ---- 步骤 1：建立现场（两个标签、滚动、编码覆盖、移动窗口）----
+    currentStep = 'T1 步骤一：建立现场';
     first = await launchAndConnect();
     currentStep = 'T1.1 打开 a';
     // 注意：openPath 的原生 Promise 不交给 CDP await（WebView2 下会偶发 “Promise was collected”），
@@ -213,8 +213,8 @@ async function main() {
     check('T2 应用已退出（X 关闭触发会话保存）', exited1 === true);
     first.client?.close?.();
 
-    // ---- 阶段 2：同数据目录重启 → 全部恢复 ----
-    currentStep = 'T3 第二阶段：会话恢复';
+    // ---- 步骤 2：同数据目录重启 → 全部恢复 ----
+    currentStep = 'T3 步骤二：会话恢复';
     second = await launchAndConnect();
     await delay(500);
     state = await tabsState(second.evalJs);
@@ -252,7 +252,7 @@ async function main() {
     check('T4 第二阶段应用已退出', exited2 === true);
     second.client?.close?.();
 
-    // ---- 阶段 3：删除 b → 缺失文件跳过 ----
+    // ---- 步骤 3：删除 b → 缺失文件跳过 ----
     currentStep = 'T5 缺失文件跳过';
     rmSync(fileB, { force: true });
     third = await launchAndConnect();

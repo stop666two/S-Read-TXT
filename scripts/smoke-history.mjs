@@ -1,4 +1,4 @@
-// S-Read-TXT 历史记录 E2E（阶段 6）：面板 / 搜索 / 进度续读 / 删除 / 清空 / 最近打开 / 快捷键。
+// S-Read-TXT 历史记录 E2E：面板 / 搜索 / 进度续读 / 删除 / 清空 / 最近打开 / 快捷键。
 // 用法：node scripts/smoke-history.mjs [--exe path] [--screenshot]
 // 前置：npm run tauri build -- --debug --no-bundle
 

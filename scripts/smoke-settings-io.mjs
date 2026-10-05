@@ -5,7 +5,7 @@
 //     E1 导出落盘结构校验；E2–E4 三类篡改拒绝（范围 / 未知字段 / 类型）；
 //     E5 合法导入生效 + `*.import-bak`；E6–E8 重置单项 / 分组 / 全部；
 //     E9 注册表内容断言；E10 未知项拒绝；
-//     E11–E13 快捷键独立导入/导出（P0-9）：导出结构 / 导入生效 / 未知动作拒绝。
+//     E11–E13 快捷键独立导入/导出：导出结构 / 导入生效 / 未知动作拒绝。
 // 依赖：debug 构建（npm run tauri build -- --debug --no-bundle）。
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -367,7 +367,7 @@ try {
       .includes('Open'),
   );
 
-  // E11–E13：快捷键独立导入/导出（P0-9）
+  // E11–E13：快捷键独立导入/导出
   const shortcutExportPath = join(work, 'shortcuts-export.json');
   const shortcutExportBytes = await evalMain2(
     `(async () => await window.__TAURI_INTERNALS__.invoke('export_shortcuts', { path: ${JSON.stringify(shortcutExportPath)} }))()`,

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 离线核查（阶段 9）：
+// 离线核查：
 //  A. 静态：依赖树扫描——Cargo.lock / package.json 中不应出现 HTTP 客户端库（本项目零联网）。
 //  B. 运行时：启动应用（无调试端口）→ 采样进程树 TCP 连接 → 不应存在对外（非本机）连接。
 // 用法：node scripts/offline-check.mjs [--exe <路径>]

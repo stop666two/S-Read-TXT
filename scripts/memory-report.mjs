@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 内存构成分析（诊断工具，阶段 9）：打开 N 个 100MiB 标签后，
+// 内存构成分析（诊断工具）：打开 N 个 100MiB 标签后，
 // 输出应用进程树逐进程（角色/专用工作集/工作集）与 WebView2 页面侧指标（JS 堆/DOM 计数）。
 // 用法：node scripts/memory-report.mjs [--files 10] [--size-mb 100] [--tag baseline]
 // 环境：SRT_EXTRA_BROWSER_ARGS="--disable-gpu …" 追加 WebView2 启动参数（A/B 对比用）。

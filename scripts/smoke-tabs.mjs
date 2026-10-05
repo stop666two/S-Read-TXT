@@ -1,4 +1,4 @@
-// S-Read-TXT 多标签增强 E2E（阶段 5 完成）：中键关闭 / 右键菜单 / 拖拽排序 / 上限提示 / 溢出。
+// S-Read-TXT 多标签增强 E2E：中键关闭 / 右键菜单 / 拖拽排序 / 上限提示 / 溢出。
 // 用法：node scripts/smoke-tabs.mjs [--exe path] [--screenshot]
 // 前置：npm run tauri build -- --debug --no-bundle
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 快捷键引擎 E2E（阶段 5a）：默认方案逐项验证（真实 CDP 键盘事件注入）。
+// 快捷键引擎 E2E：默认方案逐项验证（真实 CDP 键盘事件注入）。
 // 覆盖：固定键 Ctrl+1~9、标签循环 Ctrl+Tab/Ctrl+Shift+Tab、Ctrl+W 关闭、
 //       翻页与首尾（PgDn/PgUp/Home/End）、F11 全屏、Ctrl+E 编辑切换、Ctrl+F 查找条、Ctrl+O 原生对话框。
 // 前置：已构建 debug 可执行文件（`npm run tauri build -- --debug --no-bundle`）。
@@ -219,7 +219,7 @@ async function main() {
     check('K8b 对话框已关闭', dialogClosed === true);
     await delay(300);
 
-    // K9 历史面板：Ctrl+Shift+H 打开真实面板（阶段 6 已落地），并可关闭
+    // K9 历史面板：Ctrl+Shift+H 打开真实面板，并可关闭
     currentStep = 'K9 历史面板开关';
     await press('h', 'KeyH', 72, 10); // Ctrl+Shift+H
     const panelOpened = await waitForValue(async () => {

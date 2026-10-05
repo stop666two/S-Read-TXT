@@ -1,4 +1,4 @@
-// 主题系统 v2 E2E（P0-5 常驻套件）。
+// 主题系统 E2E（常驻套件）。
 // 覆盖：
 //   T1 默认跟随系统（解析 light/dark + data-theme-base 写入）
 //   T2 六套内置主题切换（themeId 与 --base 令牌逐套断言）

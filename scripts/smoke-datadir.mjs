@@ -1,4 +1,4 @@
-// S-Read-TXT「数据目录不可写」引导 E2E（阶段 6d）
+// S-Read-TXT「数据目录不可写」引导 E2E。
 // 原理：`SRT_DATA_DIR` 指向一个「文件」路径——create_dir_all 必然失败，等价于程序目录不可写。
 // 断言：
 //   D1 启动后出现引导弹窗（含不可写路径与失败原因）
@@ -30,7 +30,7 @@ const port = 9300 + Math.floor(Math.random() * 400);
 let passed = 0;
 let failed = 0;
 const failures = [];
-/** 应用进程与 CDP 客户端（阶段 1/2） */
+/** 应用进程与 CDP 客户端 */
 let first = null;
 let second = null;
 
@@ -183,7 +183,7 @@ async function main() {
     check('D3b 日志重定向到新目录', existsSync(join(okDir, 'logs', 'app.log')), join(okDir, 'logs', 'app.log'));
     check('D3c 原路径仍为文件（未被误建目录）', existsSync(blockedPath));
 
-    // ---- 阶段 1 收尾 ----
+    // ---- 收尾 ----
     killTree(first.proc.pid);
     await waitGone(first.proc.pid);
     first.client.close();

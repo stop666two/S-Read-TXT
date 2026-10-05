@@ -1,7 +1,7 @@
 // S-Read-TXT 运行冒烟脚本（零依赖；Node ≥22 内置 fetch/WebSocket）。
 //
 // 作用：启动已构建的应用（CLI 产物），通过 WebView2 远程调试端口驱动 IPC，
-// 断言核心命令行为，结束时清理进程树。作为每个阶段「运行时验证」的固定工具。
+// 断言核心命令行为，结束时清理进程树。作为运行时验证的固定工具。
 //
 // 用法：node scripts/smoke.mjs [--exe <路径>] [--port 9222]
 // 前置：npm run tauri build -- --debug --no-bundle

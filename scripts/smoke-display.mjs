@@ -1,4 +1,4 @@
-// 显示选项 E2E（P2-2 V 组，常驻套件）：行号/相对行号/当前行高亮/标尺/缩进参考线/
+// 显示选项 E2E（常驻套件）：行号/相对行号/当前行高亮/标尺/缩进参考线/
 // 不可见字符（空格·制表→行尾空白·换行）/自动换行关闭；编辑态光标行高亮。
 // 依赖：debug 构建（npm run tauri build -- --debug --no-bundle）。
 // 说明：设置经 get_settings → save_settings 真实写入（触发 srt://settings-changed 广播，

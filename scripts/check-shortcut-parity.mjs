@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 快捷键动作对齐检查（P0-9）：Rust 默认表与前端动作列表必须一致。
+// 快捷键动作对齐检查：Rust 默认表与前端动作列表必须一致。
 // 用途：新增/删除快捷键动作时，双端漏改会在此处失败（verify-all 一环节）。
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
