@@ -491,5 +491,6 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
   - 任务 10：smoke-windows E2E 19/19 并入 verify-all（48 步）+ 文档收口。
 - 验收证据（真断言探针，已随任务删除，结论保留于提交信息与 CHANGELOG）：关闭语义 12/12、会话 v2 14/14、CLI 定向 6/6、颜色 9/9、跨窗移动 11/11、拖放 11/11；套件：smoke-windows 19/19、smoke-tabs 10/10、smoke-session 11/11、smoke-cli 7/7、smoke-migrate 13/13、smoke-datadir 15/15。
 - 测试基线：Rust **457**（429 lib + 15 对抗 + 2 提权助手 + 6 统计流 + 5 集成）；vitest 115；svelte-check 0/0；E2E **39 套 ≈611 项**；verify-all **48 步**（smoke-uninstall 仍按用户 UAC 策略以 `--exclude` 排除）。
+- 最终全量自检：**47/47 通过（另有 1 项排除），总耗时 1063.1s**；报告 `docs/verify/latest.md`；期间修复 smoke-find 菜单点击重试与历史清空竞态、smoke-buttons D12b 断言表达式（16 行）。
 - 本阶段教训：PowerShell 改写文本会破坏 UTF-8（一律用 edit/write 工具）；CDP `Input.dispatchMouseEvent` 不会钳制越界坐标（拖出行为可自动化）；首启引导遮罩会拦截真实指针（E2E 必须先 `dismissOnboarding`）；`plugin:window|set_position` 的 value 须为 `{ Physical: { x, y } }` 枚举形状；`cargo build` 产物是 dev 语义不可实测（须 tauri CLI 构建）。
 - 下一切片：P3-5 分屏（D52 剩余：窗口内 ≤4 栏）；随后 P3-6、P3-7 会话扩展（`restoreItems` 多选项）。
