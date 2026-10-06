@@ -167,8 +167,10 @@ fn normalize_app(settings: &mut AppSettings) {
     let (min_import, max_import) = defaults::IMPORT_MAX_MB_RANGE;
     settings.max_import_mb = settings.max_import_mb.clamp(min_import, max_import);
     let (min_folds, max_folds) = defaults::MAX_SESSION_FOLDS_RANGE;
-    settings.startup.max_session_folds =
-        settings.startup.max_session_folds.clamp(min_folds, max_folds);
+    settings.startup.max_session_folds = settings
+        .startup
+        .max_session_folds
+        .clamp(min_folds, max_folds);
     let (min_windows, max_windows) = defaults::MAX_WINDOWS_RANGE;
     settings.startup.max_windows = settings.startup.max_windows.clamp(min_windows, max_windows);
     normalize_tools(&mut settings.tools);
@@ -665,8 +667,7 @@ mod tests {
         let long = format!("https://example.com/{}", "x".repeat(600));
         std::fs::write(
             app_settings_path(dir.path()),
-            serde_json::json!({ "schemaVersion": 17, "update": { "sourceUrl": long } })
-                .to_string(),
+            serde_json::json!({ "schemaVersion": 17, "update": { "sourceUrl": long } }).to_string(),
         )
         .expect("写配置失败");
         let loaded = load_app_settings(dir.path());
