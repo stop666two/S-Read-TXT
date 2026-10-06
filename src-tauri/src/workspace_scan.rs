@@ -134,6 +134,7 @@ pub fn scan_file_session(
     let mut outcome = FileScanOutcome::default();
     let total_rows = session.rows_total();
     let mut start = 0u64;
+    let mut hard_stop = false;
     while start < total_rows {
         if let Some(deadline) = deadline {
             if Instant::now() >= deadline {
@@ -156,19 +157,20 @@ pub fn scan_file_session(
                         preview: preview_of(&row_text.text),
                     });
                 } else {
-                    // 展示列表被上限截断（总数仍完整统计）
+                    // 展示列表被上限截断（总数仍完整统计，继续扫描）
                     outcome.truncated = true;
                 }
                 if outcome.total as usize >= MATCH_COUNT_LIMIT {
                     outcome.truncated = true;
+                    hard_stop = true;
                     break;
                 }
             }
-            if outcome.truncated {
+            if hard_stop {
                 break;
             }
         }
-        if outcome.truncated {
+        if hard_stop {
             break;
         }
         start += rows.len() as u64;
