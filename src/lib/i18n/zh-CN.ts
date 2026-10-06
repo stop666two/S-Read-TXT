@@ -258,6 +258,15 @@ export const zhCN = {
   'menu.view.splitRight': '向右拆分',
   'menu.view.splitDown': '向下拆分',
   'menu.view.closePane': '关闭栏位',
+  'menu.view.commandPalette': '命令面板…',
+  'palette.aria': '命令面板',
+  'palette.placeholder': '输入命令名称…',
+  'palette.empty': '没有匹配的命令',
+  'palette.needEdit': '需进入编辑模式',
+  'palette.needTab': '需先打开文件',
+  'palette.needMultiPane': '需至少两个栏位',
+  'palette.maxPanes': '已达分屏上限（4 栏）',
+  'palette.group.tabs': '标签',
   'menu.view.autoScroll': '自动滚动',
   'menu.view.focusMode': '专注模式',
   'menu.view.typewriter': '打字机模式',
@@ -601,6 +610,7 @@ export const zhCN = {
   'shortcut.splitRight': '向右拆分（分屏）',
   'shortcut.splitDown': '向下拆分（分屏）',
   'shortcut.closePane': '关闭栏位',
+  'shortcut.commandPalette': '命令面板',
 
   // ---------- 快捷键录制校验提示 ----------
   'shortcutRecorder.empty': '未识别到有效按键，请重试',

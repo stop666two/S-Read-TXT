@@ -427,6 +427,7 @@ pub const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("splitRight", "Ctrl+\\"),
     ("splitDown", "Ctrl+Shift+\\"),
     ("closePane", "Ctrl+Shift+W"),
+    ("commandPalette", "Ctrl+Shift+P"),
 ];
 
 /// 构造默认绑定表（`BTreeMap`：序列化顺序稳定，便于文件 diff 与人工核对）。
@@ -454,7 +455,7 @@ mod tests {
     fn default_bindings_are_unique_and_wellformed() {
         assert_eq!(
             DEFAULT_BINDINGS.len(),
-            19,
+            20,
             "默认动作数量变化须同步引擎与文档"
         );
         let mut actions: BTreeSet<&str> = BTreeSet::new();

@@ -22,7 +22,8 @@ export type ShortcutAction =
   | 'historyPanel'
   | 'splitRight'
   | 'splitDown'
-  | 'closePane';
+  | 'closePane'
+  | 'commandPalette';
 
 /** 动作展示顺序（设置界面行顺序）。 */
 export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
@@ -45,6 +46,7 @@ export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
   'splitRight',
   'splitDown',
   'closePane',
+  'commandPalette',
 ];
 
 import type { MessageKey } from '../i18n/zh-CN';
@@ -70,6 +72,7 @@ export const SHORTCUT_LABEL_KEYS: Record<ShortcutAction, MessageKey> = {
   splitRight: 'shortcut.splitRight',
   splitDown: 'shortcut.splitDown',
   closePane: 'shortcut.closePane',
+  commandPalette: 'shortcut.commandPalette',
 };
 
 /** 动作 → 组合键字符串的映射（值形如 `Ctrl+Shift+Tab` / `PgDn` / `F11`）。 */

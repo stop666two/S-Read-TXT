@@ -30,7 +30,10 @@ export async function waitForValue(fn, timeoutMs = 4000, interval = 150) {
 }
 
 /** 轮询查找页面型 CDP 目标（返回 WebSocket URL）。
- *  `urlIncludes`：可选 URL 子串过滤（多窗口场景，如设置窗口 'settings.html'）。 */
+ *  `urlIncludes`：可选 URL 子串过滤（多窗口场景，如设置窗口 'settings.html'）。
+ *  跳过 about:blank / 空 URL：WebView2 偶尔留有未导航的空页面目标，命中会导致
+ *  探针在空白页上操作（无 Tauri 全局、无真实 DOM）；残留进程的空目标标题为
+ *  `about:blank`，一并过滤。 */
 export async function findTarget(port, urlIncludes = null) {
   for (let attempt = 0; attempt < 180; attempt += 1) {
     try {
@@ -39,7 +42,11 @@ export async function findTarget(port, urlIncludes = null) {
       const page = targets.find(
         (target) =>
           target.type === 'page' &&
-          (!urlIncludes || (target.url ?? '').includes(urlIncludes)),
+          typeof target.url === 'string' &&
+          target.url.length > 0 &&
+          target.url !== 'about:blank' &&
+          target.title !== 'about:blank' &&
+          (!urlIncludes || target.url.includes(urlIncludes)),
       );
       if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
     } catch {

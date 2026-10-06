@@ -130,13 +130,13 @@ async function main() {
     await clickTab('快捷键');
     // 链式全量自检下机器高负载时，首次进入可能渲染滞后；三重兼容：延长等待 → 重切页签 → 整页重载
     let rowsReady = await waitForValue(
-      async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 19 ? true : null),
+      async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 20 ? true : null),
       15000,
     );
     if (rowsReady !== true) {
       await clickTab('快捷键');
       rowsReady = await waitForValue(
-        async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 19 ? true : null),
+        async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 20 ? true : null),
         30000,
       );
     }
@@ -145,7 +145,7 @@ async function main() {
       await delay(1500);
       await clickTab('快捷键');
       rowsReady = await waitForValue(
-        async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 19 ? true : null),
+        async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 20 ? true : null),
         30000,
       );
     }
@@ -279,7 +279,7 @@ async function main() {
     settingsClient?.close?.();
     settingsClient = await createClient(await findTarget(port, 'settings.html'));
     await clickTab('快捷键');
-    await waitForValue(async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 19 ? true : null), 15000);
+    await waitForValue(async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 20 ? true : null), 15000);
     await evalSet(`document.querySelector('.reset-all')?.click() ?? true`);
     await waitForValue(async () => ((await comboText('关闭当前标签')) === 'Ctrl+W' ? true : null), 6000);
     await evalSet(`document.querySelector('.title-bar button[aria-label="关闭"]')?.click() ?? true`);
@@ -292,7 +292,7 @@ async function main() {
 
     /** 打开设置窗口并等待列表就绪（复用同一 CDP 目标） */
     const waitRows = () =>
-      waitForValue(async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 19 ? true : null), 15000);
+      waitForValue(async () => ((await evalSet(`document.querySelectorAll('.row').length`)) === 20 ? true : null), 15000);
     const reopenSettings = async () => {
       await evalMain(`document.querySelector('button[title="设置"]')?.click() ?? true`);
       settingsClient?.close?.();
@@ -398,7 +398,7 @@ async function main() {
       `(() => { const tab = [...document.querySelectorAll('.tabs [role="tab"]')].find((b) => b.textContent.trim() === '快捷键'); tab?.click(); return true; })()`,
     );
     await delay(300);
-    check('S13b 切回快捷键页签行完整', (await evalSet(`document.querySelectorAll('.row').length`)) === 19);
+    check('S13b 切回快捷键页签行完整', (await evalSet(`document.querySelectorAll('.row').length`)) === 20);
 
     // S13c 阅读排版：改字号 → 主窗口 CSS 变量实时生效（并还原）
     currentStep = 'S13c 排版实时应用';

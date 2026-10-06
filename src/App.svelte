@@ -12,6 +12,8 @@ import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-mana
   import { open, save } from '@tauri-apps/plugin-dialog';
 
   import ConfirmDialog from './lib/components/ConfirmDialog.svelte';
+  import CommandPalette from './lib/components/CommandPalette.svelte';
+  import type { PaletteCommand } from './lib/commands/palette';
   import DataDirDialog from './lib/components/DataDirDialog.svelte';
   import DropOverlay from './lib/components/DropOverlay.svelte';
   import EmptyState from './lib/components/EmptyState.svelte';
@@ -128,6 +130,7 @@ let outlineOpen = $state(false);
   let workspaceOpen = $state(false);
   let splitOpen = $state(false);
   let renameOpen = $state(false);
+  let paletteOpen = $state(false);
 
   /** 跳转到工作区命中：必要时切换标签，然后广播定位请求（ReaderView/EditLayer 消费）。 */
   async function jumpToHit(file: WorkspaceFileResult, hit: WorkspaceHit): Promise<void> {
@@ -769,7 +772,83 @@ let outlineOpen = $state(false);
       case 'closePane':
         void closePane(tabs.activePane);
         break;
+      case 'commandPalette':
+        paletteOpen = true;
+        break;
     }
+  }
+
+  /** 命令面板：当前生效的快捷键提示（无绑定为空串） */
+  function paletteHint(action: ShortcutAction): string {
+    return shortcuts?.[action] ?? '';
+  }
+
+  /** 命令面板命令表（闭包携带处理器与可用性；编辑类动作仅在编辑态可用） */
+  const paletteCommands = $derived.by<PaletteCommand[]>(() => {
+    const hasTab = active !== undefined && active !== null;
+    const inEdit = active?.editing ?? false;
+    const canSplit = paneCount < MAX_PANES;
+    const canClosePane = paneCount > 1;
+    return [
+      // 文件
+      { id: 'file.open', titleKey: 'menu.file.open', groupKey: 'menu.file', shortcutHint: paletteHint('openFile'), enabled: true, run: () => openFile() },
+      { id: 'file.new', titleKey: 'menu.file.new', groupKey: 'menu.file', shortcutHint: '', enabled: true, run: () => void newFileFlow() },
+      { id: 'file.newWindow', titleKey: 'menu.file.newWindow', groupKey: 'menu.file', shortcutHint: paletteHint('newWindow'), enabled: true, run: () => void newWindowFlow() },
+      { id: 'file.pastePath', titleKey: 'menu.file.pastePath', groupKey: 'menu.file', shortcutHint: '', enabled: true, run: () => void pastePathOpen() },
+      { id: 'file.reload', titleKey: 'menu.file.reload', groupKey: 'menu.file', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => void reloadFlow() },
+      { id: 'file.export', titleKey: 'menu.file.export', groupKey: 'menu.file', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => void exportFlow() },
+      { id: 'file.print', titleKey: 'menu.file.print', groupKey: 'menu.file', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => void printFlow() },
+      { id: 'file.snapshotNow', titleKey: 'menu.file.snapshotNow', groupKey: 'menu.file', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => void snapshotNow() },
+      { id: 'file.versionHistory', titleKey: 'menu.file.versionHistory', groupKey: 'menu.file', shortcutHint: '', enabled: true, run: () => (snapshotsOpen = true) },
+      { id: 'file.history', titleKey: 'menu.file.history', groupKey: 'menu.file', shortcutHint: paletteHint('historyPanel'), enabled: true, run: () => (historyOpen = true) },
+      { id: 'file.settings', titleKey: 'menu.file.settings', groupKey: 'menu.file', shortcutHint: '', enabled: true, run: () => void ipc.openSettings() },
+      { id: 'file.quit', titleKey: 'menu.file.quit', groupKey: 'menu.file', shortcutHint: '', enabled: true, run: () => void quit() },
+      // 编辑（编辑态可用）
+      { id: 'edit.undo', titleKey: 'menu.edit.undo', groupKey: 'menu.edit', shortcutHint: '', enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('undo') },
+      { id: 'edit.redo', titleKey: 'menu.edit.redo', groupKey: 'menu.edit', shortcutHint: '', enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('redo') },
+      { id: 'edit.cut', titleKey: 'menu.edit.cut', groupKey: 'menu.edit', shortcutHint: '', enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('cut') },
+      { id: 'edit.copy', titleKey: 'menu.edit.copy', groupKey: 'menu.edit', shortcutHint: '', enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('copy') },
+      { id: 'edit.paste', titleKey: 'menu.edit.paste', groupKey: 'menu.edit', shortcutHint: '', enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('paste') },
+      { id: 'edit.selectAll', titleKey: 'menu.edit.selectAll', groupKey: 'menu.edit', shortcutHint: '', enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('selectAll') },
+      { id: 'edit.find', titleKey: 'menu.edit.find', groupKey: 'menu.edit', shortcutHint: paletteHint('find'), enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('find') },
+      { id: 'edit.replace', titleKey: 'menu.edit.replace', groupKey: 'menu.edit', shortcutHint: paletteHint('replace'), enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('replace') },
+      { id: 'edit.batchNumbering', titleKey: 'menu.edit.batchNumbering', groupKey: 'menu.edit', shortcutHint: '', enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('batchNumbering') },
+      { id: 'edit.lineOps', titleKey: 'menu.edit.lineOps', groupKey: 'menu.edit', shortcutHint: '', enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('lineOps') },
+      { id: 'edit.insertTimestamp', titleKey: 'menu.edit.insertTimestamp', groupKey: 'menu.edit', shortcutHint: '', enabled: inEdit, disabledReasonKey: 'palette.needEdit', run: () => dispatchEditorAction('insertTimestamp') },
+      { id: 'edit.toggleBookmark', titleKey: 'menu.edit.toggleBookmark', groupKey: 'menu.edit', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => toggleBookmarkAnnotation() },
+      { id: 'edit.annotationsPanel', titleKey: 'menu.edit.annotationsPanel', groupKey: 'menu.edit', shortcutHint: '', enabled: true, run: () => (annotationsOpen = true) },
+      { id: 'edit.clearAnnotations', titleKey: 'menu.edit.clearAnnotations', groupKey: 'menu.edit', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => (annotClearOpen = true) },
+      // 视图
+      { id: 'view.fontIncrease', titleKey: 'menu.view.fontIncrease', groupKey: 'menu.view', shortcutHint: '', enabled: true, run: () => adjustFontSize(1) },
+      { id: 'view.fontDecrease', titleKey: 'menu.view.fontDecrease', groupKey: 'menu.view', shortcutHint: '', enabled: true, run: () => adjustFontSize(-1) },
+      { id: 'view.fontReset', titleKey: 'menu.view.fontReset', groupKey: 'menu.view', shortcutHint: '', enabled: true, run: () => resetFontSize() },
+      { id: 'view.fullscreen', titleKey: 'menu.view.fullscreen', groupKey: 'menu.view', shortcutHint: paletteHint('fullscreen'), enabled: true, run: () => void toggleFullscreen() },
+      { id: 'view.autoScroll', titleKey: 'menu.view.autoScroll', groupKey: 'menu.view', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => toggleAutoScroll() },
+      { id: 'view.focusMode', titleKey: 'menu.view.focusMode', groupKey: 'menu.view', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => toggleFocusMode() },
+      { id: 'view.typewriter', titleKey: 'menu.view.typewriter', groupKey: 'menu.view', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => toggleTypewriter() },
+      { id: 'view.foldAll', titleKey: 'menu.view.foldAll', groupKey: 'menu.view', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => foldAll() },
+      { id: 'view.foldNone', titleKey: 'menu.view.foldNone', groupKey: 'menu.view', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => foldNone() },
+      { id: 'view.pomodoro', titleKey: 'menu.view.pomodoroStart', groupKey: 'menu.view', shortcutHint: '', enabled: true, run: () => togglePomodoro() },
+      { id: 'view.splitRight', titleKey: 'menu.view.splitRight', groupKey: 'menu.view', shortcutHint: paletteHint('splitRight'), enabled: canSplit, disabledReasonKey: 'palette.maxPanes', run: () => splitPane(tabs.activePane, 'row') },
+      { id: 'view.splitDown', titleKey: 'menu.view.splitDown', groupKey: 'menu.view', shortcutHint: paletteHint('splitDown'), enabled: canSplit, disabledReasonKey: 'palette.maxPanes', run: () => splitPane(tabs.activePane, 'column') },
+      { id: 'view.closePane', titleKey: 'menu.view.closePane', groupKey: 'menu.view', shortcutHint: paletteHint('closePane'), enabled: canClosePane, disabledReasonKey: 'palette.needMultiPane', run: () => void closePane(tabs.activePane) },
+      { id: 'view.commandPalette', titleKey: 'menu.view.commandPalette', groupKey: 'menu.view', shortcutHint: paletteHint('commandPalette'), enabled: true, run: () => (paletteOpen = true) },
+      // 工具
+      { id: 'tools.split', titleKey: 'tools.split.menu', groupKey: 'menu.tools', shortcutHint: '', enabled: true, run: () => (splitOpen = true) },
+      { id: 'tools.rename', titleKey: 'tools.rename.menu', groupKey: 'menu.tools', shortcutHint: '', enabled: true, run: () => (renameOpen = true) },
+      { id: 'tools.compare', titleKey: 'tools.compare.menu', groupKey: 'menu.tools', shortcutHint: '', enabled: true, run: () => void openCompareFlow() },
+      { id: 'tools.merge', titleKey: 'tools.merge.menu', groupKey: 'menu.tools', shortcutHint: '', enabled: true, run: () => void openMergeFlow() },
+      // 标签
+      { id: 'tab.close', titleKey: 'tabMenu.close', groupKey: 'palette.group.tabs', shortcutHint: paletteHint('closeTab'), enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => { if (active) void requestCloseTab(active.tabId); } },
+      { id: 'tab.closeAll', titleKey: 'tabMenu.closeAll', groupKey: 'palette.group.tabs', shortcutHint: '', enabled: hasTab, disabledReasonKey: 'palette.needTab', run: () => void closeAllTabs() },
+    ];
+  });
+
+  /** 执行命令面板命令（按 id 查找；找不到静默忽略） */
+  function runPaletteCommand(id: string): void {
+    const command = paletteCommands.find((item) => item.id === id);
+    if (command?.enabled) command.run();
+    paletteOpen = false;
   }
 
   /** 窗口标题（自定义标题栏 + document.title：文件名 - 应用名） */
@@ -2133,6 +2212,7 @@ onMount(() => {
     onSplitRight={() => splitPane(tabs.activePane, 'row')}
     onSplitDown={() => splitPane(tabs.activePane, 'column')}
     onClosePane={() => void closePane(tabs.activePane)}
+    onOpenPalette={() => (paletteOpen = true)}
   />
   <ToolBar
     {themeId}
@@ -2357,6 +2437,12 @@ onMount(() => {
     onSave={() => void resolvePendingClose('save')}
     onDiscard={() => void resolvePendingClose('discard')}
     onCancel={() => void resolvePendingClose('cancel')}
+  />
+  <CommandPalette
+    open={paletteOpen}
+    commands={paletteCommands}
+    onRun={runPaletteCommand}
+    onClose={() => (paletteOpen = false)}
   />
 </div>
 

@@ -106,6 +106,8 @@
     onSplitDown?: () => void;
     /** 关闭当前栏（标签并入相邻栏） */
     onClosePane?: () => void;
+    /** 打开命令面板 */
+    onOpenPalette?: () => void;
     /** 打开「拆分文件」对话框 */
     onOpenSplit?: () => void;
     /** 打开「批量重命名」对话框 */
@@ -172,6 +174,7 @@
     onSplitRight,
     onSplitDown,
     onClosePane,
+    onOpenPalette,
     onOpenSplit,
     onOpenRename,
     onOpenCompare,
@@ -492,6 +495,7 @@
       <button class="item" disabled={!canSplit} onclick={() => run(() => onSplitRight?.())}><span>{t('menu.view.splitRight')}</span><span class="hint">Ctrl+\</span></button>
       <button class="item" disabled={!canSplit} onclick={() => run(() => onSplitDown?.())}><span>{t('menu.view.splitDown')}</span><span class="hint">Ctrl+Shift+\</span></button>
       <button class="item" disabled={!canClosePane} onclick={() => run(() => onClosePane?.())}><span>{t('menu.view.closePane')}</span><span class="hint">Ctrl+Shift+W</span></button>
+      <button class="item" onclick={() => run(() => onOpenPalette?.())}><span>{t('menu.view.commandPalette')}</span><span class="hint">Ctrl+Shift+P</span></button>
     </div>
   {:else if openMenu === 'tools'}
     <div class="dropdown" role="menu" style="left: 130px">

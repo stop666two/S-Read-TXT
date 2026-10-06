@@ -266,6 +266,15 @@ export const en: Record<MessageKey, string> = {
   'menu.view.splitRight': 'Split right',
   'menu.view.splitDown': 'Split down',
   'menu.view.closePane': 'Close pane',
+  'menu.view.commandPalette': 'Command palette…',
+  'palette.aria': 'Command palette',
+  'palette.placeholder': 'Type a command name…',
+  'palette.empty': 'No matching commands',
+  'palette.needEdit': 'Requires edit mode',
+  'palette.needTab': 'Requires an open file',
+  'palette.needMultiPane': 'Requires at least two panes',
+  'palette.maxPanes': 'Pane limit reached (4)',
+  'palette.group.tabs': 'Tabs',
   'menu.view.autoScroll': 'Auto scroll',
   'menu.view.focusMode': 'Focus mode',
   'menu.view.typewriter': 'Typewriter mode',
@@ -612,6 +621,7 @@ export const en: Record<MessageKey, string> = {
   'shortcut.splitRight': 'Split right',
   'shortcut.splitDown': 'Split down',
   'shortcut.closePane': 'Close pane',
+  'shortcut.commandPalette': 'Command palette',
 
   // ---------- Shortcut recorder validation ----------
   'shortcutRecorder.empty': 'No valid key detected; please try again',

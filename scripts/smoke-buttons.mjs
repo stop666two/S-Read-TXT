@@ -614,12 +614,12 @@ async function main() {
       const shortcutClient = await createClient(helpWs);
       const shortcutTab = await waitForValue(async () => {
         const result = await shortcutClient.send('Runtime.evaluate', {
-          expression: `document.querySelectorAll('.row').length === 19`,
+          expression: `document.querySelectorAll('.row').length === 20`,
           returnByValue: true,
         });
         return result.result?.value === true ? true : null;
       }, 6000);
-      check('D12b 定位到「快捷键」页签（16 行）', shortcutTab === true);
+      check('D12b 定位到「快捷键」页签（20 行）', shortcutTab === true);
       await closeSettingsWindow(shortcutClient);
     }
     await menuClick('帮助', '关于 S-Read-TXT');

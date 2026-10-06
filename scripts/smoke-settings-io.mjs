@@ -382,7 +382,7 @@ try {
     'E11 快捷键导出（格式字段 + 16 项）',
     typeof shortcutExportBytes === 'number' &&
       shortcutBundle?.bundleVersion === 1 &&
-      Object.keys(shortcutBundle?.bindings ?? {}).length === 19,
+      Object.keys(shortcutBundle?.bindings ?? {}).length === 20,
     `bytes=${shortcutExportBytes} keys=${shortcutBundle ? Object.keys(shortcutBundle.bindings).length : 'null'}`,
   );
 
