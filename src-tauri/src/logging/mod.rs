@@ -52,6 +52,42 @@ pub fn retarget(data_dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// 安装崩溃（panic）钩子：`enabled` 时把消息/位置/回溯写入 `logs/crash-<时间>.log`。
+///
+/// 说明：
+/// - 无论是否落盘都会向 stderr 输出一行概要（替换默认钩子后的可见性保障）；
+/// - 落盘使用同步写（release `panic = "abort"` 下仍能完成写入）；
+/// - 应用启动时按设置 `app.system.crashLog` 调用（修改后下次启动生效）。
+pub fn install_panic_hook(data_dir: &Path, enabled: bool) {
+    let dir = logs_dir(data_dir);
+    std::panic::set_hook(Box::new(move |info| {
+        eprintln!("[s-read-txt] panic: {info}");
+        if !enabled {
+            return;
+        }
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|text| (*text).to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "未知 panic 载荷".to_string());
+        let location = info
+            .location()
+            .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()))
+            .unwrap_or_else(|| "未知位置".to_string());
+        let stamp = crate::time_util::now_rfc3339().replace(':', "-");
+        let path = dir.join(format!("crash-{stamp}.log"));
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let body = format!(
+            "time: {}\nmessage: {payload}\nlocation: {location}\n\n{backtrace}\n",
+            crate::time_util::now_rfc3339()
+        );
+        if std::fs::create_dir_all(&dir).is_ok() {
+            let _ = std::fs::write(&path, body);
+        }
+    }));
+}
+
 /// 取得全局日志槽写锁（中毒时取回内部状态：日志是辅助功能，不因他线程 panic 失效）。
 fn current_slot() -> std::sync::RwLockWriteGuard<'static, Option<FileLogger>> {
     CURRENT
@@ -179,5 +215,38 @@ mod tests {
         let dir = tempfile::tempdir().expect("创建临时目录失败");
         retarget(dir.path()).expect("切换日志目录失败");
         assert!(dir.path().join("logs").join("app.log").exists());
+    }
+
+    /// 崩溃日志开关：开启时 panic 落盘 crash 文件；关闭时不落盘。
+    /// 注：panic 钩子为进程级全局，测试内顺序执行；本测试自证其开关行为。
+    #[test]
+    fn panic_hook_writes_crash_file_only_when_enabled() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        install_panic_hook(dir.path(), true);
+        let _ = std::panic::catch_unwind(|| panic!("hook-test-boom"));
+        let crash_files: Vec<_> = std::fs::read_dir(dir.path().join("logs"))
+            .expect("日志目录")
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with("crash-"))
+            .collect();
+        assert_eq!(
+            crash_files.len(),
+            1,
+            "开启时应写入一个崩溃文件：{crash_files:?}"
+        );
+        let body = std::fs::read_to_string(dir.path().join("logs").join(&crash_files[0]))
+            .expect("读取崩溃文件");
+        assert!(body.contains("hook-test-boom"), "{body}");
+        assert!(body.contains("location:"), "{body}");
+
+        install_panic_hook(dir.path(), false);
+        let _ = std::panic::catch_unwind(|| panic!("hook-test-off"));
+        let count_after = std::fs::read_dir(dir.path().join("logs"))
+            .expect("日志目录")
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("crash-"))
+            .count();
+        assert_eq!(count_after, 1, "关闭时不应新增崩溃文件");
     }
 }

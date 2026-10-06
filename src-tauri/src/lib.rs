@@ -33,6 +33,7 @@ pub mod logging;
 pub mod mem;
 pub mod merge3;
 pub mod outline;
+pub mod privacy;
 pub mod quit;
 pub mod reading_stats;
 pub mod rename;

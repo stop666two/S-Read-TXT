@@ -36,7 +36,7 @@ pub struct DiskUsageReport {
 }
 
 /// 清理结果（IPC 返回体）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClearResult {
     /// 成功释放的字节数
@@ -168,6 +168,13 @@ pub fn disk_usage(dir: &Path) -> DiskUsageReport {
 }
 
 /// 清空目录内容（保留目录本身）；逐文件容错。
+/// 清空目录全部内容（目录本身保留；供缓存清理与隐私清除复用）。
+pub fn clear_directory(dir: &Path) -> ClearResult {
+    let mut result = ClearResult::default();
+    clear_dir_contents(dir, &mut result);
+    result
+}
+
 fn clear_dir_contents(path: &Path, result: &mut ClearResult) {
     let read = match fs::read_dir(path) {
         Ok(read) => read,

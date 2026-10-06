@@ -1254,6 +1254,41 @@ pub fn clear_cache(scope: String) -> Result<resources::ClearResult, IpcError> {
     })
 }
 
+/// 命令：隐私数据用量统计（历史/会话/快照/批注/剪贴板/日志）。
+#[tauri::command]
+pub fn privacy_usage() -> Result<s_read_txt::privacy::UsageCounts, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let persist = current_app_settings().editor.clipboard.persist;
+        Ok(s_read_txt::privacy::usage_counts(&dir, persist))
+    })
+}
+
+/// 命令：按范围清除隐私数据（逐类容错；返回逐类数量与跳过数）。
+#[tauri::command]
+pub fn privacy_clear(
+    scope: s_read_txt::privacy::PrivacyScope,
+) -> Result<s_read_txt::privacy::PrivacyReport, IpcError> {
+    with_context(LogContext::request(), || {
+        let (dir, _origin) = paths::resolve_data_dir();
+        let persist = current_app_settings().editor.clipboard.persist;
+        let report = s_read_txt::privacy::clear(&dir, scope, persist);
+        log::info!(
+            target: "sread::ipc",
+            "隐私清除：历史={} 会话={} 快照={} 批注={} 剪贴板={} 日志={} 跳过={}",
+            report.history,
+            report.session,
+            report.snapshots,
+            report.annotations,
+            report.clipboard,
+            report.logs,
+            report.skipped
+        );
+        // 会话文件被删后，通知各窗口刷新（新窗口不再按旧会话恢复）
+        Ok(report)
+    })
+}
+
 /// 命令：默认快捷键表（动作 id → 组合键；设置界面「恢复默认」的唯一真源）。
 #[tauri::command]
 pub fn get_default_shortcuts() -> std::collections::BTreeMap<String, String> {

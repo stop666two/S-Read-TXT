@@ -12,6 +12,8 @@ import {
   toIpcError,
   type AppSettings,
   type DiskUsageReport,
+  type PrivacyScope,
+  type PrivacyUsage,
   type ReaderSettings,
   type ResetScope,
   type SettingSpec,
@@ -311,6 +313,40 @@ class SettingsStore {
         toasts.show(t('settings.disk.cleared', { bytes: formatBytes(result.clearedBytes) }));
       }
       await this.loadDisk();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 隐私数据用量（历史/会话/快照/批注/剪贴板/日志） */
+  privacyUsage = $state<PrivacyUsage | null>(null);
+
+  /** 载入隐私数据用量 */
+  async loadPrivacyUsage(): Promise<void> {
+    try {
+      this.privacyUsage = await ipc.privacyUsage();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
+  /** 按范围清除隐私数据并刷新用量（被占用文件计入 skipped，提示中说明） */
+  async clearPrivacy(scope: PrivacyScope): Promise<void> {
+    try {
+      const report = await ipc.privacyClear(scope);
+      const removed =
+        report.history +
+        report.session +
+        report.snapshots +
+        report.annotations +
+        report.clipboard +
+        report.logs;
+      if (report.skipped > 0) {
+        toasts.show(t('settings.privacy.clearedPartial', { removed, skipped: report.skipped }));
+      } else {
+        toasts.show(t('settings.privacy.cleared', { removed }));
+      }
+      await this.loadPrivacyUsage();
     } catch (error) {
       toasts.error(describeIpcError(toIpcError(error)));
     }

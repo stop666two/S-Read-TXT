@@ -116,6 +116,8 @@ fn main() {
     if let Err(err) = logging::init(&startup_dir, startup_settings.log_level) {
         eprintln!("[s-read-txt] 日志初始化失败（应用继续运行）：{err}");
     }
+    // 崩溃日志开关（设置 `app.system.crashLog`；修改后下次启动生效）
+    logging::install_panic_hook(&startup_dir, startup_settings.system.crash_log);
     log::info!(
         target: "sread::main",
         "S-Read-TXT v{} 启动（数据目录：{}）",
@@ -353,6 +355,8 @@ fn main() {
             commands::import_shortcuts,
             commands::get_disk_usage,
             commands::clear_cache,
+            commands::privacy_usage,
+            commands::privacy_clear,
             commands::migrate_data_dir,
             commands::restart_app,
             commands::set_background_file,

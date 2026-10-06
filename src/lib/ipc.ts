@@ -970,6 +970,31 @@ export interface ClearResult {
   skipped: number;
 }
 
+/** 隐私清除范围（与 Rust `PrivacyScope` 对应）。 */
+export interface PrivacyScope {
+  history: boolean;
+  session: boolean;
+  snapshots: boolean;
+  annotations: boolean;
+  clipboard: boolean;
+  logs: boolean;
+}
+
+/** 隐私数据用量（与 Rust `UsageCounts` 对应）。 */
+export interface PrivacyUsage {
+  history: number;
+  session: number;
+  snapshots: number;
+  annotations: number;
+  clipboard: number;
+  logs: number;
+}
+
+/** 隐私清除结果（与 Rust `PrivacyReport` 对应）。 */
+export interface PrivacyReport extends PrivacyUsage {
+  skipped: number;
+}
+
 /** 配置聚合快照（`get_settings` 返回体）。 */
 export interface SettingsSnapshot {
   app: AppSettings;
@@ -1589,6 +1614,8 @@ export const ipc = {
   addReadingSeconds: (seconds: number) => invoke<ReadingStats>('add_reading_seconds', { seconds }),
   getDiskUsage: () => invoke<DiskUsageReport>('get_disk_usage'),
   clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
+  privacyUsage: () => invoke<PrivacyUsage>('privacy_usage'),
+  privacyClear: (scope: PrivacyScope) => invoke<PrivacyReport>('privacy_clear', { scope }),
   setBackgroundFile: (path: string) => invoke<BackgroundEntry>('set_background_file', { path }),
   clearBackgroundFile: (fileName: string) => invoke<void>('clear_background_file', { fileName }),
   readBackgroundImage: (fileName: string) =>
