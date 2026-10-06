@@ -67,6 +67,14 @@ export function isScreenReaderEnhanced(): boolean {
   return screenReaderActive;
 }
 
+/** 订阅可访问性状态变化（组件内用 $state 桥接以获得响应式更新）；返回取消订阅函数。 */
+export function onA11yChange(listener: () => void): () => void {
+  A11Y_LISTENERS.add(listener);
+  return () => A11Y_LISTENERS.delete(listener);
+}
+
+const A11Y_LISTENERS = new Set<() => void>();
+
 const A11Y_CLASSES = ['reduce-motion', 'performance-mode', 'hc-overlay', 'focus-strong', 'sr-enhanced'];
 
 /** 把设置应用到当前窗口根节点（类名 + 字体缩放）。 */
@@ -74,6 +82,7 @@ export function applyA11ySettings(app: AppSettings): void {
   const state = computeA11yState(app, systemPrefersReducedMotion());
   reduceMotionActive = state.reduceMotion;
   screenReaderActive = state.screenReader;
+  for (const listener of A11Y_LISTENERS) listener();
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   for (const name of A11Y_CLASSES) {

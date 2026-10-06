@@ -8,7 +8,11 @@
   import { t } from '../i18n/index.svelte';
   import type { StatusSettings, TextStats } from '../ipc';
   import EncodingMenu from './EncodingMenu.svelte';
-  import { isScreenReaderEnhanced } from '../a11y';
+  import { isScreenReaderEnhanced, onA11yChange } from '../a11y';
+
+  /** 屏幕阅读器增强开关（经订阅桥接为响应式） */
+  let srEnabled = $state(isScreenReaderEnhanced());
+  $effect(() => onA11yChange(() => (srEnabled = isScreenReaderEnhanced())));
 
   /** 状态栏显示项（设置缺省时的兜底顺序；与 Rust DEFAULT_STATUS_ITEMS 对齐）。 */
   const DEFAULT_ITEMS = ['lineCol', 'counts', 'progress', 'size', 'encoding', 'eol', 'modified'];
@@ -156,8 +160,8 @@
 
 <footer
   class="status-bar"
-  role={isScreenReaderEnhanced() ? 'status' : undefined}
-  aria-live={isScreenReaderEnhanced() ? 'polite' : 'off'}
+  role={srEnabled ? 'status' : undefined}
+  aria-live={srEnabled ? 'polite' : 'off'}
 >
   {#if fileName !== undefined}
     <span class="left">

@@ -3,10 +3,14 @@
   import Icon from './Icon.svelte';
   import { t } from '../i18n/index.svelte';
   import { toasts } from '../state/toasts.svelte';
-  import { isScreenReaderEnhanced } from '../a11y';
+  import { isScreenReaderEnhanced, onA11yChange } from '../a11y';
+
+  /** 屏幕阅读器增强开关（经订阅桥接为响应式） */
+  let srEnabled = $state(isScreenReaderEnhanced());
+  $effect(() => onA11yChange(() => (srEnabled = isScreenReaderEnhanced())));
 </script>
 
-<div class="toast-region" aria-live={isScreenReaderEnhanced() ? 'polite' : 'off'}>
+<div class="toast-region" aria-live={srEnabled ? 'polite' : 'off'}>
   {#each toasts.items as item (item.id)}
     <div class="toast" class:error={item.kind === 'error'} class:warn={item.kind === 'warn'}>
       <span class="bar" aria-hidden="true"></span>
