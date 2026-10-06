@@ -29,6 +29,18 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`);
 };
 
+// 轮询等待表达式满足谓词：负载较高时 i18n/首屏挂载可能滞后于 Tauri API 就绪
+const waitForEval = async (expr, predicate, timeoutMs = 10_000, stepMs = 150) => {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  for (;;) {
+    last = await evalJs(expr);
+    if (predicate(last)) return last;
+    if (Date.now() >= deadline) return last;
+    await delay(stepMs);
+  }
+};
+
 // 冒烟样本：UTF-8 无 BOM、混合换行、三行中文（明确为测试数据，放系统临时目录）
 const sampleDir = mkdtempSync(join(tmpdir(), 'srt-smoke-'));
 const samplePath = join(sampleDir, 'sample-utf8.txt');
@@ -194,10 +206,11 @@ async function runScenarios() {
   check('set_encoding 恢复自动检测', /UTF/i.test(String(restored.encoding)), String(restored.encoding));
 
   // —— 前端（store → UI）端到端 ——
-  const emptyText = await evalJs(
+  const emptyText = await waitForEval(
     "(() => { const el = document.querySelector('.empty'); return el ? (el.querySelector('.open-btn')?.textContent ?? '') : ''; })()",
+    (value) => typeof value === 'string' && value.includes('打开'),
   );
-  check('空状态显示', emptyText.includes('打开'), `空状态="${emptyText}"`);
+  check('空状态显示', String(emptyText).includes('打开'), `空状态="${emptyText}"`);
 
   // WebView2：直接对函数返回的 Promise 做 CDP awaitPromise 会报 “Promise was collected”，
   // 统一经 IIFE 包裹（见 scripts/lib/smoke-cdp.mjs 的 openPathDone 说明）。
@@ -214,10 +227,11 @@ async function runScenarios() {
   await delay(300);
   const remainingTabs = await evalJs("document.querySelectorAll('.tab-bar .tab').length");
   check('关闭标签后标签栏清空', remainingTabs === 0, `tabs=${remainingTabs}`);
-  const emptyBack = await evalJs(
+  const emptyBack = await waitForEval(
     "(() => { const el = document.querySelector('.empty'); return el ? (el.querySelector('.open-btn')?.textContent ?? '') : ''; })()",
+    (value) => typeof value === 'string' && value.includes('打开'),
   );
-  check('关闭后回到空状态', emptyBack.includes('打开'), `空状态="${emptyBack}"`);
+  check('关闭后回到空状态', String(emptyBack).includes('打开'), `空状态="${emptyBack}"`);
 
   // —— 虚拟滚动（2 万行大文件）——
   const bigPath = join(sampleDir, 'sample-big.txt');
