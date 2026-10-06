@@ -560,6 +560,7 @@ impl AppState {
         timeout_ms: Option<u32>,
         concurrency: u32,
         max_size_mb: u32,
+        match_cap: usize,
     ) -> Result<WorkspaceSearchResponse, AppStateError> {
         let request = SearchRequest {
             query,
@@ -568,7 +569,7 @@ impl AppState {
             whole_word,
             timeout_ms,
         };
-        let cap = workspace_scan::WORKSPACE_FILE_MATCH_CAP;
+        let cap = match_cap;
         // （展示序号，标签 id，文件结果）；序号用于最后恢复标签展示顺序。
         let mut results: Vec<(usize, u64, WorkspaceFileResult)> = Vec::new();
         type ReadonlyJob = (
@@ -1061,25 +1062,29 @@ impl AppState {
 
     // ---------- 标注（书签/高亮/注释） ----------
 
-    /// 折叠区间：由命令层传入折叠方式与正则（编辑与阅读一致）。
+    /// 折叠区间：由命令层传入折叠方式、正则与上限（编辑与阅读一致）。
     pub fn fold_regions(
         &self,
         tab_id: u64,
         mode: FoldingMode,
         patterns: &[String],
+        max_regions: usize,
+        max_scan_rows: u64,
     ) -> Result<Vec<FoldRegion>, AppStateError> {
         let (_path, source) = self.annotation_context(tab_id)?;
-        outline_mod::fold_regions(source, mode, patterns).map_err(Into::into)
+        outline_mod::fold_regions(source, mode, patterns, max_regions, max_scan_rows)
+            .map_err(Into::into)
     }
 
-    /// 大纲提取：按给定正则扫描当前标签文档（编辑优先）。
+    /// 大纲提取：按给定正则扫描当前标签文档（编辑优先），条目数受 `max_items` 约束。
     pub fn outline_items(
         &self,
         tab_id: u64,
         patterns: &[String],
+        max_items: usize,
     ) -> Result<Vec<OutlineItem>, AppStateError> {
         let (_path, source) = self.annotation_context(tab_id)?;
-        outline_mod::extract(source, patterns, outline_mod::OUTLINE_MAX_ITEMS).map_err(Into::into)
+        outline_mod::extract(source, patterns, max_items).map_err(Into::into)
     }
 
     // ---------- 快照与版本历史 ----------

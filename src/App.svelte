@@ -262,6 +262,8 @@ let outlineOpen = $state(false);
   }
   /** 栏位数量（多栏渲染与上限判断） */
   const paneCount = $derived(paneKeys.length);
+  /** 分屏栏数上限（设置 app.maxPanes；缺省回退内置默认） */
+  const maxPanes = $derived(appSettings?.maxPanes ?? MAX_PANES);
   /** 拖拽悬停的栏位与落点区（预览；null = 无） */
   let hoverPane = $state<{ pane: string; zone: string } | null>(null);
   /** 边缘分屏命中区：占栏位边长的比例与像素上下限。 */
@@ -482,9 +484,14 @@ let outlineOpen = $state(false);
         folds: false,
         layout: true,
       };
-      const panes = Array.isArray(session?.panes)
+      const restoredPanes = Array.isArray(session?.panes)
         ? session.panes.filter((item) => item.pane.startsWith(`${windowLabel}#`))
         : [];
+      // 栏数超过设置上限：合并到首栏（标签不丢失，仅减少栏位数）
+      const clipToSingle = restoredPanes.length > maxPanes;
+      const panes = clipToSingle
+        ? [{ ...restoredPanes[0], tabs: restoredPanes.flatMap((item) => item.tabs) }]
+        : restoredPanes;
       const legacyTabs = session?.tabs ?? [];
       if (!session || (panes.length === 0 && legacyTabs.length === 0)) {
         // 无会话切片时仍需同步后端已有标签（如拖放迁入的新窗口/CLI 先到的文件）
@@ -511,6 +518,7 @@ let outlineOpen = $state(false);
         const layoutKeys = sessionLayout ? collectLeaves(sessionLayout) : [];
         const paneSet = new Set(panes.map((item) => item.pane));
         const layoutOk =
+          !clipToSingle &&
           sessionLayout !== null &&
           layoutKeys.length === paneSet.size &&
           layoutKeys.every((key) => paneSet.has(key));
@@ -787,7 +795,7 @@ let outlineOpen = $state(false);
   const paletteCommands = $derived.by<PaletteCommand[]>(() => {
     const hasTab = active !== undefined && active !== null;
     const inEdit = active?.editing ?? false;
-    const canSplit = paneCount < MAX_PANES;
+    const canSplit = paneCount < maxPanes;
     const canClosePane = paneCount > 1;
     return [
       // 文件
@@ -1213,14 +1221,14 @@ let outlineOpen = $state(false);
     void saveSessionNow();
   }
 
-  /** 拆分栏位：目标叶子替换为 [原栏, 新栏] 分支（上限 4 栏；side=before 时新栏在前）。返回新栏键。 */
+  /** 拆分栏位：目标叶子替换为 [原栏, 新栏] 分支（上限来自设置 app.maxPanes；side=before 时新栏在前）。返回新栏键。 */
   function splitPane(
     target: string,
     dir: PaneSplitDir,
     side: 'after' | 'before' = 'after',
   ): string | null {
-    if (paneCount >= MAX_PANES) {
-      toasts.show(t('pane.limit'), 'warn');
+    if (paneCount >= maxPanes) {
+      toasts.show(t('pane.limit', { n: maxPanes }), 'warn');
       return null;
     }
     const pane = `${windowLabel}#${nextPaneSeq()}`;
@@ -2207,7 +2215,7 @@ onMount(() => {
     onOpenMerge={() => void openMergeFlow()}
     workspaceFindEnabled={appSettings?.find.multifileEnabled !== false}
     onSettings={() => void ipc.openSettings()}
-    canSplit={paneCount < MAX_PANES}
+    canSplit={paneCount < maxPanes}
     canClosePane={paneCount > 1}
     onSplitRight={() => splitPane(tabs.activePane, 'row')}
     onSplitDown={() => splitPane(tabs.activePane, 'column')}

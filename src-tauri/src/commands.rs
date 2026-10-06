@@ -335,7 +335,13 @@ pub fn fold_regions(
             settings.display.outline_patterns.clone()
         };
         let app_state = lock_state(&state)?;
-        let regions = app_state.fold_regions(tab_id, settings.display.folding, &patterns)?;
+        let regions = app_state.fold_regions(
+            tab_id,
+            settings.display.folding,
+            &patterns,
+            settings.display.fold_max_regions as usize,
+            settings.display.fold_scan_max_rows as u64,
+        )?;
         log::debug!(target: "sread::commands", "fold_regions: tab={tab_id} mode={:?} regions={}", settings.display.folding, regions.len());
         Ok(regions)
     })
@@ -358,7 +364,7 @@ pub fn outline_items(
             settings.display.outline_patterns.clone()
         };
         let app_state = lock_state(&state)?;
-        let items = app_state.outline_items(tab_id, &patterns)?;
+        let items = app_state.outline_items(tab_id, &patterns, settings.display.outline_max_items as usize)?;
         log::debug!(target: "sread::commands", "outline_items: tab={tab_id} items={}", items.len());
         Ok(items)
     })
@@ -1891,6 +1897,7 @@ pub fn search_workspace(
                 timeout,
                 settings.find.multifile_concurrency,
                 settings.hard_limit_mb,
+                settings.tools.workspace_match_cap as usize,
             )
             .map_err(IpcError::from)
     })

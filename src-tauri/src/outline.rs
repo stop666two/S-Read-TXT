@@ -125,19 +125,23 @@ pub struct FoldRegion {
 /// - `Off`：空；
 /// - `Heading`/`Regex`：由大纲条目推导（层级使用栈：子项区间从其下一同级/更高级条目行前结束）；
 /// - `Indent`：逐行扫描首行缩进（空格 1 / Tab 4 / 全角空格 2），缩进减小处闭合上一个区间。
+///
+/// `max_regions`：区间数量上限；`max_scan_rows`：缩进模式最多扫描的行数（均来自设置）。
 pub fn fold_regions(
     source: &dyn DocumentSource,
     mode: crate::settings::display::FoldingMode,
     patterns: &[String],
+    max_regions: usize,
+    max_scan_rows: u64,
 ) -> Result<Vec<FoldRegion>, OutlineError> {
     use crate::settings::display::FoldingMode;
     match mode {
         FoldingMode::Off | FoldingMode::Unknown => Ok(Vec::new()),
         FoldingMode::Heading | FoldingMode::Regex => {
-            let items = extract(source, patterns, FOLD_MAX_REGIONS)?;
+            let items = extract(source, patterns, max_regions)?;
             Ok(regions_from_items(&items, source.rows_total()))
         }
-        FoldingMode::Indent => Ok(indent_regions(source)),
+        FoldingMode::Indent => Ok(indent_regions(source, max_regions, max_scan_rows)),
     }
 }
 
@@ -178,14 +182,14 @@ fn regions_from_items(items: &[OutlineItem], total_rows: u64) -> Vec<FoldRegion>
     regions
 }
 
-/// 缩进折叠：扫描全部行，按首行缩进拆分区间。
-fn indent_regions(source: &dyn DocumentSource) -> Vec<FoldRegion> {
-    let total = source.rows_total().min(FOLD_SCAN_MAX_ROWS);
+/// 缩进折叠：扫描全部行，按首行缩进拆分区间（数量与扫描行数受参数上限约束）。
+fn indent_regions(source: &dyn DocumentSource, max_regions: usize, max_scan_rows: u64) -> Vec<FoldRegion> {
+    let total = source.rows_total().min(max_scan_rows);
     let mut regions: Vec<FoldRegion> = Vec::new();
     // 栈：（缩进单位，头部行）
     let mut stack: Vec<(u32, u64)> = Vec::new();
     let mut start = 0u64;
-    while start < total && regions.len() < FOLD_MAX_REGIONS {
+    while start < total && regions.len() < max_regions {
         let count = ROW_BATCH.min(total - start) as usize;
         let rows = source.fetch_rows(start, count);
         if rows.is_empty() {
@@ -270,7 +274,7 @@ fn indent_level(text: &str) -> u8 {
 mod tests {
     use std::io::Write;
 
-    use super::{extract, OutlineError, OUTLINE_MAX_ITEMS};
+    use super::{extract, OutlineError, FOLD_MAX_REGIONS, FOLD_SCAN_MAX_ROWS, OUTLINE_MAX_ITEMS};
     use crate::settings::defaults::DEFAULT_OUTLINE_PATTERNS;
     use crate::textfile::session::FileSession;
 
@@ -345,7 +349,7 @@ mod tests {
         use crate::settings::display::FoldingMode;
         let (_dir, session) =
             session_with("第一章\n正文\n  第一节\n正文\n第二章\n正文\n".as_bytes());
-        let regions = fold_regions(&session, FoldingMode::Heading, &patterns()).expect("失败");
+        let regions = fold_regions(&session, FoldingMode::Heading, &patterns(), FOLD_MAX_REGIONS, FOLD_SCAN_MAX_ROWS).expect("失败");
         assert_eq!(
             regions,
             vec![
@@ -371,7 +375,7 @@ mod tests {
         use super::{fold_regions, FoldRegion};
         use crate::settings::display::FoldingMode;
         let (_dir, session) = session_with("根\n  子1\n  子2\n平级\n\t深\n".as_bytes());
-        let regions = fold_regions(&session, FoldingMode::Indent, &[]).expect("失败");
+        let regions = fold_regions(&session, FoldingMode::Indent, &[], FOLD_MAX_REGIONS, FOLD_SCAN_MAX_ROWS).expect("失败");
         assert_eq!(
             regions,
             vec![FoldRegion {

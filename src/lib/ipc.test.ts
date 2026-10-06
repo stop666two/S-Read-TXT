@@ -29,9 +29,9 @@ describe('describeIpcError', () => {
     expect(describeIpcError({ code: 'MAX_TABS', message: '任意详情' })).toContain('关闭部分标签');
   });
 
-  it('其余错误透出后端消息', () => {
+  it('其余错误使用当前语言的固定文案（不透出后端消息）', () => {
     expect(describeIpcError({ code: 'IO', message: '读取文件失败：拒绝访问' })).toBe(
-      '读取文件失败：拒绝访问',
+      '文件读写失败，请检查文件是否被占用或磁盘空间。',
     );
   });
 });

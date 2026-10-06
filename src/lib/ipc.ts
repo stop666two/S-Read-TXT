@@ -3,8 +3,6 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
-import { t } from './i18n/runtime';
-
 /** 应用信息（与 Rust commands.rs 的 AppInfo 对齐）。 */
 export interface AppInfo {
   version: string;
@@ -420,18 +418,10 @@ export function toIpcError(error: unknown): IpcErrorPayload {
 
 /**
  * 错误载荷 → 用户文案。
- * 固定展示文案优先（如文件过大使用需求给定的逐字提示），其余透出后端消息。
+ * 全部稳定错误码映射为当前语言固定文案（见 `ipc-error.ts`）；未知码回退「操作失败（码）」，
+ * 后端 message 仅用于日志与排障，不直接展示。
  */
-export function describeIpcError(error: IpcErrorPayload): string {
-  switch (error.code) {
-    case 'FILE_TOO_LARGE':
-      return t('error.fileTooLarge');
-    case 'MAX_TABS':
-      return t('error.maxTabs');
-    default:
-      return error.message;
-  }
-}
+export { describeIpcError, hasFixedErrorMessage } from './ipc-error';
 
 /** 历史保留策略（与 Rust `HistorySettings` 对应）。 */
 export interface HistorySettings {
