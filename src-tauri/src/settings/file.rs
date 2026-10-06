@@ -89,6 +89,14 @@ pub struct FileSettings {
     pub associations: Vec<String>,
     /// 「最近打开」显示条数（D-18；0 = 不显示）
     pub recent_limit: u32,
+    /// 导出文本上限（MB；超过拒绝并提示）。
+    /// JSON 名显式固定为 `exportMaxMB`（serde camelCase 会生成 `exportMaxMb`）。
+    #[serde(rename = "exportMaxMB")]
+    pub export_max_mb: u32,
+    /// 打印上限（MB；超过拒绝并提示）。
+    /// JSON 名显式固定为 `printMaxMB`。
+    #[serde(rename = "printMaxMB")]
+    pub print_max_mb: u32,
 }
 
 impl Default for FileSettings {
@@ -106,6 +114,8 @@ impl Default for FileSettings {
                 .map(|ext| (*ext).to_string())
                 .collect(),
             recent_limit: defaults::DEFAULT_FILE_RECENT_LIMIT,
+            export_max_mb: defaults::DEFAULT_EXPORT_MAX_MB,
+            print_max_mb: defaults::DEFAULT_PRINT_MAX_MB,
         }
     }
 }

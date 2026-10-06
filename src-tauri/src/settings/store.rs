@@ -162,6 +162,41 @@ fn normalize_app(settings: &mut AppSettings) {
     normalize_a11y(&mut settings.a11y);
     normalize_system(&mut settings.system);
     normalize_update(&mut settings.update);
+    let (min_panes, max_panes) = defaults::MAX_PANES_RANGE;
+    settings.max_panes = settings.max_panes.clamp(min_panes, max_panes);
+    let (min_import, max_import) = defaults::IMPORT_MAX_MB_RANGE;
+    settings.max_import_mb = settings.max_import_mb.clamp(min_import, max_import);
+    let (min_folds, max_folds) = defaults::MAX_SESSION_FOLDS_RANGE;
+    settings.startup.max_session_folds =
+        settings.startup.max_session_folds.clamp(min_folds, max_folds);
+    let (min_windows, max_windows) = defaults::MAX_WINDOWS_RANGE;
+    settings.startup.max_windows = settings.startup.max_windows.clamp(min_windows, max_windows);
+    normalize_tools(&mut settings.tools);
+    normalize_annotations(&mut settings.annotations);
+}
+
+/// 工具上限归一：比较/拆分/预览/工作区搜索上限钳制。
+fn normalize_tools(tools: &mut crate::settings::model::ToolsSettings) {
+    let (min_compare, max_compare) = defaults::COMPARE_MAX_MB_RANGE;
+    tools.compare_max_mb = tools.compare_max_mb.clamp(min_compare, max_compare);
+    let (min_split, max_split) = defaults::SPLIT_MAX_MB_RANGE;
+    tools.split_max_mb = tools.split_max_mb.clamp(min_split, max_split);
+    let (min_parts, max_parts) = defaults::SPLIT_MAX_PARTS_RANGE;
+    tools.split_max_parts = tools.split_max_parts.clamp(min_parts, max_parts);
+    let (min_preview, max_preview) = defaults::SPLIT_PREVIEW_PARTS_RANGE;
+    tools.split_preview_parts = tools.split_preview_parts.clamp(min_preview, max_preview);
+    let (min_match, max_match) = defaults::WORKSPACE_MATCH_CAP_RANGE;
+    tools.workspace_match_cap = tools.workspace_match_cap.clamp(min_match, max_match);
+}
+
+/// 批注上限归一：每类上限与文本长度钳制。
+fn normalize_annotations(annotations: &mut crate::settings::model::AnnotationsSettings) {
+    let (min_kind, max_kind) = defaults::ANNOTATIONS_MAX_PER_KIND_RANGE;
+    annotations.max_per_kind = annotations.max_per_kind.clamp(min_kind, max_kind);
+    let (min_note, max_note) = defaults::ANNOTATION_NOTE_MAX_CHARS_RANGE;
+    annotations.note_max_chars = annotations.note_max_chars.clamp(min_note, max_note);
+    let (min_label, max_label) = defaults::ANNOTATION_LABEL_MAX_CHARS_RANGE;
+    annotations.label_max_chars = annotations.label_max_chars.clamp(min_label, max_label);
 }
 
 /// 可访问性归一：动画策略回退、字体缩放钳制。
@@ -214,6 +249,10 @@ fn normalize_file(file: &mut crate::settings::file::FileSettings) {
     file.snapshot_max_mb = file.snapshot_max_mb.clamp(min_mb, max_mb);
     let (min_recent, max_recent) = defaults::FILE_RECENT_LIMIT_RANGE;
     file.recent_limit = file.recent_limit.clamp(min_recent, max_recent);
+    let (min_export, max_export) = defaults::EXPORT_MAX_MB_RANGE;
+    file.export_max_mb = file.export_max_mb.clamp(min_export, max_export);
+    let (min_print, max_print) = defaults::PRINT_MAX_MB_RANGE;
+    file.print_max_mb = file.print_max_mb.clamp(min_print, max_print);
     let mut seen = std::collections::BTreeSet::new();
     let mut cleaned: Vec<String> = Vec::new();
     for raw in std::mem::take(&mut file.associations) {
@@ -295,6 +334,12 @@ fn normalize_display(settings: &mut DisplaySettings) {
     } else {
         patterns
     };
+    let (min_outline, max_outline) = defaults::OUTLINE_MAX_ITEMS_RANGE;
+    settings.outline_max_items = settings.outline_max_items.clamp(min_outline, max_outline);
+    let (min_regions, max_regions) = defaults::FOLD_MAX_REGIONS_RANGE;
+    settings.fold_max_regions = settings.fold_max_regions.clamp(min_regions, max_regions);
+    let (min_scan, max_scan) = defaults::FOLD_SCAN_MAX_ROWS_RANGE;
+    settings.fold_scan_max_rows = settings.fold_scan_max_rows.clamp(min_scan, max_scan);
 }
 
 /// 状态栏归一：显示项白名单/去重/回退默认、计数模式、宽度钳制、提示文案截断。
@@ -358,6 +403,8 @@ fn normalize_editor(editor: &mut EditorSettings) {
     let clipboard = &mut editor.clipboard;
     let (min_limit, max_limit) = defaults::CLIPBOARD_HISTORY_LIMIT_RANGE;
     clipboard.history_limit = clipboard.history_limit.clamp(min_limit, max_limit);
+    let (min_entry, max_entry) = defaults::CLIPBOARD_ENTRY_MAX_CHARS_RANGE;
+    clipboard.entry_max_chars = clipboard.entry_max_chars.clamp(min_entry, max_entry);
     editor.insert.timestamp_format = editor.insert.timestamp_format.normalized();
 }
 
@@ -624,6 +671,42 @@ mod tests {
         .expect("写配置失败");
         let loaded = load_app_settings(dir.path());
         assert_eq!(loaded.update.source_url.chars().count(), 512);
+    }
+
+    /// v17 用户可见上限归一：越界值统一钳制到允许范围。
+    #[test]
+    fn limits_normalize_on_load() {
+        let dir = data_dir();
+        let raw = serde_json::json!({
+            "schemaVersion": 17,
+            "maxPanes": 99,
+            "file": { "exportMaxMB": 0, "printMaxMB": 99999 },
+            "tools": { "compareMaxMB": 1, "splitMaxMB": 99999, "splitMaxParts": 1, "splitPreviewParts": 999, "workspaceMatchCap": 1 },
+            "display": { "outlineMaxItems": 1, "foldMaxRegions": 99999999_u64, "foldScanMaxRows": 1 },
+            "editor": { "clipboard": { "entryMaxChars": 1 } },
+            "annotations": { "maxPerKind": 1, "noteMaxChars": 1, "labelMaxChars": 1 },
+            "startup": { "maxSessionFolds": 999999, "maxWindows": 1 }
+        });
+        std::fs::write(app_settings_path(dir.path()), raw.to_string()).expect("写配置失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded.max_panes, 16);
+        assert_eq!(loaded.max_import_mb, defaults::DEFAULT_IMPORT_MAX_MB);
+        assert_eq!(loaded.file.export_max_mb, 1);
+        assert_eq!(loaded.file.print_max_mb, 256);
+        assert_eq!(loaded.tools.compare_max_mb, 16);
+        assert_eq!(loaded.tools.split_max_mb, 4096);
+        assert_eq!(loaded.tools.split_max_parts, 2);
+        assert_eq!(loaded.tools.split_preview_parts, 200);
+        assert_eq!(loaded.tools.workspace_match_cap, 10);
+        assert_eq!(loaded.display.outline_max_items, 100);
+        assert_eq!(loaded.display.fold_max_regions, 50_000);
+        assert_eq!(loaded.display.fold_scan_max_rows, 10_000);
+        assert_eq!(loaded.editor.clipboard.entry_max_chars, 100);
+        assert_eq!(loaded.annotations.max_per_kind, 100);
+        assert_eq!(loaded.annotations.note_max_chars, 100);
+        assert_eq!(loaded.annotations.label_max_chars, 10);
+        assert_eq!(loaded.startup.max_session_folds, 100_000);
+        assert_eq!(loaded.startup.max_windows, 1);
     }
 
     /// 主配置往返一致（保存会写入当前 schemaVersion）。

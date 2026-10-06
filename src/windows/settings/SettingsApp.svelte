@@ -179,7 +179,7 @@ import DiskSection from './DiskSection.svelte';
       {:else if tab === 'history'}
         <HistoryTab {query} />
       {:else if tab === 'system'}
-        <RegistryPage groups={['app.a11y', 'app.system', 'app.update']} {query} />
+        <RegistryPage groups={['app.a11y', 'app.system', 'app.tools', 'app.annotations', 'app.update']} {query} />
       {:else}
         <AboutTab />
       {/if}

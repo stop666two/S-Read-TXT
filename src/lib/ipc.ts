@@ -321,6 +321,8 @@ export interface MultiCursorSettings {
 export interface ClipboardSettings {
   historyLimit: number;
   persist: boolean;
+  /** 单条文本字符上限（超出截断） */
+  entryMaxChars: number;
 }
 
 /** 计数模式（状态栏字数统计口径；与 Rust `CountMode` 对应）。 */
@@ -450,6 +452,10 @@ export interface StartupSettings {
   restoreSession: boolean;
   restoreWindow: boolean;
   restoreItems: RestoreItems;
+  /** 每条标签恢复的最大折叠锚点数（0 = 不恢复折叠） */
+  maxSessionFolds: number;
+  /** 启动恢复的窗口数上限 */
+  maxWindows: number;
 }
 
 /** 主配置（与 Rust `AppSettings` 对应；字段名以 Rust 序列化为准）。 */
@@ -508,6 +514,10 @@ export interface FileSettings {
   versionHistory: boolean;
   associations: string[];
   recentLimit: number;
+  /** 导出文本上限（MB） */
+  exportMaxMB: number;
+  /** 打印上限（MB） */
+  printMaxMB: number;
 }
 
 /** 新建文件换行风格（与 Rust `NewEol` 对应）。 */
@@ -548,6 +558,38 @@ export interface AppSettings {
   system: SystemSettings;
   /** 更新检查设置（P4） */
   update: UpdateSettings;
+  /** 分屏栏数上限（1–16） */
+  maxPanes: number;
+  /** 设置导入包大小上限（MB） */
+  maxImportMB: number;
+  /** 工具上限（比较/拆分/工作区搜索） */
+  tools: ToolsSettings;
+  /** 批注上限 */
+  annotations: AnnotationsSettings;
+}
+
+/** 工具上限设置（与 Rust `ToolsSettings` 对应）。 */
+export interface ToolsSettings {
+  /** 比较/合并单文件上限（MB） */
+  compareMaxMB: number;
+  /** 拆分单文件上限（MB） */
+  splitMaxMB: number;
+  /** 拆分最多份数 */
+  splitMaxParts: number;
+  /** 拆分预览展示份数 */
+  splitPreviewParts: number;
+  /** 工作区搜索匹配条数上限 */
+  workspaceMatchCap: number;
+}
+
+/** 批注上限设置（与 Rust `AnnotationsSettings` 对应）。 */
+export interface AnnotationsSettings {
+  /** 每类批注数量上限 */
+  maxPerKind: number;
+  /** 注释文本最大字符数 */
+  noteMaxChars: number;
+  /** 标签文本最大字符数 */
+  labelMaxChars: number;
 }
 
 /** 减少动画策略（与 Rust `ReduceMotion` 对应）。 */
@@ -613,6 +655,12 @@ export interface DisplaySettings {
   breadcrumb: boolean;
   /** 大纲正则（空列表后端回退内置默认） */
   outlinePatterns: string[];
+  /** 大纲条数上限 */
+  outlineMaxItems: number;
+  /** 折叠区域数量上限 */
+  foldMaxRegions: number;
+  /** 折叠扫描行数上限 */
+  foldScanMaxRows: number;
 }
 
 /** 四向页边距（px；与 Rust `Margin4` 对应）。 */

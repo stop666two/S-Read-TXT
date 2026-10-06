@@ -148,6 +148,10 @@ pub struct StartupSettings {
     pub restore_window: bool,
     /// 会话恢复内容细项（总开关关闭时仍按窗口布局恢复窗口数量与几何）
     pub restore_items: RestoreItems,
+    /// 每条标签恢复的最大折叠锚点数（0 = 不恢复折叠）
+    pub max_session_folds: u32,
+    /// 启动恢复的窗口数上限（防御多窗口会话过大）
+    pub max_windows: u32,
 }
 
 impl Default for StartupSettings {
@@ -156,6 +160,8 @@ impl Default for StartupSettings {
             restore_session: defaults::DEFAULT_STARTUP_RESTORE_SESSION,
             restore_window: defaults::DEFAULT_STARTUP_RESTORE_WINDOW,
             restore_items: RestoreItems::default(),
+            max_session_folds: defaults::DEFAULT_MAX_SESSION_FOLDS,
+            max_windows: defaults::DEFAULT_MAX_WINDOWS,
         }
     }
 }
@@ -292,6 +298,60 @@ impl Default for UpdateSettings {
     fn default() -> Self {
         Self {
             source_url: defaults::DEFAULT_UPDATE_SOURCE_URL.to_string(),
+        }
+    }
+}
+
+/// 工具上限设置（`settings.json` 的嵌套对象 `tools`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ToolsSettings {
+    /// 比较/合并单文件大小上限（MB）。
+    /// JSON 名显式固定为 `compareMaxMB`（serde camelCase 会生成 `compareMaxMb`）。
+    #[serde(rename = "compareMaxMB")]
+    pub compare_max_mb: u32,
+    /// 拆分单文件大小上限（MB）。
+    /// JSON 名显式固定为 `splitMaxMB`。
+    #[serde(rename = "splitMaxMB")]
+    pub split_max_mb: u32,
+    /// 拆分最多份数
+    pub split_max_parts: u32,
+    /// 拆分预览展示份数
+    pub split_preview_parts: u32,
+    /// 工作区搜索匹配条数上限
+    pub workspace_match_cap: u32,
+}
+
+impl Default for ToolsSettings {
+    fn default() -> Self {
+        Self {
+            compare_max_mb: defaults::DEFAULT_COMPARE_MAX_MB,
+            split_max_mb: defaults::DEFAULT_SPLIT_MAX_MB,
+            split_max_parts: defaults::DEFAULT_SPLIT_MAX_PARTS,
+            split_preview_parts: defaults::DEFAULT_SPLIT_PREVIEW_PARTS,
+            workspace_match_cap: defaults::DEFAULT_WORKSPACE_MATCH_CAP,
+        }
+    }
+}
+
+/// 批注上限设置（`settings.json` 的嵌套对象 `annotations`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AnnotationsSettings {
+    /// 每类批注数量上限（书签/高亮/注释/待办各自计数）
+    pub max_per_kind: u32,
+    /// 注释文本最大字符数
+    pub note_max_chars: u32,
+    /// 标签文本最大字符数
+    pub label_max_chars: u32,
+}
+
+impl Default for AnnotationsSettings {
+    fn default() -> Self {
+        Self {
+            max_per_kind: defaults::DEFAULT_ANNOTATIONS_MAX_PER_KIND,
+            note_max_chars: defaults::DEFAULT_ANNOTATION_NOTE_MAX_CHARS,
+            label_max_chars: defaults::DEFAULT_ANNOTATION_LABEL_MAX_CHARS,
         }
     }
 }
@@ -455,6 +515,16 @@ pub struct AppSettings {
     pub system: SystemSettings,
     /// 更新检查（P4）
     pub update: UpdateSettings,
+    /// 分屏栏数上限（1–16；会话载入侧另有绝对安全上限）
+    pub max_panes: u32,
+    /// 设置导入包大小上限（MB）。
+    /// JSON 名显式固定为 `maxImportMB`。
+    #[serde(rename = "maxImportMB")]
+    pub max_import_mb: u32,
+    /// 工具上限（比较/拆分/工作区搜索）
+    pub tools: ToolsSettings,
+    /// 批注上限
+    pub annotations: AnnotationsSettings,
 }
 
 impl Default for AppSettings {
@@ -479,6 +549,10 @@ impl Default for AppSettings {
             a11y: A11ySettings::default(),
             system: SystemSettings::default(),
             update: UpdateSettings::default(),
+            max_panes: defaults::DEFAULT_MAX_PANES,
+            max_import_mb: defaults::DEFAULT_IMPORT_MAX_MB,
+            tools: ToolsSettings::default(),
+            annotations: AnnotationsSettings::default(),
         }
     }
 }

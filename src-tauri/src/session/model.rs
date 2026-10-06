@@ -16,13 +16,13 @@ pub const MIN_WINDOW_WIDTH: u32 = 720;
 pub const MIN_WINDOW_HEIGHT: u32 = 480;
 /// 窗口尺寸上限（px；防御手改配置导致窗口不可用的异常值）
 pub const MAX_WINDOW_DIMENSION: u32 = 16384;
-/// 单窗口分栏上限（叶栏位数量）
-pub const MAX_PANES: usize = 4;
+/// 会话载入的绝对安全上限（叶栏位数量持久化校验；用户可调上限见设置 `app.maxPanes`，范围 1–16）
+pub const MAX_PANES_ABSOLUTE: usize = 16;
 /// 会话配置格式版本（独立于设置 schema：会话结构变更时递增并在会话模块内提供迁移）
 pub const SESSION_SCHEMA_VERSION: u32 = 4;
 
-/// 单标签折叠锚点条数上限（防御脏数据）。
-pub const MAX_SESSION_FOLDS: usize = 512;
+/// 单标签折叠锚点条数上限（防御脏数据；用户可调上限见设置 `app.startup.maxSessionFolds`，0 = 不恢复）
+pub const MAX_SESSION_FOLDS_ABSOLUTE: usize = 100_000;
 
 /// 窗口状态。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -26,7 +26,7 @@ use crate::settings::status::CountMode;
 /// v14：新增显示折叠/大纲/面包屑字段。
 /// v15：默认翻页平滑滚动字段补齐（空步迁移）。
 /// v16：新增会话恢复内容细项开关（startup.restoreItems）。
-/// v17：新增可访问性（a11y）与系统节（system/update）。
+/// v17：新增可访问性（a11y）与系统节（system/update），以及全部用户可见上限设置（分屏/导出/打印/比较/拆分/工作区/大纲/折叠/批注/剪贴板/会话/导入/启动窗口）。
 pub const SCHEMA_VERSION: u32 = 17;
 
 // ---------- settings.json ----------
@@ -217,6 +217,81 @@ pub const DEFAULT_SYSTEM_OFFLINE_MODE: bool = true;
 pub const DEFAULT_UPDATE_SOURCE_URL: &str = "";
 /// 更新源地址最大字符数
 pub const UPDATE_SOURCE_URL_MAX_CHARS: u32 = 512;
+
+// ---------- settings.json / 用户可见上限（P4：全部可调） ----------
+
+/// 默认分屏栏数上限
+pub const DEFAULT_MAX_PANES: u32 = 4;
+/// 分屏栏数上限允许范围（闭区间；会话载入的绝对安全上限见 `session::model::MAX_PANES_ABSOLUTE`）
+pub const MAX_PANES_RANGE: (u32, u32) = (1, 16);
+/// 默认导出文本上限（MB）
+pub const DEFAULT_EXPORT_MAX_MB: u32 = 64;
+/// 导出文本上限允许范围（MB，闭区间）
+pub const EXPORT_MAX_MB_RANGE: (u32, u32) = (1, 2048);
+/// 默认打印上限（MB）
+pub const DEFAULT_PRINT_MAX_MB: u32 = 1;
+/// 打印上限允许范围（MB，闭区间）
+pub const PRINT_MAX_MB_RANGE: (u32, u32) = (1, 256);
+/// 默认比较/合并单文件上限（MB）
+pub const DEFAULT_COMPARE_MAX_MB: u32 = 512;
+/// 比较/合并单文件上限允许范围（MB，闭区间）
+pub const COMPARE_MAX_MB_RANGE: (u32, u32) = (16, 4096);
+/// 默认拆分单文件上限（MB）
+pub const DEFAULT_SPLIT_MAX_MB: u32 = 256;
+/// 拆分单文件上限允许范围（MB，闭区间）
+pub const SPLIT_MAX_MB_RANGE: (u32, u32) = (1, 4096);
+/// 默认拆分最多份数
+pub const DEFAULT_SPLIT_MAX_PARTS: u32 = 9999;
+/// 拆分最多份数允许范围（闭区间）
+pub const SPLIT_MAX_PARTS_RANGE: (u32, u32) = (2, 9999);
+/// 默认拆分预览份数
+pub const DEFAULT_SPLIT_PREVIEW_PARTS: u32 = 20;
+/// 拆分预览份数允许范围（闭区间）
+pub const SPLIT_PREVIEW_PARTS_RANGE: (u32, u32) = (1, 200);
+/// 默认工作区搜索匹配上限（条）
+pub const DEFAULT_WORKSPACE_MATCH_CAP: u32 = 200;
+/// 工作区搜索匹配上限允许范围（闭区间）
+pub const WORKSPACE_MATCH_CAP_RANGE: (u32, u32) = (10, 100_000);
+/// 默认大纲条数上限
+pub const DEFAULT_OUTLINE_MAX_ITEMS: u32 = 5000;
+/// 大纲条数上限允许范围（闭区间）
+pub const OUTLINE_MAX_ITEMS_RANGE: (u32, u32) = (100, 50_000);
+/// 默认折叠区域上限
+pub const DEFAULT_FOLD_MAX_REGIONS: u32 = 5000;
+/// 折叠区域上限允许范围（闭区间）
+pub const FOLD_MAX_REGIONS_RANGE: (u32, u32) = (100, 50_000);
+/// 默认折叠扫描行数上限
+pub const DEFAULT_FOLD_SCAN_MAX_ROWS: u32 = 1_000_000;
+/// 折叠扫描行数上限允许范围（闭区间）
+pub const FOLD_SCAN_MAX_ROWS_RANGE: (u32, u32) = (10_000, 100_000_000);
+/// 默认剪贴板单条字符上限
+pub const DEFAULT_CLIPBOARD_ENTRY_MAX_CHARS: u32 = 100_000;
+/// 剪贴板单条字符上限允许范围（闭区间）
+pub const CLIPBOARD_ENTRY_MAX_CHARS_RANGE: (u32, u32) = (100, 10_000_000);
+/// 默认批注每类上限（条）
+pub const DEFAULT_ANNOTATIONS_MAX_PER_KIND: u32 = 10_000;
+/// 批注每类上限允许范围（闭区间）
+pub const ANNOTATIONS_MAX_PER_KIND_RANGE: (u32, u32) = (100, 1_000_000);
+/// 默认注释最大字符数
+pub const DEFAULT_ANNOTATION_NOTE_MAX_CHARS: u32 = 4_000;
+/// 注释最大字符数允许范围（闭区间）
+pub const ANNOTATION_NOTE_MAX_CHARS_RANGE: (u32, u32) = (100, 100_000);
+/// 默认标签最大字符数
+pub const DEFAULT_ANNOTATION_LABEL_MAX_CHARS: u32 = 200;
+/// 标签最大字符数允许范围（闭区间）
+pub const ANNOTATION_LABEL_MAX_CHARS_RANGE: (u32, u32) = (10, 10_000);
+/// 默认会话恢复折叠条数上限（每条标签）
+pub const DEFAULT_MAX_SESSION_FOLDS: u32 = 512;
+/// 会话恢复折叠条数上限允许范围（闭区间）
+pub const MAX_SESSION_FOLDS_RANGE: (u32, u32) = (0, 100_000);
+/// 默认启动恢复窗口数上限
+pub const DEFAULT_MAX_WINDOWS: u32 = 16;
+/// 启动恢复窗口数上限允许范围（闭区间）
+pub const MAX_WINDOWS_RANGE: (u32, u32) = (1, 64);
+/// 默认设置导入包上限（MB）
+pub const DEFAULT_IMPORT_MAX_MB: u32 = 8;
+/// 设置导入包上限允许范围（MB，闭区间）
+pub const IMPORT_MAX_MB_RANGE: (u32, u32) = (1, 1024);
 
 // ---------- settings.json / 编辑器行操作默认值 ----------
 

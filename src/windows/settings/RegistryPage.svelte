@@ -37,6 +37,9 @@ import StringListRow from './parts/StringListRow.svelte';
   const units = $derived.by(() => {
     const days = i18n.locale === 'en' ? 'days' : '天';
     const chars = i18n.locale === 'en' ? 'chars' : '字';
+    const items = i18n.locale === 'en' ? 'items' : '条';
+    const lines = i18n.locale === 'en' ? 'lines' : '行';
+    const windows = i18n.locale === 'en' ? 'windows' : '个';
     return {
       'app.maxFileSizeMB': 'MB',
       'app.hardLimitMB': 'MB',
@@ -50,6 +53,23 @@ import StringListRow from './parts/StringListRow.svelte';
       'reader.typography.firstLineIndent': chars,
       'app.a11y.fontScale': '%',
       'app.system.memoryLimitMB': 'MB',
+      'app.maxImportMB': 'MB',
+      'app.file.exportMaxMB': 'MB',
+      'app.file.printMaxMB': 'MB',
+      'app.tools.compareMaxMB': 'MB',
+      'app.tools.splitMaxMB': 'MB',
+      'app.tools.splitMaxParts': items,
+      'app.tools.splitPreviewParts': items,
+      'app.tools.workspaceMatchCap': items,
+      'app.display.outlineMaxItems': items,
+      'app.display.foldMaxRegions': items,
+      'app.display.foldScanMaxRows': lines,
+      'app.editor.clipboard.entryMaxChars': chars,
+      'app.annotations.maxPerKind': items,
+      'app.annotations.noteMaxChars': chars,
+      'app.annotations.labelMaxChars': chars,
+      'app.startup.maxSessionFolds': items,
+      'app.startup.maxWindows': windows,
     } as Record<string, string>;
   });
 

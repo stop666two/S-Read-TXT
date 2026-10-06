@@ -963,6 +963,169 @@ pub const SPECS: &[SettingSpec] = &[
             max_len: defaults::UPDATE_SOURCE_URL_MAX_CHARS,
         },
     },
+    // ---------- settings.json / 用户可见上限（P4：全部可调） ----------
+    SettingSpec {
+        id: "app.maxPanes",
+        group: "app.basic",
+        kind: SettingKind::Number {
+            min: defaults::MAX_PANES_RANGE.0 as f64,
+            max: defaults::MAX_PANES_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.maxImportMB",
+        group: "app.basic",
+        kind: SettingKind::Number {
+            min: defaults::IMPORT_MAX_MB_RANGE.0 as f64,
+            max: defaults::IMPORT_MAX_MB_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.file.exportMaxMB",
+        group: "app.file",
+        kind: SettingKind::Number {
+            min: defaults::EXPORT_MAX_MB_RANGE.0 as f64,
+            max: defaults::EXPORT_MAX_MB_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.file.printMaxMB",
+        group: "app.file",
+        kind: SettingKind::Number {
+            min: defaults::PRINT_MAX_MB_RANGE.0 as f64,
+            max: defaults::PRINT_MAX_MB_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.tools.compareMaxMB",
+        group: "app.tools",
+        kind: SettingKind::Number {
+            min: defaults::COMPARE_MAX_MB_RANGE.0 as f64,
+            max: defaults::COMPARE_MAX_MB_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.tools.splitMaxMB",
+        group: "app.tools",
+        kind: SettingKind::Number {
+            min: defaults::SPLIT_MAX_MB_RANGE.0 as f64,
+            max: defaults::SPLIT_MAX_MB_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.tools.splitMaxParts",
+        group: "app.tools",
+        kind: SettingKind::Number {
+            min: defaults::SPLIT_MAX_PARTS_RANGE.0 as f64,
+            max: defaults::SPLIT_MAX_PARTS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.tools.splitPreviewParts",
+        group: "app.tools",
+        kind: SettingKind::Number {
+            min: defaults::SPLIT_PREVIEW_PARTS_RANGE.0 as f64,
+            max: defaults::SPLIT_PREVIEW_PARTS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.tools.workspaceMatchCap",
+        group: "app.tools",
+        kind: SettingKind::Number {
+            min: defaults::WORKSPACE_MATCH_CAP_RANGE.0 as f64,
+            max: defaults::WORKSPACE_MATCH_CAP_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.display.outlineMaxItems",
+        group: "app.display",
+        kind: SettingKind::Number {
+            min: defaults::OUTLINE_MAX_ITEMS_RANGE.0 as f64,
+            max: defaults::OUTLINE_MAX_ITEMS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.display.foldMaxRegions",
+        group: "app.display",
+        kind: SettingKind::Number {
+            min: defaults::FOLD_MAX_REGIONS_RANGE.0 as f64,
+            max: defaults::FOLD_MAX_REGIONS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.display.foldScanMaxRows",
+        group: "app.display",
+        kind: SettingKind::Number {
+            min: defaults::FOLD_SCAN_MAX_ROWS_RANGE.0 as f64,
+            max: defaults::FOLD_SCAN_MAX_ROWS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.editor.clipboard.entryMaxChars",
+        group: "app.editor.clipboard",
+        kind: SettingKind::Number {
+            min: defaults::CLIPBOARD_ENTRY_MAX_CHARS_RANGE.0 as f64,
+            max: defaults::CLIPBOARD_ENTRY_MAX_CHARS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.annotations.maxPerKind",
+        group: "app.annotations",
+        kind: SettingKind::Number {
+            min: defaults::ANNOTATIONS_MAX_PER_KIND_RANGE.0 as f64,
+            max: defaults::ANNOTATIONS_MAX_PER_KIND_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.annotations.noteMaxChars",
+        group: "app.annotations",
+        kind: SettingKind::Number {
+            min: defaults::ANNOTATION_NOTE_MAX_CHARS_RANGE.0 as f64,
+            max: defaults::ANNOTATION_NOTE_MAX_CHARS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.annotations.labelMaxChars",
+        group: "app.annotations",
+        kind: SettingKind::Number {
+            min: defaults::ANNOTATION_LABEL_MAX_CHARS_RANGE.0 as f64,
+            max: defaults::ANNOTATION_LABEL_MAX_CHARS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.startup.maxSessionFolds",
+        group: "app.startup",
+        kind: SettingKind::Number {
+            min: defaults::MAX_SESSION_FOLDS_RANGE.0 as f64,
+            max: defaults::MAX_SESSION_FOLDS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.startup.maxWindows",
+        group: "app.startup",
+        kind: SettingKind::Number {
+            min: defaults::MAX_WINDOWS_RANGE.0 as f64,
+            max: defaults::MAX_WINDOWS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
     // ---------- shortcuts.json ----------
     SettingSpec {
         id: "shortcuts.bindings",

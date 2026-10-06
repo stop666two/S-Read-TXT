@@ -375,6 +375,8 @@ pub struct ClipboardSettings {
     pub history_limit: u32,
     /// 是否持久化到数据目录（关闭时仅进程内会话内存）
     pub persist: bool,
+    /// 单条文本字符上限（超出截断；范围见 [`defaults::CLIPBOARD_ENTRY_MAX_CHARS_RANGE`]）
+    pub entry_max_chars: u32,
 }
 
 impl Default for ClipboardSettings {
@@ -382,6 +384,7 @@ impl Default for ClipboardSettings {
         Self {
             history_limit: defaults::DEFAULT_CLIPBOARD_HISTORY_LIMIT,
             persist: defaults::DEFAULT_CLIPBOARD_PERSIST,
+            entry_max_chars: defaults::DEFAULT_CLIPBOARD_ENTRY_MAX_CHARS,
         }
     }
 }

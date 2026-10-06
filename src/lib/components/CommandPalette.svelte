@@ -76,7 +76,8 @@
   <div
     class="palette-overlay"
     data-command-palette
-    onclick={(event) => {
+    role="presentation"
+    onmousedown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}
   >

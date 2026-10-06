@@ -116,6 +116,24 @@
 | `system.crashLog` | boolean | `true`/`false` | `true` | 记录崩溃日志（panic 落盘 `logs/`；P4） |
 | `system.offlineMode` | boolean | `true`/`false` | `true` | 无网络模式（仅手动更新检查经确认后联网；P4） |
 | `update.sourceUrl` | string | ≤512 字符（GitHub 仓库 URL 或发布 JSON URL） | `""` | 更新源地址；空 = 未配置（检查更新不可用；P4） |
+| `maxPanes` | number | 1–16 整数 | `4` | 分屏栏数上限（会话恢复时超出部分丢弃；P4 可调） |
+| `maxImportMB` | number | 1–1024 整数 | `8` | 设置导入包大小上限（MB；P4 可调） |
+| `file.exportMaxMB` | number | 1–2048 整数 | `64` | 导出文本上限（MB；超过拒绝并提示；P4 可调） |
+| `file.printMaxMB` | number | 1–256 整数 | `1` | 打印上限（MB；超过拒绝并提示；P4 可调） |
+| `tools.compareMaxMB` | number | 16–4096 整数 | `512` | 比较/合并单文件上限（MB；P4 可调） |
+| `tools.splitMaxMB` | number | 1–4096 整数 | `256` | 拆分单文件上限（MB；P4 可调） |
+| `tools.splitMaxParts` | number | 2–9999 整数 | `9999` | 拆分最多份数；P4 可调 |
+| `tools.splitPreviewParts` | number | 1–200 整数 | `20` | 拆分预览展示份数；P4 可调 |
+| `tools.workspaceMatchCap` | number | 10–100000 整数 | `200` | 工作区搜索匹配条数上限；P4 可调 |
+| `display.outlineMaxItems` | number | 100–50000 整数 | `5000` | 大纲条目上限；P4 可调 |
+| `display.foldMaxRegions` | number | 100–50000 整数 | `5000` | 折叠区域上限；P4 可调 |
+| `display.foldScanMaxRows` | number | 10000–100000000 整数 | `1000000` | 折叠扫描行数上限；P4 可调 |
+| `editor.clipboard.entryMaxChars` | number | 100–10000000 整数 | `100000` | 剪贴板单条字符上限（超出截断）；P4 可调 |
+| `annotations.maxPerKind` | number | 100–1000000 整数 | `10000` | 每类批注数量上限；P4 可调 |
+| `annotations.noteMaxChars` | number | 100–100000 整数 | `4000` | 注释最大字符数；P4 可调 |
+| `annotations.labelMaxChars` | number | 10–10000 整数 | `200` | 标签最大字符数；P4 可调 |
+| `startup.maxSessionFolds` | number | 0–100000 整数 | `512` | 每条标签恢复的折叠锚点上限（0 = 不恢复）；P4 可调 |
+| `startup.maxWindows` | number | 1–64 整数 | `16` | 启动恢复窗口数上限；P4 可调 |
 
 ### 2.2 `reader.json`（阅读排版子配置）
 
@@ -216,7 +234,7 @@ v1 单窗口结构（顶层 `window`/`activeTabIndex`/`tabs`）在载入时自�
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v17）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立，当前 v4）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键；v12→v13 新增 `reading` 节；v13→v14 新增显示折叠/大纲/面包屑字段；v14→v15 新增 `file` 节与快照设置；v15→v16 新增会话恢复内容细项 `startup.restoreItems`；v16→v17 新增可访问性 `a11y`、系统 `system`、更新 `update` 三节）：
+**schema 版本（当前 v17）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立，当前 v4）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键；v12→v13 新增 `reading` 节；v13→v14 新增显示折叠/大纲/面包屑字段；v14→v15 新增 `file` 节与快照设置；v15→v16 新增会话恢复内容细项 `startup.restoreItems`；v16→v17 新增可访问性 `a11y`、系统 `system`、更新 `update` 三节与全部用户可见上限设置（maxPanes/maxImportMB/tools/annotations/display 折叠与大纲/剪贴板单条字符/startup 折叠与窗口数）：
 
 | 情况 | 行为 |
 |---|---|

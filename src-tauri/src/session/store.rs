@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use crate::session::model::{
     PaneLayout, PaneSession, PaneSplitDir, SessionState, WindowSession, WindowState,
-    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, MAX_PANES, MAX_SESSION_FOLDS,
+    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, MAX_PANES_ABSOLUTE, MAX_SESSION_FOLDS_ABSOLUTE,
     MAX_WINDOW_DIMENSION, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, SESSION_SCHEMA_VERSION,
 };
 use crate::storage::json_io;
@@ -28,7 +28,8 @@ pub fn session_path(dir: &Path) -> PathBuf {
 
 /// 载入会话（自愈：缺失/损坏回默认；随后归一）。
 pub fn load(dir: &Path) -> SessionState {
-    json_io::load_json_or_default(&session_path(dir), normalize)
+    let folds_cap = session_folds_cap(dir);
+    json_io::load_json_or_default(&session_path(dir), |state| normalize(state, folds_cap))
 }
 
 /// 载入指定窗口的会话切片（不存在时返回带 label 的空切片）。
@@ -47,8 +48,16 @@ pub fn load_window(dir: &Path, label: &str) -> WindowSession {
 /// 保存整个会话（保存前归一，确保写入合法值；测试与全量覆写用）。
 pub fn save(dir: &Path, state: &SessionState) -> io::Result<()> {
     let mut copy = state.clone();
-    normalize(&mut copy);
+    normalize(&mut copy, session_folds_cap(dir));
     json_io::write_json_atomic(&session_path(dir), &copy)
+}
+
+/// 折叠锚点恢复上限：读设置（缺失/损坏回默认 512），再受绝对上限约束。
+fn session_folds_cap(dir: &Path) -> usize {
+    let configured = crate::settings::store::load_app_settings(dir)
+        .startup
+        .max_session_folds as usize;
+    configured.min(MAX_SESSION_FOLDS_ABSOLUTE)
 }
 
 /// 按窗口合并保存：读取现有会话 → 替换/追加该 label 的切片 → 原子写回。
@@ -85,7 +94,8 @@ fn default_pane_key(label: &str) -> String {
 }
 
 /// 归一：v1/v2 → v3 迁移；版本对齐；逐窗口校正几何、栏位与布局；焦点校验。
-fn normalize(state: &mut SessionState) {
+/// `folds_cap`：每条标签折叠锚点上限（来自设置，已受绝对上限约束）。
+fn normalize(state: &mut SessionState, folds_cap: usize) {
     state.schema_version = SESSION_SCHEMA_VERSION;
 
     // v1 单窗口文件：顶层 window/activeTabIndex/tabs → windows[0]（label = main）
@@ -147,7 +157,7 @@ fn normalize(state: &mut SessionState) {
                     tab.folds.retain(|span| span.len > 0);
                     tab.folds.sort_by_key(|span| span.start_row);
                     tab.folds.dedup_by_key(|span| span.start_row);
-                    tab.folds.truncate(MAX_SESSION_FOLDS);
+                    tab.folds.truncate(folds_cap);
                 }
                 !tab.path.is_empty()
             });
@@ -155,7 +165,7 @@ fn normalize(state: &mut SessionState) {
             pane.active_tab_index = pane.active_tab_index.min(max_index);
             true
         });
-        while entry.panes.len() > MAX_PANES {
+        while entry.panes.len() > MAX_PANES_ABSOLUTE {
             entry.panes.pop();
         }
 
@@ -455,6 +465,33 @@ mod tests {
         assert_eq!(loaded.focused_label.as_deref(), Some("main"));
     }
 
+    /// 折叠锚点上限跟随设置（maxSessionFolds=5 时按 5 截断；0 时全部丢弃）。
+    #[test]
+    fn folds_cap_follows_settings() {
+        let dir = data_dir();
+        let mut app = crate::settings::model::AppSettings::default();
+        app.startup.max_session_folds = 5;
+        crate::settings::store::save_app_settings(dir.path(), &app).expect("保存设置失败");
+        let folds: Vec<String> = (0..20)
+            .map(|index| format!("{{\"startRow\":{index},\"len\":2}}"))
+            .collect();
+        let v4 = format!(
+            r#"{{"schemaVersion":4,"windows":[{{"label":"main","window":{{"width":1100,"height":760,"maximized":false}},
+            "panes":[{{"pane":"main#1","activeTabIndex":0,"tabs":[
+              {{"path":"C:/a.txt","scrollRow":0,"folds":[{}]}}]}}],
+            "layout":{{"type":"leaf","pane":"main#1"}}}}]}}"#,
+            folds.join(",")
+        );
+        std::fs::write(session_path(dir.path()), v4).expect("写会话失败");
+        let loaded = load(dir.path());
+        assert_eq!(loaded.windows[0].panes[0].tabs[0].folds.len(), 5);
+
+        app.startup.max_session_folds = 0;
+        crate::settings::store::save_app_settings(dir.path(), &app).expect("保存设置失败");
+        let loaded = load(dir.path());
+        assert!(loaded.windows[0].panes[0].tabs[0].folds.is_empty());
+    }
+
     /// v3 旧文件（标签无 caret/folds 字段）迁移：字段缺失按默认补齐。
     #[test]
     fn migrates_v3_tab_without_caret_and_folds() {
@@ -496,8 +533,12 @@ mod tests {
         std::fs::write(session_path(dir.path()), v4).expect("写会话失败");
         let loaded = load(dir.path());
         let tab = &loaded.windows[0].panes[0].tabs[0];
-        assert!(tab.folds.len() <= crate::session::model::MAX_SESSION_FOLDS);
-        assert_eq!(tab.folds.len(), crate::session::model::MAX_SESSION_FOLDS);
+        assert!(tab.folds.len() <= crate::session::model::MAX_SESSION_FOLDS_ABSOLUTE);
+        assert_eq!(
+            tab.folds.len(),
+            crate::settings::defaults::DEFAULT_MAX_SESSION_FOLDS as usize,
+            "默认设置下折叠锚点应截断到设置默认值"
+        );
         assert!(tab.folds.iter().all(|span| span.len > 0));
         assert!(tab
             .folds

@@ -96,6 +96,12 @@ pub struct DisplaySettings {
     pub breadcrumb: bool,
     /// 大纲正则（逐条正则；归一后空列表回退内置默认）
     pub outline_patterns: Vec<String>,
+    /// 大纲条数上限
+    pub outline_max_items: u32,
+    /// 折叠区域数量上限
+    pub fold_max_regions: u32,
+    /// 折叠扫描行数上限
+    pub fold_scan_max_rows: u32,
 }
 
 impl Default for DisplaySettings {
@@ -117,6 +123,9 @@ impl Default for DisplaySettings {
                 .iter()
                 .map(|pattern| (*pattern).to_string())
                 .collect(),
+            outline_max_items: defaults::DEFAULT_OUTLINE_MAX_ITEMS,
+            fold_max_regions: defaults::DEFAULT_FOLD_MAX_REGIONS,
+            fold_scan_max_rows: defaults::DEFAULT_FOLD_SCAN_MAX_ROWS,
         }
     }
 }
