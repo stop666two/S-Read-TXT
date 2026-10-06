@@ -164,9 +164,14 @@ pub fn document_bytes(doc: &EditDoc, target: FileEncoding) -> Result<Vec<u8>, Sa
 
 /// 写出完整内容（BOM + 片段流）；返回写入字节数。
 fn write_content(doc: &EditDoc, path: &Path, target: FileEncoding) -> Result<u64, SaveError> {
-    let mut file = File::create(path)?;
-    let written = encode_into(doc, &mut file, target)?;
-    file.flush()?;
+    let file = File::create(path)?;
+    // 片段数量与编辑次数同阶：缓冲写合并小片段写入（十万级片段仍保持线性）
+    let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file);
+    let written = encode_into(doc, &mut writer, target)?;
+    writer.flush()?;
+    let file = writer
+        .into_inner()
+        .map_err(|err| SaveError::Io(err.into_error()))?;
     file.sync_all()?;
     Ok(written)
 }
@@ -527,7 +532,7 @@ mod tests {
                 file.write_all(line.as_bytes()).expect("写基准文件失败");
             }
         }
-        for count in [1_000u64, 10_000u64] {
+        for count in [1_000u64, 10_000u64, 100_000u64] {
             let mut doc = open_doc(&path);
             let stride = (rows_total / (count + 1)).max(1);
             let ops: Vec<EditOp> = (0..count)

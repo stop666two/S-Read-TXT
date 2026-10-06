@@ -1383,22 +1383,182 @@ impl EditDoc {
             resolved.push((start, end, text, touched_row));
         }
         let touched = resolved.iter().map(|item| item.3).min().unwrap_or(0);
-        // 2) 快照当前状态（撤销步骤）
-        let mut before = self.take_snapshot(touched);
-        // 3) 按位置降序应用（后面的编辑不影响前面位置）；逐步检查取消
-        let mut cost = 0u64;
-        resolved.sort_by(|left, right| right.0.cmp(&left.0));
         let total_ops = resolved.len() as u64;
-        for (index, (start, end, text, _)) in resolved.iter().enumerate() {
+        // 2) 语义序排序并检测重叠：非重叠批次走**单遍重建片段表**（O(文件+操作)，
+        //    消除大量散布操作的二次开销）；重叠批次（罕见、语义未定义）回退逐操作降序应用
+        let mut order: Vec<usize> = (0..resolved.len()).collect();
+        order.sort_by(|&a, &b| resolved[a].0.cmp(&resolved[b].0).then(a.cmp(&b)));
+        let mut overlaps = false;
+        let mut previous_end = 0u64;
+        for (position, &index) in order.iter().enumerate() {
+            let (start, end, _, _) = &resolved[index];
+            if position > 0 && *start < previous_end {
+                overlaps = true;
+                break;
+            }
+            previous_end = previous_end.max(*end);
+        }
+        if overlaps {
+            let before = self.take_snapshot(touched);
+            let mut cost = 0u64;
+            resolved.sort_by(|left, right| right.0.cmp(&left.0));
+            for (index, (start, end, text, _)) in resolved.iter().enumerate() {
+                if cancel() {
+                    self.restore_snapshot(before);
+                    return Ok(None);
+                }
+                cost += text.len() as u64 + (end - start);
+                self.apply_range(*start, *end, text);
+                progress(index as u64 + 1, total_ops);
+            }
+            return Ok(Some(self.finish_edit(
+                before,
+                cost,
+                touched,
+                old_end,
+                inserted_newlines,
+                deleted_rows,
+                ops,
+                progress,
+                total_ops,
+            )));
+        }
+        // 3) 单遍重建：按升序遍历旧片段与操作，直接构造新片段表（构建期不改动自身；
+        //    取消时新片段表原地丢弃，无需回滚）
+        let mut new_pieces: Vec<Piece> =
+            Vec::with_capacity(self.pieces.len() + order.len() * 2 + 2);
+        let mut new_metas: Vec<PieceMeta> = Vec::with_capacity(new_pieces.capacity());
+        let mut copy_piece = 0usize;
+        let mut copy_off = 0u64;
+        let mut consumed = 0u64;
+        let mut cost = 0u64;
+        for (position, &index) in order.iter().enumerate() {
             if cancel() {
-                self.restore_snapshot(before);
                 return Ok(None);
             }
+            let (start, end, ref text, _) = resolved[index];
+            self.copy_span_into(
+                &mut new_pieces,
+                &mut new_metas,
+                &mut copy_piece,
+                &mut copy_off,
+                consumed,
+                start,
+            );
+            if !text.is_empty() {
+                let off = self.added.len() as u64;
+                self.added.extend_from_slice(text);
+                let left_cr = new_metas
+                    .last()
+                    .map(|meta| meta.ends_with_cr)
+                    .unwrap_or(false);
+                let meta = count_units(text, FileEncoding::Utf8, 0, text.len() as u64, left_cr);
+                new_pieces.push(Piece {
+                    source: PieceSource::Added,
+                    off,
+                    len: text.len() as u64,
+                });
+                new_metas.push(meta);
+            }
             cost += text.len() as u64 + (end - start);
-            self.apply_range(*start, *end, text);
-            progress(index as u64 + 1, total_ops);
+            consumed = consumed.max(end);
+            progress(position as u64 + 1, total_ops);
         }
-        // 4) 合并、重建、版本推进、裁剪撤销预算
+        let total_bytes = self.byte_tree.total();
+        self.copy_span_into(
+            &mut new_pieces,
+            &mut new_metas,
+            &mut copy_piece,
+            &mut copy_off,
+            consumed,
+            total_bytes,
+        );
+        let before = self.take_snapshot(touched);
+        self.pieces = new_pieces;
+        self.metas = new_metas;
+        Ok(Some(self.finish_edit(
+            before,
+            cost,
+            touched,
+            old_end,
+            inserted_newlines,
+            deleted_rows,
+            ops,
+            progress,
+            total_ops,
+        )))
+    }
+
+    /// 以只前进的拷贝游标把旧文档全局区间 `[from, to)` 拷入新片段表（单遍重建路径）。
+    fn copy_span_into(
+        &self,
+        new_pieces: &mut Vec<Piece>,
+        new_metas: &mut Vec<PieceMeta>,
+        copy_piece: &mut usize,
+        copy_off: &mut u64,
+        from: u64,
+        to: u64,
+    ) {
+        if from >= to {
+            return;
+        }
+        // 前进游标到 `from`（游标只前进：调用区间按升序且不重叠）
+        while *copy_piece < self.pieces.len() {
+            let piece = self.pieces[*copy_piece];
+            let cursor = self.byte_tree.prefix(*copy_piece) + *copy_off;
+            if cursor + (piece.len - *copy_off) <= from {
+                *copy_piece += 1;
+                *copy_off = 0;
+                continue;
+            }
+            if cursor < from {
+                *copy_off += from - cursor;
+            }
+            break;
+        }
+        // 拷贝 [from, to)
+        let mut position = from;
+        while position < to && *copy_piece < self.pieces.len() {
+            let piece = self.pieces[*copy_piece];
+            let take = (to - position).min(piece.len - *copy_off);
+            if take > 0 {
+                let left_cr = new_metas
+                    .last()
+                    .map(|meta| meta.ends_with_cr)
+                    .unwrap_or(false);
+                let bytes = self.piece_bytes(&piece);
+                let encoding = self.encoding_for(&piece);
+                let meta = count_units(bytes, encoding, *copy_off, *copy_off + take, left_cr);
+                new_pieces.push(Piece {
+                    source: piece.source,
+                    off: piece.off + *copy_off,
+                    len: take,
+                });
+                new_metas.push(meta);
+                position += take;
+                *copy_off += take;
+            }
+            if *copy_off >= piece.len {
+                *copy_piece += 1;
+                *copy_off = 0;
+            }
+        }
+    }
+
+    /// 编辑收尾（两条应用路径共用）：合并、重建、版本推进、撤销入栈、光标与进度收尾。
+    #[allow(clippy::too_many_arguments)]
+    fn finish_edit(
+        &mut self,
+        mut before: UndoStep,
+        cost: u64,
+        touched: u64,
+        old_end: u64,
+        inserted_newlines: u64,
+        deleted_rows: u64,
+        ops: &[EditOp],
+        progress: &mut dyn FnMut(u64, u64),
+        total_ops: u64,
+    ) -> EditApplied {
         self.coalesce();
         self.rebuild_trees();
         self.trailing_newline = self.doc_ends_with_newline();
@@ -1435,7 +1595,7 @@ impl EditDoc {
             }) => advance_caret(*start_row, *start_utf16, text),
         };
         progress(total_ops, total_ops);
-        Ok(Some(self.applied(touched, caret)))
+        self.applied(touched, caret)
     }
 
     /// 取消时把文档恢复到操作前快照（不产生撤销步骤、不推进版本号）。
@@ -2876,6 +3036,192 @@ mod tests {
         ));
         assert_eq!(doc.row_text(0).as_deref(), Some("ab"));
         assert!(!doc.is_dirty());
+    }
+
+    /// 快路径（单遍重建）行级操作与模型预期一致（结果/行数/撤销/重做）。
+    #[test]
+    fn fast_path_row_ops_match_model() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(
+            dir.path(),
+            "fast-model.txt",
+            b"one\ntwo\nthree\nfour\nfive\nsix\n",
+        );
+        let mut doc = EditDoc::open(&path, None, 100).expect("打开失败");
+        let before: Vec<String> = doc
+            .fetch_rows(0, doc.rows_total() as usize)
+            .into_iter()
+            .map(|row| row.text)
+            .collect();
+        let mut model = before.clone();
+        // 行级操作（互不重叠）：起始插入 / 行尾插入 / 行内替换 / 清空行
+        model[0] = format!("S0 {}", model[0]);
+        model[1] = format!("{} E1", model[1]);
+        let row2_len = model[2]
+            .chars()
+            .take(2)
+            .map(|c| c.len_utf16() as u64)
+            .sum::<u64>();
+        model[2] = format!("R{}", &model[2][2..]);
+        model[3] = String::new();
+        let ops = vec![
+            EditOp::Insert {
+                row: 0,
+                utf16: 0,
+                text: "S0 ".into(),
+            },
+            EditOp::Insert {
+                row: 1,
+                utf16: before[1].chars().map(|c| c.len_utf16() as u64).sum(),
+                text: " E1".into(),
+            },
+            EditOp::Replace {
+                start_row: 2,
+                start_utf16: 0,
+                end_row: 2,
+                end_utf16: row2_len,
+                text: "R".into(),
+            },
+            EditOp::Delete {
+                start_row: 3,
+                start_utf16: 0,
+                end_row: 3,
+                end_utf16: before[3].chars().map(|c| c.len_utf16() as u64).sum(),
+            },
+        ];
+        doc.apply_edits(&ops).expect("批量编辑失败");
+        let after: Vec<String> = doc
+            .fetch_rows(0, doc.rows_total() as usize)
+            .into_iter()
+            .map(|row| row.text)
+            .collect();
+        assert_eq!(after, model, "结果与模型不一致");
+        assert_eq!(doc.rows_total() as usize, model.len());
+        // 单撤销步整体还原
+        doc.undo().expect("撤销失败");
+        let restored: Vec<String> = doc
+            .fetch_rows(0, doc.rows_total() as usize)
+            .into_iter()
+            .map(|row| row.text)
+            .collect();
+        assert_eq!(restored, before, "撤销未完整还原");
+        doc.redo().expect("重做失败");
+        let redone: Vec<String> = doc
+            .fetch_rows(0, doc.rows_total() as usize)
+            .into_iter()
+            .map(|row| row.text)
+            .collect();
+        assert_eq!(redone, model, "重做未还原编辑后结果");
+    }
+
+    /// 快路径覆盖 CRLF 与多片段（先经历史编辑产生 Added 片段）场景。
+    #[test]
+    fn fast_path_handles_crlf_and_multipiece() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "fast-crlf.txt", b"a\r\nb\r\nc\r\n");
+        let mut doc = EditDoc::open(&path, None, 100).expect("打开失败");
+        // 先用两次编辑制造多片段（清空 b 行再插入 b）
+        doc.apply_edits(&[EditOp::Delete {
+            start_row: 1,
+            start_utf16: 0,
+            end_row: 1,
+            end_utf16: 1,
+        }])
+        .expect("删除失败");
+        doc.apply_edits(&[EditOp::Insert {
+            row: 1,
+            utf16: 0,
+            text: "b".into(),
+        }])
+        .expect("插入失败");
+        let before: Vec<String> = doc
+            .fetch_rows(0, doc.rows_total() as usize)
+            .into_iter()
+            .map(|row| row.text)
+            .collect();
+        assert_eq!(before, vec!["a", "b", "c"]);
+        // 批量：行首插入 + 行内替换 + 删除行
+        doc.apply_edits(&[
+            EditOp::Insert {
+                row: 0,
+                utf16: 0,
+                text: "X".into(),
+            },
+            EditOp::Replace {
+                start_row: 1,
+                start_utf16: 0,
+                end_row: 1,
+                end_utf16: 1,
+                text: "Y".into(),
+            },
+            EditOp::Delete {
+                start_row: 2,
+                start_utf16: 0,
+                end_row: 2,
+                end_utf16: 1,
+            },
+        ])
+        .expect("批量失败");
+        let after: Vec<String> = doc
+            .fetch_rows(0, doc.rows_total() as usize)
+            .into_iter()
+            .map(|row| row.text)
+            .collect();
+        assert_eq!(after, vec!["Xa", "Y", ""]);
+        // CRLF 保留（保存往返验证换行未损坏）
+        let target = dir.path().join("fast-crlf-out.txt");
+        let outcome = crate::textfile::editing::save::save_doc(
+            &mut doc,
+            &target,
+            &crate::textfile::editing::save::SaveOptions {
+                target_encoding: FileEncoding::Utf8,
+                make_backup: false,
+                force: false,
+                expected: None,
+            },
+        )
+        .expect("保存失败");
+        assert!(outcome.bytes_written > 0);
+        let saved = std::fs::read(&target).expect("读取保存文件失败");
+        assert!(saved.windows(2).any(|pair| pair == b"\r\n"), "CRLF 应保留");
+    }
+
+    /// 重叠操作回退旧路径：不 panic 且可整体撤销。
+    #[test]
+    fn overlapping_ops_fall_back_and_undo() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "overlap.txt", b"abcdef\nghijkl\n");
+        let mut doc = EditDoc::open(&path, None, 100).expect("打开失败");
+        let before: Vec<String> = doc
+            .fetch_rows(0, doc.rows_total() as usize)
+            .into_iter()
+            .map(|row| row.text)
+            .collect();
+        doc.apply_edits(&[
+            EditOp::Replace {
+                start_row: 0,
+                start_utf16: 0,
+                end_row: 0,
+                end_utf16: 4,
+                text: "11".into(),
+            },
+            EditOp::Replace {
+                start_row: 0,
+                start_utf16: 2,
+                end_row: 0,
+                end_utf16: 6,
+                text: "22".into(),
+            },
+        ])
+        .expect("重叠批次应回退旧路径且不报错");
+        assert!(doc.is_dirty());
+        doc.undo().expect("撤销失败");
+        let restored: Vec<String> = doc
+            .fetch_rows(0, doc.rows_total() as usize)
+            .into_iter()
+            .map(|row| row.text)
+            .collect();
+        assert_eq!(restored, before, "重叠批次撤销应完整还原");
     }
 
     /// 大文件深行取行基准（手动运行）：
