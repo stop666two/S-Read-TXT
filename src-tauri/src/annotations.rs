@@ -18,16 +18,47 @@ use crate::textfile::source::DocumentSource;
 /// 文件内 schema 版本（结构变更时递增并提供迁移）。
 pub const ANNOTATIONS_SCHEMA_VERSION: u32 = 1;
 
-/// 每类（书签/高亮/注释）容量上限。
+/// 每类（书签/高亮/注释）容量上限默认值（设置项 `app.annotations.maxPerKind` 可调）。
 pub const MAX_PER_KIND: usize = 10_000;
-/// 注释文本上限（字符）。
+/// 注释文本上限默认值（字符；设置项 `app.annotations.noteMaxChars` 可调）。
 pub const NOTE_MAX_CHARS: usize = 4_000;
-/// 书签标签上限（字符）。
+/// 书签标签上限默认值（字符；设置项 `app.annotations.labelMaxChars` 可调）。
 pub const LABEL_MAX_CHARS: usize = 200;
 /// 引用摘录长度（字符，用于锚点跟随编辑）。
 pub const EXCERPT_CHARS: usize = 24;
 /// 锚点解析搜索窗口（提示行上下限，行）。
 pub const RESOLVE_WINDOW_ROWS: u64 = 2_048;
+
+/// 批注上限（来自设置 `app.annotations.*`；`Default` 为内置默认，测试与缺省路径使用）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AnnotationCaps {
+    /// 每类数量上限
+    pub max_per_kind: usize,
+    /// 注释文本字符上限
+    pub note_max_chars: usize,
+    /// 标签文本字符上限
+    pub label_max_chars: usize,
+}
+
+impl Default for AnnotationCaps {
+    fn default() -> Self {
+        Self {
+            max_per_kind: MAX_PER_KIND,
+            note_max_chars: NOTE_MAX_CHARS,
+            label_max_chars: LABEL_MAX_CHARS,
+        }
+    }
+}
+
+/// 按数据目录读取设置构造上限（缺失/损坏回退默认）。
+pub fn caps_from_dir(data_dir: &Path) -> AnnotationCaps {
+    let settings = crate::settings::store::load_app_settings(data_dir);
+    AnnotationCaps {
+        max_per_kind: settings.annotations.max_per_kind as usize,
+        note_max_chars: settings.annotations.note_max_chars as usize,
+        label_max_chars: settings.annotations.label_max_chars as usize,
+    }
+}
 
 /// 注释种类：普通注释 / 待办 / 行内批注。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,7 +192,7 @@ impl FileAnnotations {
     }
 
     /// 加载后的归一：版本对齐、id 自增校正、排序、去重、容量与字符串上限。
-    pub fn normalize(&mut self) {
+    pub fn normalize(&mut self, caps: AnnotationCaps) {
         self.schema_version = ANNOTATIONS_SCHEMA_VERSION;
         let max_id = self
             .bookmarks
@@ -176,10 +207,10 @@ impl FileAnnotations {
         self.bookmarks.sort_by_key(|item| (item.row, item.utf16));
         self.bookmarks
             .dedup_by(|a, b| a.id == b.id || (a.row == b.row && a.utf16 == b.utf16));
-        self.bookmarks.truncate(MAX_PER_KIND);
+        self.bookmarks.truncate(caps.max_per_kind);
         for item in &mut self.bookmarks {
             if let Some(label) = &mut item.label {
-                *label = truncate_chars(label.trim(), LABEL_MAX_CHARS);
+                *label = truncate_chars(label.trim(), caps.label_max_chars);
                 if label.is_empty() {
                     item.label = None;
                 }
@@ -193,13 +224,13 @@ impl FileAnnotations {
             a.id == b.id
                 || (a.row == b.row && a.start_utf16 == b.start_utf16 && a.end_utf16 == b.end_utf16)
         });
-        self.highlights.truncate(MAX_PER_KIND);
+        self.highlights.truncate(caps.max_per_kind);
         for item in &mut self.highlights {
             if item.end_utf16 < item.start_utf16 {
                 std::mem::swap(&mut item.end_utf16, &mut item.start_utf16);
             }
             if let Some(note) = &mut item.note {
-                *note = truncate_chars(note.trim(), NOTE_MAX_CHARS);
+                *note = truncate_chars(note.trim(), caps.note_max_chars);
                 if note.is_empty() {
                     item.note = None;
                 }
@@ -209,9 +240,9 @@ impl FileAnnotations {
 
         self.notes.sort_by_key(|item| (item.row, item.utf16));
         self.notes.dedup_by(|a, b| a.id == b.id);
-        self.notes.truncate(MAX_PER_KIND);
+        self.notes.truncate(caps.max_per_kind);
         for item in &mut self.notes {
-            item.text = truncate_chars(item.text.trim(), NOTE_MAX_CHARS);
+            item.text = truncate_chars(item.text.trim(), caps.note_max_chars);
             item.excerpt = truncate_chars(&item.excerpt, EXCERPT_CHARS);
         }
         self.notes.retain(|item| !item.text.is_empty());
@@ -252,9 +283,10 @@ pub fn annotation_file_path(data_dir: &Path, source_path: &str) -> PathBuf {
 
 /// 读取单文件标注（缺失或损坏 → 空集合；损坏文件由 json_io 备份为 `.corrupt-*`）。
 pub fn load(data_dir: &Path, source_path: &str) -> FileAnnotations {
+    let caps = caps_from_dir(data_dir);
     let path = annotation_file_path(data_dir, source_path);
     let mut annotations = json_io::load_json_or_default(&path, |item: &mut FileAnnotations| {
-        item.normalize();
+        item.normalize(caps);
     });
     if annotations.path.is_empty() {
         annotations.path = source_path.to_string();
@@ -271,9 +303,9 @@ pub fn load(data_dir: &Path, source_path: &str) -> FileAnnotations {
     annotations
 }
 
-/// 保存单文件标注（归一 + 原子写）。
+/// 保存单文件标注（归一 + 原子写；上限来自设置）。
 pub fn save(data_dir: &Path, annotations: &mut FileAnnotations) -> std::io::Result<()> {
-    annotations.normalize();
+    annotations.normalize(caps_from_dir(data_dir));
     let path = annotation_file_path(data_dir, &annotations.path.clone());
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -370,13 +402,14 @@ pub fn resolve_against(annotations: &mut FileAnnotations, source: &dyn DocumentS
     changed
 }
 
-/// 添加书签（重复位置去重返回既有项）。
+/// 添加书签（重复位置去重返回既有项；上限来自 `caps`）。
 pub fn add_bookmark<'a>(
     annotations: &'a mut FileAnnotations,
     source: &dyn DocumentSource,
     row: u64,
     utf16: u64,
     label: Option<String>,
+    caps: AnnotationCaps,
 ) -> &'a Bookmark {
     if let Some(index) = annotations
         .bookmarks
@@ -390,13 +423,13 @@ pub fn add_bookmark<'a>(
         row,
         utf16,
         label: label
-            .map(|text| truncate_chars(text.trim(), LABEL_MAX_CHARS))
+            .map(|text| truncate_chars(text.trim(), caps.label_max_chars))
             .filter(|text| !text.is_empty()),
         created_at: crate::time_util::now_rfc3339(),
         excerpt: excerpt_at(row, utf16, source),
     };
     annotations.bookmarks.push(bookmark);
-    annotations.normalize();
+    annotations.normalize(caps);
     annotations
         .bookmarks
         .iter()
@@ -411,7 +444,7 @@ pub fn remove_bookmark(annotations: &mut FileAnnotations, id: u64) -> bool {
     annotations.bookmarks.len() != before
 }
 
-/// 添加高亮（相同区间去重；`end <= start` 拒绝返回 None）。
+/// 添加高亮（相同区间去重；`end <= start` 拒绝返回 None；上限来自 `caps`）。
 pub fn add_highlight<'a>(
     annotations: &'a mut FileAnnotations,
     source: &dyn DocumentSource,
@@ -419,6 +452,7 @@ pub fn add_highlight<'a>(
     start_utf16: u64,
     end_utf16: u64,
     color: Option<String>,
+    caps: AnnotationCaps,
 ) -> Option<&'a Highlight> {
     if end_utf16 <= start_utf16 {
         return None;
@@ -441,7 +475,7 @@ pub fn add_highlight<'a>(
         excerpt: excerpt_at(row, start_utf16, source),
     };
     annotations.highlights.push(highlight);
-    annotations.normalize();
+    annotations.normalize(caps);
     annotations.highlights.iter().find(|item| {
         item.row == row && item.start_utf16 == start_utf16 && item.end_utf16 == end_utf16
     })
@@ -454,7 +488,7 @@ pub fn remove_highlight(annotations: &mut FileAnnotations, id: u64) -> bool {
     annotations.highlights.len() != before
 }
 
-/// 添加注释 / 待办 / 行内批注（空文本拒绝返回 None）。
+/// 添加注释 / 待办 / 行内批注（空文本拒绝返回 None；上限来自 `caps`）。
 pub fn add_note<'a>(
     annotations: &'a mut FileAnnotations,
     source: &dyn DocumentSource,
@@ -463,8 +497,9 @@ pub fn add_note<'a>(
     end_utf16: Option<u64>,
     text: String,
     kind: NoteKind,
+    caps: AnnotationCaps,
 ) -> Option<&'a Note> {
-    let text = truncate_chars(text.trim(), NOTE_MAX_CHARS);
+    let text = truncate_chars(text.trim(), caps.note_max_chars);
     if text.is_empty() {
         return None;
     }
@@ -480,22 +515,23 @@ pub fn add_note<'a>(
         excerpt: excerpt_at(row, utf16, source),
     };
     annotations.notes.push(note.clone());
-    annotations.normalize();
+    annotations.normalize(caps);
     annotations.notes.iter().find(|item| item.id == note.id)
 }
 
-/// 更新注释文本与完成状态（不含 id 的裁剪；返回是否更新）。
+/// 更新注释文本与完成状态（不含 id 的裁剪；返回是否更新；文本上限来自 `caps`）。
 pub fn update_note(
     annotations: &mut FileAnnotations,
     id: u64,
     text: Option<String>,
     done: Option<bool>,
+    caps: AnnotationCaps,
 ) -> bool {
     let Some(note) = annotations.notes.iter_mut().find(|item| item.id == id) else {
         return false;
     };
     if let Some(text) = text {
-        let text = truncate_chars(text.trim(), NOTE_MAX_CHARS);
+        let text = truncate_chars(text.trim(), caps.note_max_chars);
         if text.is_empty() {
             return false;
         }
@@ -554,8 +590,23 @@ mod tests {
         let dir = tempfile::tempdir().expect("临时目录");
         let source = doc(dir.path(), "alpha beta\ngamma delta\n");
         let mut annotations = FileAnnotations::empty("D:\\Docs\\A.txt");
-        add_bookmark(&mut annotations, &source, 1, 6, Some("重要".into()));
-        add_highlight(&mut annotations, &source, 0, 0, 5, Some("#FFEE00".into()));
+        add_bookmark(
+            &mut annotations,
+            &source,
+            1,
+            6,
+            Some("重要".into()),
+            AnnotationCaps::default(),
+        );
+        add_highlight(
+            &mut annotations,
+            &source,
+            0,
+            0,
+            5,
+            Some("#FFEE00".into()),
+            AnnotationCaps::default(),
+        );
         add_note(
             &mut annotations,
             &source,
@@ -564,6 +615,7 @@ mod tests {
             None,
             "看一下".into(),
             NoteKind::Todo,
+            AnnotationCaps::default(),
         );
         save(dir.path(), &mut annotations).expect("保存");
         let loaded = load(dir.path(), "D:\\Docs\\A.txt");
@@ -581,7 +633,14 @@ mod tests {
         let dir = tempfile::tempdir().expect("临时目录");
         let mut source = doc(dir.path(), "alpha beta\ngamma delta\nepsilon zeta\n");
         let mut annotations = FileAnnotations::empty("X.txt");
-        add_bookmark(&mut annotations, &source, 2, 0, None);
+        add_bookmark(
+            &mut annotations,
+            &source,
+            2,
+            0,
+            None,
+            AnnotationCaps::default(),
+        );
         assert_eq!(annotations.bookmarks[0].excerpt, "epsilon zeta");
         // 在第 0 行前插入两行，原第 2 行应移动到第 4 行。
         source
@@ -603,7 +662,14 @@ mod tests {
         let dir = tempfile::tempdir().expect("临时目录");
         let mut source = doc(dir.path(), "alpha beta\ngamma delta\n");
         let mut annotations = FileAnnotations::empty("X.txt");
-        add_bookmark(&mut annotations, &source, 1, 6, None);
+        add_bookmark(
+            &mut annotations,
+            &source,
+            1,
+            6,
+            None,
+            AnnotationCaps::default(),
+        );
         source
             .apply_edits(&[crate::textfile::editing::edit_doc::EditOp::Replace {
                 start_row: 1,
@@ -625,11 +691,34 @@ mod tests {
         let dir = tempfile::tempdir().expect("临时目录");
         let source = doc(dir.path(), "aaaaaaaaaa\n");
         let mut annotations = FileAnnotations::empty("X.txt");
-        add_bookmark(&mut annotations, &source, 0, 3, None);
-        add_bookmark(&mut annotations, &source, 0, 3, Some("重复".into()));
+        add_bookmark(
+            &mut annotations,
+            &source,
+            0,
+            3,
+            None,
+            AnnotationCaps::default(),
+        );
+        add_bookmark(
+            &mut annotations,
+            &source,
+            0,
+            3,
+            Some("重复".into()),
+            AnnotationCaps::default(),
+        );
         assert_eq!(annotations.bookmarks.len(), 1);
         let long = "字".repeat(NOTE_MAX_CHARS + 100);
-        add_note(&mut annotations, &source, 0, 0, None, long, NoteKind::Note);
+        add_note(
+            &mut annotations,
+            &source,
+            0,
+            0,
+            None,
+            long,
+            NoteKind::Note,
+            AnnotationCaps::default(),
+        );
         assert_eq!(annotations.notes[0].text.chars().count(), NOTE_MAX_CHARS);
         assert!(add_note(
             &mut annotations,
@@ -638,10 +727,20 @@ mod tests {
             0,
             None,
             "   ".into(),
-            NoteKind::Note
+            NoteKind::Note,
+            AnnotationCaps::default(),
         )
         .is_none());
-        assert!(add_highlight(&mut annotations, &source, 0, 5, 5, None).is_none());
+        assert!(add_highlight(
+            &mut annotations,
+            &source,
+            0,
+            5,
+            5,
+            None,
+            AnnotationCaps::default()
+        )
+        .is_none());
     }
 
     /// 更新与删除。
@@ -658,6 +757,7 @@ mod tests {
             None,
             "待办".into(),
             NoteKind::Todo,
+            AnnotationCaps::default(),
         )
         .expect("添加")
         .id;
@@ -665,13 +765,21 @@ mod tests {
             &mut annotations,
             id,
             Some("办完了".into()),
-            Some(true)
+            Some(true),
+            AnnotationCaps::default(),
         ));
         assert_eq!(annotations.notes[0].text, "办完了");
         assert!(annotations.notes[0].done);
         assert!(remove_note(&mut annotations, id));
         assert!(annotations.notes.is_empty());
-        add_bookmark(&mut annotations, &source, 1, 0, None);
+        add_bookmark(
+            &mut annotations,
+            &source,
+            1,
+            0,
+            None,
+            AnnotationCaps::default(),
+        );
         let bookmark_id = annotations.bookmarks[0].id;
         assert!(remove_bookmark(&mut annotations, bookmark_id));
         assert!(clear_all(&mut annotations) == false);

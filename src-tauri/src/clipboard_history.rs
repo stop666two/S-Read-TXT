@@ -125,13 +125,19 @@ pub fn list(dir: &Path, persist: bool, limit: u32) -> Vec<ClipboardEntry> {
     normalize(snapshot(dir, persist), limit)
 }
 
-/// 追加一条（空文本或禁用时原样返回当前列表）。
-pub fn add(dir: &Path, persist: bool, limit: u32, text: &str) -> Vec<ClipboardEntry> {
+/// 追加一条（空文本或禁用时原样返回当前列表；`entry_max_chars` 来自设置，超出截断）。
+pub fn add(
+    dir: &Path,
+    persist: bool,
+    limit: u32,
+    entry_max_chars: usize,
+    text: &str,
+) -> Vec<ClipboardEntry> {
     if limit == 0 || text.is_empty() {
         return list(dir, persist, limit);
     }
-    let text = if text.chars().count() > CLIPBOARD_ENTRY_MAX_CHARS {
-        text.chars().take(CLIPBOARD_ENTRY_MAX_CHARS).collect()
+    let text = if text.chars().count() > entry_max_chars {
+        text.chars().take(entry_max_chars).collect()
     } else {
         text.to_string()
     };
@@ -175,8 +181,8 @@ mod tests {
     #[test]
     fn add_and_list_roundtrip() {
         let tmp = data_dir();
-        add(tmp.path(), true, 10, "a");
-        add(tmp.path(), true, 10, "b");
+        add(tmp.path(), true, 10, CLIPBOARD_ENTRY_MAX_CHARS, "a");
+        add(tmp.path(), true, 10, CLIPBOARD_ENTRY_MAX_CHARS, "b");
         let entries = list(tmp.path(), true, 10);
         assert_eq!(
             entries.iter().map(|e| e.text.as_str()).collect::<Vec<_>>(),
@@ -190,9 +196,9 @@ mod tests {
     #[test]
     fn duplicate_moves_to_top() {
         let tmp = data_dir();
-        add(tmp.path(), true, 10, "a");
-        add(tmp.path(), true, 10, "b");
-        add(tmp.path(), true, 10, "a");
+        add(tmp.path(), true, 10, CLIPBOARD_ENTRY_MAX_CHARS, "a");
+        add(tmp.path(), true, 10, CLIPBOARD_ENTRY_MAX_CHARS, "b");
+        add(tmp.path(), true, 10, CLIPBOARD_ENTRY_MAX_CHARS, "a");
         let entries = list(tmp.path(), true, 10);
         assert_eq!(
             entries.iter().map(|e| e.text.as_str()).collect::<Vec<_>>(),
@@ -204,9 +210,9 @@ mod tests {
     #[test]
     fn limit_truncates_oldest() {
         let tmp = data_dir();
-        add(tmp.path(), true, 2, "a");
-        add(tmp.path(), true, 2, "b");
-        add(tmp.path(), true, 2, "c");
+        add(tmp.path(), true, 2, CLIPBOARD_ENTRY_MAX_CHARS, "a");
+        add(tmp.path(), true, 2, CLIPBOARD_ENTRY_MAX_CHARS, "b");
+        add(tmp.path(), true, 2, CLIPBOARD_ENTRY_MAX_CHARS, "c");
         let entries = list(tmp.path(), true, 2);
         assert_eq!(
             entries.iter().map(|e| e.text.as_str()).collect::<Vec<_>>(),
@@ -218,7 +224,7 @@ mod tests {
     #[test]
     fn zero_limit_disables() {
         let tmp = data_dir();
-        assert!(add(tmp.path(), true, 0, "a").is_empty());
+        assert!(add(tmp.path(), true, 0, CLIPBOARD_ENTRY_MAX_CHARS, "a").is_empty());
         assert!(list(tmp.path(), true, 0).is_empty());
         assert!(!path(tmp.path()).exists());
     }
@@ -228,7 +234,7 @@ mod tests {
     fn long_text_is_truncated() {
         let tmp = data_dir();
         let long = "x".repeat(CLIPBOARD_ENTRY_MAX_CHARS + 5);
-        let entries = add(tmp.path(), true, 10, &long);
+        let entries = add(tmp.path(), true, 10, CLIPBOARD_ENTRY_MAX_CHARS, &long);
         assert_eq!(entries[0].text.chars().count(), CLIPBOARD_ENTRY_MAX_CHARS);
     }
 
@@ -236,8 +242,8 @@ mod tests {
     #[test]
     fn remove_and_clear() {
         let tmp = data_dir();
-        add(tmp.path(), true, 10, "a");
-        add(tmp.path(), true, 10, "b");
+        add(tmp.path(), true, 10, CLIPBOARD_ENTRY_MAX_CHARS, "a");
+        add(tmp.path(), true, 10, CLIPBOARD_ENTRY_MAX_CHARS, "b");
         let after_remove = remove(tmp.path(), true, 10, 0);
         assert_eq!(
             after_remove
@@ -257,7 +263,13 @@ mod tests {
     fn session_mode_is_not_persisted() {
         let tmp = data_dir();
         clear(tmp.path(), false);
-        add(tmp.path(), false, 10, "session-only-entry");
+        add(
+            tmp.path(),
+            false,
+            10,
+            CLIPBOARD_ENTRY_MAX_CHARS,
+            "session-only-entry",
+        );
         assert!(!path(tmp.path()).exists());
         let entries = list(tmp.path(), false, 10);
         assert_eq!(entries[0].text, "session-only-entry");

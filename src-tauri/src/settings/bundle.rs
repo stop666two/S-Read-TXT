@@ -83,14 +83,16 @@ pub fn export_to_file(dir: &Path, target: &Path) -> Result<u64, String> {
     Ok(text.len() as u64)
 }
 
-/// 从指定文件导入配置（读取 + 大小限制 + 解析 + [`import_value`]）。
+/// 从指定文件导入配置（读取 + 大小限制 + 解析 + [`import_value`]；上限来自设置 `app.maxImportMB`）。
 pub fn import_from_file(dir: &Path, source: &Path) -> Result<(), String> {
     let meta = std::fs::metadata(source).map_err(|err| format!("读取导入文件失败：{err}"))?;
-    if meta.len() > MAX_BUNDLE_BYTES {
+    let max_bytes =
+        crate::settings::store::load_app_settings(dir).max_import_mb as u64 * 1024 * 1024;
+    if meta.len() > max_bytes {
         return Err(format!(
             "导入文件过大（{:.1} MB，上限 {} MB）",
             meta.len() as f64 / (1024.0 * 1024.0),
-            MAX_BUNDLE_BYTES / (1024 * 1024)
+            max_bytes / (1024 * 1024)
         ));
     }
     let raw = std::fs::read_to_string(source).map_err(|err| format!("读取导入文件失败：{err}"))?;

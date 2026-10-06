@@ -15,10 +15,42 @@ use crate::storage::atomic::write_atomic;
 
 /// 单文件输入上限（与比较/合并一致）。
 pub const MAX_INPUT_BYTES: u64 = 256 * 1024 * 1024;
-/// 输出分片数量上限。
+/// 默认最多分片数
 pub const MAX_PARTS: usize = 9999;
-/// 预览展示的分片数量上限。
+/// 默认预览分片数
 pub const PREVIEW_PARTS: usize = 20;
+
+/// 拆分上限（来自设置 `app.tools.*`；`Default` 为内置默认值，测试与缺省路径使用）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SplitLimits {
+    /// 输入文件大小上限（字节）
+    pub max_input_bytes: u64,
+    /// 最多分片数
+    pub max_parts: usize,
+    /// 预览保留的分片数
+    pub preview_parts: usize,
+}
+
+impl Default for SplitLimits {
+    fn default() -> Self {
+        Self {
+            max_input_bytes: MAX_INPUT_BYTES,
+            max_parts: MAX_PARTS,
+            preview_parts: PREVIEW_PARTS,
+        }
+    }
+}
+
+impl SplitLimits {
+    /// 由设置构造（MB → 字节）。
+    pub fn from_settings(tools: &crate::settings::model::ToolsSettings) -> Self {
+        Self {
+            max_input_bytes: tools.split_max_mb as u64 * 1024 * 1024,
+            max_parts: tools.split_max_parts as usize,
+            preview_parts: tools.split_preview_parts as usize,
+        }
+    }
+}
 /// 预览首尾片段截取字节上限。
 pub const PREVIEW_SNIPPET_BYTES: usize = 200;
 
@@ -182,15 +214,16 @@ impl TargetInfo {
     }
 }
 
-/// 流式扫描一次，产出分片预览（不写盘）。
+/// 流式扫描一次，产出分片预览（不写盘；上限来自 `limits`）。
 pub fn plan_file(
     path: &Path,
     mode: &SplitMode,
     out_dir: Option<&Path>,
+    limits: SplitLimits,
 ) -> Result<SplitPlan, SplitError> {
     validate(mode)?;
     let meta = std::fs::metadata(path)?;
-    if meta.len() > MAX_INPUT_BYTES {
+    if meta.len() > limits.max_input_bytes {
         return Err(SplitError::TooLarge(meta.len()));
     }
     let target = TargetInfo::from_source(path, out_dir);
@@ -216,10 +249,10 @@ pub fn plan_file(
                 return Ok(());
             }
             total_parts += 1;
-            if total_parts as usize > MAX_PARTS {
+            if total_parts as usize > limits.max_parts {
                 return Err(SplitError::TooManyParts(total_parts as usize));
             }
-            if parts.len() < PREVIEW_PARTS {
+            if parts.len() < limits.preview_parts {
                 let name = part_name(&target.stem, &target.ext, index);
                 let overwrites = target.out_dir.join(&name).is_file();
                 parts.push(SplitPart {
@@ -306,8 +339,9 @@ pub fn apply_file(
     path: &Path,
     mode: &SplitMode,
     out_dir: Option<&Path>,
+    limits: SplitLimits,
 ) -> Result<AppliedSplit, SplitError> {
-    let plan = plan_file(path, mode, out_dir)?;
+    let plan = plan_file(path, mode, out_dir, limits)?;
     let target = TargetInfo::from_source(path, out_dir);
     std::fs::create_dir_all(&target.out_dir)?;
     let file = std::fs::File::open(path)?;
@@ -363,7 +397,7 @@ pub fn apply_file(
 mod tests {
     use std::fs;
 
-    use super::{apply_file, plan_file, SplitError, SplitMode};
+    use super::{apply_file, plan_file, SplitError, SplitLimits, SplitMode};
     use crate::storage::atomic::write_atomic;
 
     fn write_source(dir: &std::path::Path, name: &str, content: &str) -> std::path::PathBuf {
@@ -382,14 +416,24 @@ mod tests {
         let temp = tempfile::tempdir().expect("临时目录失败");
         let content = (1..=10).map(|i| format!("l{i}\n")).collect::<String>();
         let src = write_source(temp.path(), "book.txt", &content);
-        let plan =
-            plan_file(&src, &SplitMode::Lines { lines_per_file: 3 }, None).expect("预览失败");
+        let plan = plan_file(
+            &src,
+            &SplitMode::Lines { lines_per_file: 3 },
+            None,
+            SplitLimits::default(),
+        )
+        .expect("预览失败");
         assert_eq!(plan.parts.len(), 4);
         assert_eq!(plan.parts[0].name, "book-0001.txt");
         assert_eq!(plan.parts[0].lines, 3);
         assert_eq!(plan.parts[3].lines, 1);
-        let applied =
-            apply_file(&src, &SplitMode::Lines { lines_per_file: 3 }, None).expect("拆分失败");
+        let applied = apply_file(
+            &src,
+            &SplitMode::Lines { lines_per_file: 3 },
+            None,
+            SplitLimits::default(),
+        )
+        .expect("拆分失败");
         assert_eq!(applied.files.len(), 4);
         assert_eq!(read_part(temp.path(), "book-0001.txt"), "l1\nl2\nl3\n");
         assert_eq!(read_part(temp.path(), "book-0004.txt"), "l10\n");
@@ -400,8 +444,13 @@ mod tests {
     fn single_line_without_newline() {
         let temp = tempfile::tempdir().expect("临时目录失败");
         let src = write_source(temp.path(), "one.txt", "solo");
-        let applied =
-            apply_file(&src, &SplitMode::Lines { lines_per_file: 10 }, None).expect("拆分失败");
+        let applied = apply_file(
+            &src,
+            &SplitMode::Lines { lines_per_file: 10 },
+            None,
+            SplitLimits::default(),
+        )
+        .expect("拆分失败");
         assert_eq!(applied.files.len(), 1);
         assert_eq!(read_part(temp.path(), "one-0001.txt"), "solo");
     }
@@ -411,7 +460,13 @@ mod tests {
     fn empty_file_rejected() {
         let temp = tempfile::tempdir().expect("临时目录失败");
         let src = write_source(temp.path(), "empty.txt", "");
-        let err = plan_file(&src, &SplitMode::Lines { lines_per_file: 5 }, None).unwrap_err();
+        let err = plan_file(
+            &src,
+            &SplitMode::Lines { lines_per_file: 5 },
+            None,
+            SplitLimits::default(),
+        )
+        .unwrap_err();
         assert!(matches!(err, SplitError::EmptyResult));
     }
 
@@ -427,6 +482,7 @@ mod tests {
                 is_regex: false,
             },
             None,
+            SplitLimits::default(),
         )
         .expect("拆分失败");
         assert_eq!(applied.files.len(), 3);
@@ -442,6 +498,7 @@ mod tests {
                 is_regex: false,
             },
             None,
+            SplitLimits::default(),
         )
         .expect("拆分失败");
         assert_eq!(applied2.files.len(), 1);
@@ -459,6 +516,7 @@ mod tests {
                 is_regex: true,
             },
             None,
+            SplitLimits::default(),
         )
         .expect("拆分失败");
         assert_eq!(applied.files.len(), 3);
@@ -471,7 +529,13 @@ mod tests {
         let temp = tempfile::tempdir().expect("临时目录失败");
         let src = write_source(temp.path(), "x.txt", "a\n");
         assert!(matches!(
-            plan_file(&src, &SplitMode::Lines { lines_per_file: 0 }, None).unwrap_err(),
+            plan_file(
+                &src,
+                &SplitMode::Lines { lines_per_file: 0 },
+                None,
+                SplitLimits::default()
+            )
+            .unwrap_err(),
             SplitError::InvalidConfig(_)
         ));
         assert!(matches!(
@@ -481,7 +545,8 @@ mod tests {
                     marker: "(".to_string(),
                     is_regex: true
                 },
-                None
+                None,
+                SplitLimits::default()
             )
             .unwrap_err(),
             SplitError::InvalidPattern(_)
@@ -493,7 +558,8 @@ mod tests {
                     marker: String::new(),
                     is_regex: false
                 },
-                None
+                None,
+                SplitLimits::default()
             )
             .unwrap_err(),
             SplitError::InvalidConfig(_)
@@ -505,7 +571,13 @@ mod tests {
     fn crlf_bytes_preserved() {
         let temp = tempfile::tempdir().expect("临时目录失败");
         let src = write_source(temp.path(), "crlf.txt", "a\r\nb\r\nc\r\n");
-        apply_file(&src, &SplitMode::Lines { lines_per_file: 2 }, None).expect("拆分失败");
+        apply_file(
+            &src,
+            &SplitMode::Lines { lines_per_file: 2 },
+            None,
+            SplitLimits::default(),
+        )
+        .expect("拆分失败");
         let first = fs::read(temp.path().join("crlf-0001.txt")).expect("读取失败");
         assert_eq!(first, b"a\r\nb\r\n");
     }
@@ -516,8 +588,13 @@ mod tests {
         let temp = tempfile::tempdir().expect("临时目录失败");
         let long = format!("{}\n", "x".repeat(600));
         let src = write_source(temp.path(), "big.txt", &long.repeat(3));
-        let plan =
-            plan_file(&src, &SplitMode::Lines { lines_per_file: 1 }, None).expect("预览失败");
+        let plan = plan_file(
+            &src,
+            &SplitMode::Lines { lines_per_file: 1 },
+            None,
+            SplitLimits::default(),
+        )
+        .expect("预览失败");
         assert_eq!(plan.parts.len(), 3);
         for part in &plan.parts {
             assert!(part.head.len() <= super::PREVIEW_SNIPPET_BYTES);
@@ -533,12 +610,22 @@ mod tests {
         fs::create_dir_all(&out).expect("建目录失败");
         fs::write(out.join("book-0001.txt"), "old").expect("写文件失败");
         let src = write_source(temp.path(), "book.txt", "a\nb\n");
-        let plan =
-            plan_file(&src, &SplitMode::Lines { lines_per_file: 1 }, Some(&out)).expect("预览失败");
+        let plan = plan_file(
+            &src,
+            &SplitMode::Lines { lines_per_file: 1 },
+            Some(&out),
+            SplitLimits::default(),
+        )
+        .expect("预览失败");
         assert!(plan.parts[0].overwrites);
         assert!(!plan.parts[1].overwrites);
-        let applied = apply_file(&src, &SplitMode::Lines { lines_per_file: 1 }, Some(&out))
-            .expect("拆分失败");
+        let applied = apply_file(
+            &src,
+            &SplitMode::Lines { lines_per_file: 1 },
+            Some(&out),
+            SplitLimits::default(),
+        )
+        .expect("拆分失败");
         assert_eq!(applied.files.len(), 2);
         assert_eq!(read_part(&out, "book-0001.txt"), "a\n");
     }
@@ -549,7 +636,13 @@ mod tests {
         let temp = tempfile::tempdir().expect("临时目录失败");
         let content = "z\n".repeat(super::MAX_PARTS + 5);
         let src = write_source(temp.path(), "many.txt", &content);
-        let err = plan_file(&src, &SplitMode::Lines { lines_per_file: 1 }, None).unwrap_err();
+        let err = plan_file(
+            &src,
+            &SplitMode::Lines { lines_per_file: 1 },
+            None,
+            SplitLimits::default(),
+        )
+        .unwrap_err();
         assert!(matches!(err, SplitError::TooManyParts(_)));
     }
 }

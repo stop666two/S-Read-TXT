@@ -216,8 +216,8 @@ fn main() {
             }
             // 多窗口会话恢复：按会话记录重建其余主窗口（各窗口前端自行恢复自己的标签切片）。
             // 总开关关闭时仍按「窗口布局」细项恢复窗口数量与几何（不恢复标签内容）。
-            // 防御上限：手改会话写入超量窗口时避免一次性创建大量窗口。
-            const MAX_RESTORE_WINDOWS: usize = 16;
+            // 上限来自设置 `app.startup.maxWindows`（手改会话写入超量窗口时同样受控）。
+            let max_restore_windows = startup_settings.startup.max_windows as usize;
             let restore_layout = startup_settings.startup.restore_items.layout;
             if startup_settings.startup.restore_session || restore_layout {
                 let session = session_store::load(&startup_dir);
@@ -233,7 +233,7 @@ fn main() {
                                 .chars()
                                 .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
                     })
-                    .take(MAX_RESTORE_WINDOWS)
+                    .take(max_restore_windows)
                     .collect();
                 if !extras.is_empty() {
                     let app_handle = app.handle().clone();

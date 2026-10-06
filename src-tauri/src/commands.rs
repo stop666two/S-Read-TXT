@@ -364,7 +364,11 @@ pub fn outline_items(
             settings.display.outline_patterns.clone()
         };
         let app_state = lock_state(&state)?;
-        let items = app_state.outline_items(tab_id, &patterns, settings.display.outline_max_items as usize)?;
+        let items = app_state.outline_items(
+            tab_id,
+            &patterns,
+            settings.display.outline_max_items as usize,
+        )?;
         log::debug!(target: "sread::commands", "outline_items: tab={tab_id} items={}", items.len());
         Ok(items)
     })
@@ -483,7 +487,7 @@ fn resolve_split_out_dir(path: &std::path::Path, out_dir: Option<String>) -> std
         .unwrap_or_else(|| std::path::PathBuf::from("."))
 }
 
-/// 命令：拆分预览（不写盘）。
+/// 命令：拆分预览（不写盘；上限来自设置）。
 #[tauri::command]
 pub fn preview_split(
     path: String,
@@ -492,15 +496,16 @@ pub fn preview_split(
 ) -> Result<SplitPreviewDto, IpcError> {
     let source = std::path::PathBuf::from(&path);
     let resolved = resolve_split_out_dir(&source, out_dir);
-    let plan =
-        s_read_txt::split::plan_file(&source, &mode, Some(&resolved)).map_err(split_ipc_error)?;
+    let limits = split_limits();
+    let plan = s_read_txt::split::plan_file(&source, &mode, Some(&resolved), limits)
+        .map_err(split_ipc_error)?;
     Ok(SplitPreviewDto {
         plan,
         out_dir: resolved.to_string_lossy().into_owned(),
     })
 }
 
-/// 命令：执行拆分（流式 + 原子写；同名覆盖）。
+/// 命令：执行拆分（流式 + 原子写；同名覆盖；上限来自设置）。
 #[tauri::command]
 pub fn apply_split(
     path: String,
@@ -509,7 +514,13 @@ pub fn apply_split(
 ) -> Result<s_read_txt::split::AppliedSplit, IpcError> {
     let source = std::path::PathBuf::from(&path);
     let resolved = resolve_split_out_dir(&source, out_dir);
-    s_read_txt::split::apply_file(&source, &mode, Some(&resolved)).map_err(split_ipc_error)
+    let limits = split_limits();
+    s_read_txt::split::apply_file(&source, &mode, Some(&resolved), limits).map_err(split_ipc_error)
+}
+
+/// 当前拆分上限（来自设置 `app.tools.*`）。
+fn split_limits() -> s_read_txt::split::SplitLimits {
+    s_read_txt::split::SplitLimits::from_settings(&current_app_settings().tools)
 }
 
 /// 命令：打开比较/合并窗口（已存在则更新请求、聚焦并通知重载）。
@@ -583,7 +594,8 @@ pub fn diff_docs(
     left: String,
     right: String,
 ) -> Result<compare::DiffDocsDto, IpcError> {
-    Ok(state.load_diff(&left, &right)?)
+    let settings = current_app_settings();
+    Ok(state.load_diff(&left, &right, settings.tools.compare_max_mb)?)
 }
 
 /// 命令：加载三方合并（base / ours / theirs）。
@@ -594,7 +606,8 @@ pub fn merge3_docs(
     ours: String,
     theirs: String,
 ) -> Result<compare::MergeDocsDto, IpcError> {
-    Ok(state.load_merge(&base, &ours, &theirs)?)
+    let settings = current_app_settings();
+    Ok(state.load_merge(&base, &ours, &theirs, settings.tools.compare_max_mb)?)
 }
 
 /// 命令：取一侧行文本窗口（虚拟列表按可见区间调用）。
@@ -960,8 +973,11 @@ pub fn export_text(
     path: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<u64, IpcError> {
+    let settings = current_app_settings();
+    let cap = settings.file.export_max_mb as u64 * 1024 * 1024;
+    let lang = locale_tag(settings.locale);
     lock_state(&state)?
-        .export_text(tab_id, Path::new(&path))
+        .export_text(tab_id, Path::new(&path), cap, lang)
         .map_err(Into::into)
 }
 
@@ -975,7 +991,15 @@ pub async fn print_document(
 ) -> Result<(), IpcError> {
     // 自动化测试路径（SRT_PRINT_NO_AUTO）：不自动弹系统打印对话框
     let auto_print = std::env::var_os("SRT_PRINT_NO_AUTO").is_none();
-    let html = match lock_state(&state)?.print_html(tab_id, auto_print) {
+    let settings = current_app_settings();
+    let cap = settings.file.print_max_mb as u64 * 1024 * 1024;
+    let lang = locale_tag(settings.locale);
+    let print_title = if lang == "en" {
+        "S-Read-TXT Print"
+    } else {
+        "S-Read-TXT 打印"
+    };
+    let html = match lock_state(&state)?.print_html(tab_id, auto_print, cap, lang) {
         Ok(html) => html,
         Err(s_read_txt::app_state::AppStateError::Export(
             s_read_txt::export::ExportError::TooLarge { .. },
@@ -1007,7 +1031,7 @@ pub async fn print_document(
             "print-preview",
             tauri::WebviewUrl::External(parsed),
         )
-        .title("S-Read-TXT 打印")
+        .title(print_title)
         .inner_size(820.0, 920.0)
         .build();
         if let Err(err) = result {
@@ -1064,12 +1088,13 @@ pub fn list_clipboard_history() -> Vec<ClipboardEntry> {
     clipboard_store::list(&dir, persist, limit)
 }
 
-/// 命令：记录一条剪贴板文本（空文本与禁用时无操作）。
+/// 命令：记录一条剪贴板文本（空文本与禁用时无操作；超长按设置截断）。
 #[tauri::command]
 pub fn add_clipboard_entry(text: String) -> Vec<ClipboardEntry> {
     let (dir, _origin) = paths::resolve_data_dir();
     let (limit, persist) = clipboard_config();
-    clipboard_store::add(&dir, persist, limit, &text)
+    let entry_max_chars = current_app_settings().editor.clipboard.entry_max_chars as usize;
+    clipboard_store::add(&dir, persist, limit, entry_max_chars, &text)
 }
 
 /// 命令：删除指定条目（越界无操作）。
@@ -1802,6 +1827,14 @@ pub fn reload_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabI
 fn current_app_settings() -> s_read_txt::settings::model::AppSettings {
     let (dir, _origin) = paths::resolve_data_dir();
     s_read_txt::settings::store::load_app_settings(&dir)
+}
+
+/// 界面语言 → BCP 47 标签（导出/打印等 Rust 侧生成内容的语言标注用）。
+fn locale_tag(locale: s_read_txt::settings::model::Language) -> &'static str {
+    match locale {
+        s_read_txt::settings::model::Language::En => "en",
+        _ => "zh-CN",
+    }
 }
 
 /// 查找操作的超时：仅正则模式生效（字面扫描不受毫秒级超时影响）。

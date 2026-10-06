@@ -139,11 +139,12 @@ fn push_html_escaped(out: &mut String, text: &str) {
     }
 }
 
-/// 流式写出文档（`cap` 可注入便于测试）。
+/// 流式写出文档（`cap` 可注入便于测试；`lang` 为 HTML 导出的页面语言标签）。
 fn write_document(
     source: &dyn DocumentSource,
     format: ExportFormat,
     writer: &mut CappedWriter<impl Write>,
+    lang: &str,
 ) -> Result<(), ExportError> {
     let total = source.rows_total();
     let nl = newline_of(source.eol());
@@ -155,7 +156,9 @@ fn write_document(
 
     if format == ExportFormat::Html {
         let mut head = String::new();
-        head.push_str("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>");
+        head.push_str("<!doctype html><html lang=\"");
+        push_html_escaped(&mut head, lang);
+        head.push_str("\"><head><meta charset=\"utf-8\"><title>");
         push_html_escaped(&mut head, &title);
         head.push_str("</title><style>body{font-family:system-ui,'Microsoft YaHei',sans-serif;margin:24px;}pre{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:14px;line-height:1.7;}</style></head><body><pre>");
         writer.write_chunk(head.as_bytes())?;
@@ -208,34 +211,42 @@ fn write_document(
     Ok(())
 }
 
-/// 导出文档到 `target`；返回写入字节数。
+/// 导出文档到 `target`；返回写入字节数（默认上限，`lang` 为 HTML 导出的页面语言）。
 pub fn export_document(
     source: &dyn DocumentSource,
     target: &Path,
     format: ExportFormat,
+    lang: &str,
 ) -> Result<u64, ExportError> {
-    export_document_capped(source, target, format, EXPORT_MAX_BYTES)
+    export_document_capped(source, target, format, EXPORT_MAX_BYTES, lang)
 }
 
-/// 带上限的导出（测试注入用）。
+/// 带上限的导出（上限来自设置；测试注入小上限用）。
 pub fn export_document_capped(
     source: &dyn DocumentSource,
     target: &Path,
     format: ExportFormat,
     cap: u64,
+    lang: &str,
 ) -> Result<u64, ExportError> {
     let file = File::create(target)?;
     let mut writer = CappedWriter::new(BufWriter::new(file), cap);
-    write_document(source, format, &mut writer)?;
+    write_document(source, format, &mut writer, lang)?;
     writer.finish()
 }
 
 /// 生成打印用 HTML（自动调起打印对话框；UTF-8 字符串）。
 ///
-/// 错误：内容超过 [`PRINT_MAX_BYTES`] → `TooLarge`（建议改用导出）。
-pub fn print_html(source: &dyn DocumentSource, auto_print: bool) -> Result<String, ExportError> {
+/// 参数：`max_bytes` 打印上限（来自设置）；`lang` 页面语言标签（BCP 47）。
+/// 错误：内容超过上限 → `TooLarge`（建议改用导出）。
+pub fn print_html(
+    source: &dyn DocumentSource,
+    auto_print: bool,
+    max_bytes: u64,
+    lang: &str,
+) -> Result<String, ExportError> {
     let mut buffer = Vec::new();
-    let mut writer = CappedWriter::new(&mut buffer, PRINT_MAX_BYTES);
+    let mut writer = CappedWriter::new(&mut buffer, max_bytes);
     let total = source.rows_total();
     let nl = newline_of(source.eol());
     let title = source
@@ -245,7 +256,9 @@ pub fn print_html(source: &dyn DocumentSource, auto_print: bool) -> Result<Strin
         .unwrap_or_else(|| "document".to_string());
 
     let mut head = String::new();
-    head.push_str("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>");
+    head.push_str("<!doctype html><html lang=\"");
+    push_html_escaped(&mut head, lang);
+    head.push_str("\"><head><meta charset=\"utf-8\"><title>");
     push_html_escaped(&mut head, &title);
     head.push_str(" - S-Read-TXT</title><style>body{margin:20mm 16mm;}pre{white-space:pre-wrap;word-break:break-word;font-family:system-ui,'Microsoft YaHei',sans-serif;font-size:12pt;line-height:1.8;}</style></head><body><pre>");
     writer.write_chunk(head.as_bytes())?;
@@ -309,7 +322,7 @@ mod tests {
         let (_dir, session) = fixture("plain\nwith,comma\nsay \"hi\"");
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("out.csv");
-        export_document(&session, &target, ExportFormat::Csv).expect("导出");
+        export_document(&session, &target, ExportFormat::Csv, "zh-CN").expect("导出");
         let text = std::fs::read_to_string(&target).unwrap();
         assert_eq!(text, "plain\n\"with,comma\"\n\"say \"\"hi\"\"\"");
     }
@@ -319,7 +332,7 @@ mod tests {
         let (_dir, session) = fixture("a\\b\nc");
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("out.json");
-        export_document(&session, &target, ExportFormat::Json).expect("导出");
+        export_document(&session, &target, ExportFormat::Json, "zh-CN").expect("导出");
         let text = std::fs::read_to_string(&target).unwrap();
         assert_eq!(text, "[\n  \"a\\\\b\",\n  \"c\"\n]\n");
     }
@@ -329,7 +342,7 @@ mod tests {
         let (_dir, session) = fixture("<b>&x</b>");
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("out.html");
-        export_document(&session, &target, ExportFormat::Html).expect("导出");
+        export_document(&session, &target, ExportFormat::Html, "zh-CN").expect("导出");
         let text = std::fs::read_to_string(&target).unwrap();
         assert!(text.contains("&lt;b&gt;&amp;x&lt;/b&gt;"));
         assert!(text.contains("charset=\"utf-8\""));
@@ -340,7 +353,7 @@ mod tests {
         let (_dir, session) = fixture("l1\r\nl2");
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("out.txt");
-        export_document(&session, &target, ExportFormat::Txt).expect("导出");
+        export_document(&session, &target, ExportFormat::Txt, "zh-CN").expect("导出");
         let text = std::fs::read_to_string(&target).unwrap();
         assert_eq!(text, "l1\r\nl2");
     }
@@ -350,17 +363,19 @@ mod tests {
         let (_dir, session) = fixture("aaaaaaaaaa\nbbbbbbbbbb");
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("out.txt");
-        let err = export_document_capped(&session, &target, ExportFormat::Txt, 5).unwrap_err();
+        let err =
+            export_document_capped(&session, &target, ExportFormat::Txt, 5, "zh-CN").unwrap_err();
         assert!(matches!(err, ExportError::TooLarge { .. }));
     }
 
     #[test]
     fn print_html_auto_print_is_optional() {
         let (_dir, session) = fixture("print me");
-        let html = print_html(&session, true).expect("打印 HTML");
+        let html = print_html(&session, true, PRINT_MAX_BYTES, "zh-CN").expect("打印 HTML");
         assert!(html.contains("window.print()"));
         assert!(html.contains("print me"));
-        let html = print_html(&session, false).expect("打印 HTML（无自动弹窗）");
+        let html =
+            print_html(&session, false, PRINT_MAX_BYTES, "zh-CN").expect("打印 HTML（无自动弹窗）");
         assert!(!html.contains("window.print()"));
         assert!(html.contains("print me"));
     }

@@ -376,16 +376,33 @@ impl AppState {
     }
 
     /// 导出当前标签（含未保存编辑）到 `target`（格式由扩展名推断）。
-    pub fn export_text(&self, tab_id: u64, target: &Path) -> Result<u64, AppStateError> {
+    pub fn export_text(
+        &self,
+        tab_id: u64,
+        target: &Path,
+        max_bytes: u64,
+        lang: &str,
+    ) -> Result<u64, AppStateError> {
         let format = ExportFormat::from_path(target).ok_or(ExportError::Unsupported)?;
         let (_, source) = self.annotation_context(tab_id)?;
-        Ok(crate::export::export_document(source, target, format)?)
+        Ok(crate::export::export_document_capped(
+            source, target, format, max_bytes, lang,
+        )?)
     }
 
-    /// 生成打印 HTML（含自动调起打印脚本；内容超限报错）。
-    pub fn print_html(&self, tab_id: u64, auto_print: bool) -> Result<String, AppStateError> {
+    /// 生成打印 HTML（含自动调起打印脚本；内容超限报错）；
+    /// `max_bytes` 为打印上限，`lang` 为页面语言标签（BCP 47）。
+    pub fn print_html(
+        &self,
+        tab_id: u64,
+        auto_print: bool,
+        max_bytes: u64,
+        lang: &str,
+    ) -> Result<String, AppStateError> {
         let (_, source) = self.annotation_context(tab_id)?;
-        Ok(crate::export::print_html(source, auto_print)?)
+        Ok(crate::export::print_html(
+            source, auto_print, max_bytes, lang,
+        )?)
     }
 
     /// 取文本窗口（`count` 受 [`MAX_ROWS_PER_FETCH`] 限制）。
@@ -1198,7 +1215,8 @@ impl AppState {
     ) -> Result<FileAnnotations, AppStateError> {
         let (path, source) = self.annotation_context(tab_id)?;
         let mut data = annotations::load(dir, &path);
-        annotations::add_bookmark(&mut data, source, row, utf16, label);
+        let caps = annotations::caps_from_dir(dir);
+        annotations::add_bookmark(&mut data, source, row, utf16, label, caps);
         annotations::save(dir, &mut data)?;
         Ok(data)
     }
@@ -1230,7 +1248,8 @@ impl AppState {
     ) -> Result<FileAnnotations, AppStateError> {
         let (path, source) = self.annotation_context(tab_id)?;
         let mut data = annotations::load(dir, &path);
-        annotations::add_highlight(&mut data, source, row, start_utf16, end_utf16, color);
+        let caps = annotations::caps_from_dir(dir);
+        annotations::add_highlight(&mut data, source, row, start_utf16, end_utf16, color, caps);
         annotations::save(dir, &mut data)?;
         Ok(data)
     }
@@ -1264,7 +1283,8 @@ impl AppState {
     ) -> Result<FileAnnotations, AppStateError> {
         let (path, source) = self.annotation_context(tab_id)?;
         let mut data = annotations::load(dir, &path);
-        annotations::add_note(&mut data, source, row, utf16, end_utf16, text, kind);
+        let caps = annotations::caps_from_dir(dir);
+        annotations::add_note(&mut data, source, row, utf16, end_utf16, text, kind, caps);
         annotations::save(dir, &mut data)?;
         Ok(data)
     }
@@ -1280,7 +1300,8 @@ impl AppState {
     ) -> Result<FileAnnotations, AppStateError> {
         let (path, _source) = self.annotation_context(tab_id)?;
         let mut data = annotations::load(dir, &path);
-        if annotations::update_note(&mut data, id, text, done) {
+        let caps = annotations::caps_from_dir(dir);
+        if annotations::update_note(&mut data, id, text, done, caps) {
             annotations::save(dir, &mut data)?;
         }
         Ok(data)

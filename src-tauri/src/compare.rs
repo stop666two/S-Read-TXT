@@ -108,8 +108,8 @@ pub struct LoadedDoc {
 }
 
 impl LoadedDoc {
-    fn load(path: &Path) -> Result<Self, CompareError> {
-        let session = FileSession::open(path, None, COMPARE_MAX_MB)?;
+    fn load(path: &Path, max_mb: u32) -> Result<Self, CompareError> {
+        let session = FileSession::open(path, None, max_mb)?;
         let mut hashes = Vec::with_capacity(session.rows_total() as usize);
         let mut row = 0u64;
         while row < session.rows_total() {
@@ -293,10 +293,15 @@ impl CompareState {
         }
     }
 
-    /// 加载两个文件并计算行级差异。
-    pub fn load_diff(&self, left: &str, right: &str) -> Result<DiffDocsDto, CompareError> {
-        let left_doc = LoadedDoc::load(Path::new(left))?;
-        let right_doc = LoadedDoc::load(Path::new(right))?;
+    /// 加载两个文件并计算行级差异（`max_mb` 为单文件大小上限，来自设置）。
+    pub fn load_diff(
+        &self,
+        left: &str,
+        right: &str,
+        max_mb: u32,
+    ) -> Result<DiffDocsDto, CompareError> {
+        let left_doc = LoadedDoc::load(Path::new(left), max_mb)?;
+        let right_doc = LoadedDoc::load(Path::new(right), max_mb)?;
         let diff = diff_lines(&left_doc.hashes, &right_doc.hashes)?;
         let touched = left_doc.bytes().max(right_doc.bytes());
         let dto = DiffDocsDto {
@@ -329,16 +334,17 @@ impl CompareState {
         Ok(dto)
     }
 
-    /// 加载三个文件并计算三方合并。
+    /// 加载三个文件并计算三方合并（`max_mb` 为单文件大小上限，来自设置）。
     pub fn load_merge(
         &self,
         base: &str,
         ours: &str,
         theirs: &str,
+        max_mb: u32,
     ) -> Result<MergeDocsDto, CompareError> {
-        let base_doc = LoadedDoc::load(Path::new(base))?;
-        let ours_doc = LoadedDoc::load(Path::new(ours))?;
-        let theirs_doc = LoadedDoc::load(Path::new(theirs))?;
+        let base_doc = LoadedDoc::load(Path::new(base), max_mb)?;
+        let ours_doc = LoadedDoc::load(Path::new(ours), max_mb)?;
+        let theirs_doc = LoadedDoc::load(Path::new(theirs), max_mb)?;
         let merge = merge3(&base_doc.hashes, &ours_doc.hashes, &theirs_doc.hashes)?;
         let touched = base_doc
             .bytes()
@@ -564,7 +570,11 @@ mod tests {
         let right = write_file(dir.path(), "b.txt", "one\nTWO\nthree\nfour\n");
         let state = CompareState::new();
         let dto = state
-            .load_diff(&left.to_string_lossy(), &right.to_string_lossy())
+            .load_diff(
+                &left.to_string_lossy(),
+                &right.to_string_lossy(),
+                COMPARE_MAX_MB,
+            )
             .unwrap();
         assert_eq!(dto.left_name, "a.txt");
         assert_eq!(dto.right_rows, 4);
@@ -587,6 +597,7 @@ mod tests {
                 &base.to_string_lossy(),
                 &ours.to_string_lossy(),
                 &theirs.to_string_lossy(),
+                COMPARE_MAX_MB,
             )
             .unwrap();
         assert_eq!(dto.conflicts, 1);
@@ -601,7 +612,7 @@ mod tests {
     fn missing_file_reports_text_error() {
         let state = CompareState::new();
         let err = state
-            .load_diff("Z:/definitely/missing.txt", "Z:/nope.txt")
+            .load_diff("Z:/definitely/missing.txt", "Z:/nope.txt", COMPARE_MAX_MB)
             .unwrap_err();
         assert!(matches!(err, CompareError::Text(_)));
     }
@@ -619,6 +630,7 @@ mod tests {
                 &base.to_string_lossy(),
                 &ours.to_string_lossy(),
                 &theirs.to_string_lossy(),
+                COMPARE_MAX_MB,
             )
             .unwrap();
 
@@ -659,7 +671,11 @@ mod tests {
         let right = write_file(dir.path(), "right.txt", "b\n");
         let state = CompareState::new();
         state
-            .load_diff(&left.to_string_lossy(), &right.to_string_lossy())
+            .load_diff(
+                &left.to_string_lossy(),
+                &right.to_string_lossy(),
+                COMPARE_MAX_MB,
+            )
             .unwrap();
         state.clear();
         assert!(matches!(
