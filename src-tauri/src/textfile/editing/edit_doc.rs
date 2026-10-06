@@ -275,6 +275,19 @@ pub struct EditDoc {
     redo_stack: Vec<UndoStep>,
     /// 撤销栈当前预算占用（字节）
     undo_cost: u64,
+    /// 行推进游标缓存（顺序取行避免每次从片段起点重扫；编辑后按状态版本失效）
+    advance_cursor: std::cell::RefCell<Option<AdvanceCursor>>,
+}
+
+/// 行推进游标：记录「第 `row` 行起点位于 `(piece, off)`」。
+///
+/// 仅当 `state_id` 与当前文档一致时有效（编辑/撤销/重做都会使游标失效）。
+#[derive(Clone, Copy)]
+struct AdvanceCursor {
+    state_id: u64,
+    row: u64,
+    piece: usize,
+    off: u64,
 }
 
 impl EditDoc {
@@ -345,6 +358,7 @@ impl EditDoc {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             undo_cost: 0,
+            advance_cursor: std::cell::RefCell::new(None),
         };
         doc.rebuild_trees();
         doc.trailing_newline = doc.doc_ends_with_newline();
@@ -889,29 +903,177 @@ impl EditDoc {
     }
 
     /// 第 `row` 行的起始位置（`row == 0` 为文档起点，其后为第 `row-1` 个单元终点）。
+    ///
+    /// 顺序访问（读取可视窗口）经行推进游标做增量扫描；游标失效时回退全量定位。
     fn row_start_pos(&self, row: u64) -> Result<DocPos, EditError> {
         if row >= self.rows_total() {
             return Err(EditError::RowOutOfRange { row });
         }
         if row == 0 {
-            return Ok(DocPos { piece: 0, off: 0 });
+            let pos = DocPos { piece: 0, off: 0 };
+            self.cache_cursor(0, pos);
+            return Ok(pos);
+        }
+        if let Some(pos) = self.advance_from_cursor(row) {
+            return Ok(pos);
         }
         let (_, end) = self.unit_span(row - 1)?;
+        self.cache_cursor(row, end);
         Ok(end)
+    }
+
+    /// 更新行推进游标。
+    fn cache_cursor(&self, row: u64, pos: DocPos) {
+        *self.advance_cursor.borrow_mut() = Some(AdvanceCursor {
+            state_id: self.state_id,
+            row,
+            piece: pos.piece,
+            off: pos.off,
+        });
+    }
+
+    /// 从游标增量推进到 `row` 行起点；`None` = 游标不可用（需回退全量扫描）。
+    ///
+    /// 语义与逐单元 `unit_span` 完全一致：换行单元可跨片段（片尾 `\r` + 片首 `\n`），
+    /// 片段起始的孤立 `\n`（上一片段以 `\r` 结尾）不计为独立单元。
+    fn advance_from_cursor(&self, row: u64) -> Option<DocPos> {
+        let (cursor_row, mut piece, mut off) = {
+            let cursor = (*self.advance_cursor.borrow())?;
+            if cursor.state_id != self.state_id {
+                return None;
+            }
+            if cursor.row == row {
+                return Some(DocPos {
+                    piece: cursor.piece,
+                    off: cursor.off,
+                });
+            }
+            if cursor.row > row {
+                return None;
+            }
+            (cursor.row, cursor.piece, cursor.off)
+        };
+        let mut current = cursor_row;
+        while current < row {
+            // 从 (piece, off) 起找到当前行的换行单元
+            let mut found: Option<(usize, u64, u64)> = None;
+            let mut scan_piece = piece;
+            let mut scan_off = off;
+            while scan_piece < self.pieces.len() {
+                let scan_ref = self.pieces[scan_piece];
+                let bytes = self.piece_bytes(&scan_ref);
+                let encoding = self.encoding_for(&scan_ref);
+                let len = bytes.len() as u64;
+                if scan_off == 0
+                    && self.prev_cr(scan_piece)
+                    && starts_with_lf(bytes, encoding, 0, len)
+                {
+                    // 跨片 CRLF：片段起始的 `\n` 属于上一片段结尾的 `\r` 单元
+                    scan_off = newline_width(encoding);
+                }
+                if let Some((newline_start, newline_end)) = find_newline(bytes, encoding, scan_off)
+                {
+                    found = Some((scan_piece, newline_start, newline_end.min(len)));
+                    break;
+                }
+                scan_piece += 1;
+                scan_off = 0;
+            }
+            let (unit_piece, unit_start, unit_end) = found?;
+            let unit_ref = self.pieces[unit_piece];
+            let unit_bytes = self.piece_bytes(&unit_ref);
+            let unit_encoding = self.encoding_for(&unit_ref);
+            let next = if ends_with_cr(unit_bytes, unit_encoding, unit_start, unit_end)
+                && unit_end >= unit_bytes.len() as u64
+            {
+                match self.pieces.get(unit_piece + 1) {
+                    Some(next_ref) => {
+                        let next_bytes = self.piece_bytes(next_ref);
+                        let next_encoding = self.encoding_for(next_ref);
+                        if starts_with_lf(next_bytes, next_encoding, 0, next_ref.len) {
+                            DocPos {
+                                piece: unit_piece + 1,
+                                off: newline_width(next_encoding),
+                            }
+                        } else {
+                            DocPos {
+                                piece: unit_piece,
+                                off: unit_end,
+                            }
+                        }
+                    }
+                    None => DocPos {
+                        piece: unit_piece,
+                        off: unit_end,
+                    },
+                }
+            } else {
+                DocPos {
+                    piece: unit_piece,
+                    off: unit_end,
+                }
+            };
+            let pos = self.normalize_pos(next);
+            current += 1;
+            if current == row {
+                self.cache_cursor(row, pos);
+                return Some(pos);
+            }
+            piece = pos.piece;
+            off = pos.off;
+        }
+        None
     }
 
     /// 第 `row` 行的结束位置（不含换行单元）。
     ///
     /// 语义：行 `row` 的终点 = 下一个换行单元的起点；
     /// 若其后没有换行单元（末行且无结尾换行）则为文档末尾。
+    /// 游标正指向该行起点时做短扫描；否则回退 [`Self::unit_span`] 全量定位。
     fn row_end_pos(&self, row: u64) -> Result<DocPos, EditError> {
         let units = self.line_tree.total();
         if row < units {
+            if let Some(pos) = self.scan_row_end_from_cursor(row) {
+                return Ok(pos);
+            }
             let (start, _) = self.unit_span(row)?;
             Ok(start)
         } else {
             Ok(self.doc_end_pos())
         }
+    }
+
+    /// 游标正指向 `row` 行起点时，短扫描定位该行文本终点（换行单元起点）。
+    fn scan_row_end_from_cursor(&self, row: u64) -> Option<DocPos> {
+        {
+            let cursor = (*self.advance_cursor.borrow())?;
+            if cursor.state_id != self.state_id || cursor.row != row {
+                return None;
+            }
+        }
+        let start = {
+            let cursor = (*self.advance_cursor.borrow())?;
+            DocPos {
+                piece: cursor.piece,
+                off: cursor.off,
+            }
+        };
+        let mut scan_piece = start.piece;
+        let mut scan_off = start.off;
+        while scan_piece < self.pieces.len() {
+            let piece = self.pieces[scan_piece];
+            let bytes = self.piece_bytes(&piece);
+            let encoding = self.encoding_for(&piece);
+            if let Some((newline_start, _)) = find_newline(bytes, encoding, scan_off) {
+                return Some(DocPos {
+                    piece: scan_piece,
+                    off: newline_start,
+                });
+            }
+            scan_piece += 1;
+            scan_off = 0;
+        }
+        Some(self.doc_end_pos())
     }
 
     /// 拼接 `[start, end)` 的文本（起点与终点均为文档位置；`start == end` 返回空串）。
@@ -2714,6 +2876,36 @@ mod tests {
         ));
         assert_eq!(doc.row_text(0).as_deref(), Some("ab"));
         assert!(!doc.is_dirty());
+    }
+
+    /// 大文件深行取行基准（手动运行）：
+    /// `cargo test --lib benchmark_deep_fetch -- --ignored --nocapture`
+    #[test]
+    #[ignore = "性能基准，手动运行"]
+    fn benchmark_deep_fetch() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = dir.path().join("deep.txt");
+        let line: &str =
+            "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-=-=--==-=-=--==0\n";
+        let rows_total: u64 = 1_300_000;
+        {
+            use std::io::Write as _;
+            let mut file =
+                std::io::BufWriter::new(std::fs::File::create(&path).expect("创建基准文件失败"));
+            for _ in 0..rows_total {
+                file.write_all(line.as_bytes()).expect("写基准文件失败");
+            }
+        }
+        let doc = EditDoc::open(&path, None, 100).expect("打开失败");
+        for row in [0u64, 100_000, 600_000, 1_299_000] {
+            let start = std::time::Instant::now();
+            let rows = doc.fetch_rows(row, 40);
+            println!(
+                "fetch_rows(row={row}, 40)：{}ms（取到 {} 行）",
+                start.elapsed().as_millis(),
+                rows.len()
+            );
+        }
     }
 
     /// 应用阶段取消：完整回滚、无撤销步骤、不推进版本号、不产生脏标记。
