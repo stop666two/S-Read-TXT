@@ -336,6 +336,7 @@ fn main() {
         // 多窗口退出协调器（两阶段：请求 → 全部就绪 → 放行）
         .manage(s_read_txt::quit::QuitState::default())
         .manage(tab_drag::TabDragState::default())
+        .manage(s_read_txt::batch_jobs::BatchJobs::default())
         // 命令行/单实例待打开队列
         .manage(s_read_txt::cli::PendingCliFiles::default())
         // 比较/合并窗口文档状态
@@ -386,6 +387,7 @@ fn main() {
             commands::set_encoding,
             commands::preview_batch_numbering,
             commands::apply_batch_numbering,
+            commands::cancel_batch_numbering,
             commands::list_clipboard_history,
             commands::add_clipboard_entry,
             commands::remove_clipboard_entry,

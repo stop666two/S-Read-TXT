@@ -19,14 +19,18 @@
   interface Props {
     /** 当前选区的显示行范围（无选区时 from==to==当前行） */
     selectionRows: { from: number; to: number };
+    /** 应用进度（来自后端事件；null = 未在运行） */
+    progress: { done: number; total: number } | null;
     /** 请求预览（错误向上抛出，由本弹窗就地展示） */
     onPreview: (config: BatchNumberingConfig) => Promise<BatchPreview>;
-    /** 执行（单撤销步；成功后由父层提示；失败抛出以保持弹窗打开） */
-    onApply: (config: BatchNumberingConfig) => Promise<void>;
+    /** 执行（单撤销步；返回 true = 已取消并保持弹窗打开；失败抛出以保持弹窗打开） */
+    onApply: (config: BatchNumberingConfig) => Promise<boolean>;
+    /** 请求取消运行中的批量任务 */
+    onCancel: () => void;
     /** 关闭 */
     onClose: () => void;
   }
-  let { selectionRows, onPreview, onApply, onClose }: Props = $props();
+  let { selectionRows, progress, onPreview, onApply, onCancel, onClose }: Props = $props();
 
   const FORMATS: BatchNumberFormat[] = [
     'arabic',
@@ -118,14 +122,14 @@
     }
   }
 
-  /** 应用（成功后由父层关闭；失败保持打开并提示）。 */
+  /** 应用（取消时保持弹窗打开；成功后由父层关闭；失败保持打开并提示）。 */
   async function runApply(): Promise<void> {
     if (busy) return;
     busy = true;
     errorText = '';
     try {
-      await onApply(config());
-      onClose();
+      const cancelled = await onApply(config());
+      if (!cancelled) onClose();
     } catch (error) {
       errorText = errorMessage(error);
     } finally {
@@ -133,9 +137,9 @@
     }
   }
 
-  /** Esc 关闭（输入期间同样生效；不触发全局快捷键）。 */
+  /** Esc 关闭（输入期间同样生效；任务运行中不关闭，避免丢失进度与取消入口）。 */
   function handleKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' && !busy) {
       event.stopPropagation();
       onClose();
     }
@@ -148,7 +152,7 @@
   <div class="batch-dialog" role="dialog" aria-modal="true" aria-label={t('batch.title')} data-batch-dialog>
     <header class="head">
       <span class="title">{t('batch.title')}</span>
-      <button class="close" aria-label={t('batch.close')} onclick={onClose}>×</button>
+      <button class="close" aria-label={t('batch.close')} disabled={busy} onclick={onClose}>×</button>
     </header>
     <div class="body">
       <div class="grid">
@@ -241,6 +245,20 @@
       {/if}
     </div>
     <footer class="foot">
+      {#if busy && progress}
+        <div class="progress" data-batch-progress>
+          <div class="progress-track">
+            <div
+              class="progress-fill"
+              style={`width: ${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%`}
+            ></div>
+          </div>
+          <span class="progress-text">{t('batch.progress', { done: progress.done, total: progress.total })}</span>
+        </div>
+      {/if}
+      {#if busy}
+        <button class="btn" data-batch-cancel onclick={onCancel}>{t('batch.cancel')}</button>
+      {/if}
       <button class="btn" disabled={busy} data-setting="batch.preview" onclick={() => void runPreview()}>
         {t('batch.preview')}
       </button>
@@ -417,10 +435,40 @@
 
   .foot {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 8px;
     padding: 10px 14px;
     border-top: 1px solid var(--line);
+  }
+
+  .progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: auto;
+    min-width: 0;
+  }
+
+  .progress-track {
+    width: 140px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--hover);
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.12s linear;
+  }
+
+  .progress-text {
+    color: var(--muted);
+    font-size: 11.5px;
+    white-space: nowrap;
   }
 
   .btn {

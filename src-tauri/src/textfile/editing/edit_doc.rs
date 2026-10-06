@@ -1149,12 +1149,28 @@ impl EditDoc {
     /// 返回：`EditApplied`（新状态版本 / 是否脏 / 首个受影响行 / 总行数 / 总字节数）。
     /// 错误：`EditError`（行/字符越界等）。批次为原子操作：任一操作解析失败则整批不应用。
     pub fn apply_edits(&mut self, ops: &[EditOp]) -> Result<EditApplied, EditError> {
+        Ok(self
+            .apply_edits_cancellable(ops, &|| false, &mut |_, _| {})?
+            .expect("不取消时必然返回编辑结果"))
+    }
+
+    /// 可取消并上报进度的批量编辑（批量序号异步执行使用）。
+    ///
+    /// 返回 `Ok(None)` 表示已取消：文档状态完整回滚、不产生撤销步骤、不推进版本号。
+    pub fn apply_edits_cancellable(
+        &mut self,
+        ops: &[EditOp],
+        cancel: &dyn Fn() -> bool,
+        progress: &mut dyn FnMut(u64, u64),
+    ) -> Result<Option<EditApplied>, EditError> {
         if ops.is_empty() {
-            return Ok(self.applied(0, (0, 0)));
+            return Ok(Some(self.applied(0, (0, 0))));
         }
         // 1) 解析所有操作（相对编辑前状态）：批量单次扫描行位置（等价逐操作解析，
         //    但避免每个操作都从片段起点重扫——大文件批量编辑的关键路径）
-        let positions = self.resolve_batch_positions(ops)?;
+        let Some(positions) = self.resolve_batch_positions_cancellable(ops, cancel)? else {
+            return Ok(None);
+        };
         // 超长行分段维护所需的区间统计（应用前坐标系）
         let mut resolved: Vec<(u64, u64, Vec<u8>, u64)> = Vec::with_capacity(ops.len());
         let mut old_end = 0u64;
@@ -1207,12 +1223,18 @@ impl EditDoc {
         let touched = resolved.iter().map(|item| item.3).min().unwrap_or(0);
         // 2) 快照当前状态（撤销步骤）
         let mut before = self.take_snapshot(touched);
-        // 3) 按位置降序应用（后面的编辑不影响前面位置）
+        // 3) 按位置降序应用（后面的编辑不影响前面位置）；逐步检查取消
         let mut cost = 0u64;
         resolved.sort_by(|left, right| right.0.cmp(&left.0));
-        for (start, end, text, _) in &resolved {
+        let total_ops = resolved.len() as u64;
+        for (index, (start, end, text, _)) in resolved.iter().enumerate() {
+            if cancel() {
+                self.restore_snapshot(before);
+                return Ok(None);
+            }
             cost += text.len() as u64 + (end - start);
             self.apply_range(*start, *end, text);
+            progress(index as u64 + 1, total_ops);
         }
         // 4) 合并、重建、版本推进、裁剪撤销预算
         self.coalesce();
@@ -1250,7 +1272,18 @@ impl EditDoc {
                 ..
             }) => advance_caret(*start_row, *start_utf16, text),
         };
-        Ok(self.applied(touched, caret))
+        progress(total_ops, total_ops);
+        Ok(Some(self.applied(touched, caret)))
+    }
+
+    /// 取消时把文档恢复到操作前快照（不产生撤销步骤、不推进版本号）。
+    fn restore_snapshot(&mut self, step: UndoStep) {
+        self.pieces = step.pieces;
+        self.metas = step.metas;
+        self.long_rows = step.long_rows;
+        self.trailing_newline = step.trailing_newline;
+        self.state_id = step.state_id;
+        self.rebuild_trees();
     }
 
     /// 撤销一步；无可撤销时返回 `None`。
@@ -1575,12 +1608,44 @@ impl EditDoc {
         Err(EditError::Utf16OutOfRange { row, utf16 })
     }
 
-    /// 批量解析操作位置：对全部请求行做单次顺序扫描（每次 apply 只扫一遍片段），
-    /// 返回与 `ops` 顺序一致的全局字节区间 `(start, end)`。
+    /// 批量取指定行的文本（单次扫描定位行边界 + 逐行解码；用于批量序号等
+    /// 大范围逐行检查——避免逐行 [`Self::row_start_pos`] 从片段起点重扫）。
+    pub(crate) fn texts_for_rows(&self, rows: &[u64]) -> Vec<String> {
+        if rows.is_empty() {
+            return Vec::new();
+        }
+        let mut sorted = rows.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        let spans = self
+            .scan_row_spans_cancellable(&sorted, &|| false)
+            .expect("不取消时必然返回扫描结果");
+        let mut lookup: Vec<(u64, String)> = Vec::with_capacity(sorted.len());
+        for (index, &row) in sorted.iter().enumerate() {
+            let (start, end) = spans[index];
+            lookup.push((row, self.text_between(start, end)));
+        }
+        rows.iter()
+            .map(|row| {
+                lookup
+                    .binary_search_by_key(row, |(key, _)| *key)
+                    .ok()
+                    .map(|index| lookup[index].1.clone())
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
+    /// 批量解析操作位置（可取消）：对全部请求行做单次顺序扫描（每次 apply 只扫一遍片段），
+    /// 返回与 `ops` 顺序一致的全局字节区间 `(start, end)`；`Ok(None)` 表示已取消。
     ///
     /// 语义与逐操作 [`Self::resolve_pos`] 完全一致（含行越界与 UTF-16 越界报错、
     /// 代理对中间吸附、跨片段 CRLF 单元处理）。
-    fn resolve_batch_positions(&self, ops: &[EditOp]) -> Result<Vec<(u64, u64)>, EditError> {
+    fn resolve_batch_positions_cancellable(
+        &self,
+        ops: &[EditOp],
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<Option<Vec<(u64, u64)>>, EditError> {
         let mut requests: Vec<(u64, u64)> = Vec::with_capacity(ops.len() * 2);
         let mut slots: Vec<(usize, usize)> = Vec::with_capacity(ops.len());
         for op in ops {
@@ -1612,14 +1677,19 @@ impl EditDoc {
         let mut rows: Vec<u64> = requests.iter().map(|(row, _)| *row).collect();
         rows.sort_unstable();
         rows.dedup();
-        let spans = self.scan_row_spans(&rows);
+        let Some(spans) = self.scan_row_spans_cancellable(&rows, cancel) else {
+            return Ok(None);
+        };
 
         let lookup = |row: u64| -> (DocPos, DocPos) {
             let index = rows.binary_search(&row).expect("请求行已在扫描集合中");
             spans[index]
         };
         let mut resolved_requests: Vec<u64> = Vec::with_capacity(requests.len());
-        for (row, utf16) in &requests {
+        for (index, (row, utf16)) in requests.iter().enumerate() {
+            if index % 512 == 0 && cancel() {
+                return Ok(None);
+            }
             let (start, end) = lookup(*row);
             let pos = if *utf16 == 0 {
                 start
@@ -1632,14 +1702,18 @@ impl EditDoc {
         for (start_slot, end_slot) in slots {
             result.push((resolved_requests[start_slot], resolved_requests[end_slot]));
         }
-        Ok(result)
+        Ok(Some(result))
     }
 
-    /// 扫描指定行的 `(起始, 结束)` 文档位置（按行号升序单次遍历片段）。
+    /// 扫描指定行的 `(起始, 结束)` 文档位置（按行号升序单次遍历片段；可取消）。
     ///
     /// `rows` 必须已升序去重；行 0 起始为文档起点，末行结束为文档末尾
     /// （无结尾换行时无对应单元）。
-    fn scan_row_spans(&self, rows: &[u64]) -> Vec<(DocPos, DocPos)> {
+    fn scan_row_spans_cancellable(
+        &self,
+        rows: &[u64],
+        cancel: &dyn Fn() -> bool,
+    ) -> Option<Vec<(DocPos, DocPos)>> {
         let units_total = self.line_tree.total();
         // 需要扫描的单元 id：行 r 的起点 = 单元 r-1 的终点；行 r 的终点 = 单元 r 的起点
         let mut needed: Vec<u64> = Vec::with_capacity(rows.len() * 2);
@@ -1659,6 +1733,9 @@ impl EditDoc {
         if !needed.is_empty() {
             let mut unit_id: u64 = 0;
             'pieces: for (piece_index, piece) in self.pieces.iter().enumerate() {
+                if cancel() {
+                    return None;
+                }
                 if pointer >= needed.len() {
                     break;
                 }
@@ -1713,7 +1790,8 @@ impl EditDoc {
             let index = needed.binary_search(&unit).expect("所需单元已在扫描集合中");
             spans[index]
         };
-        rows.iter()
+        let result: Vec<(DocPos, DocPos)> = rows
+            .iter()
             .map(|&row| {
                 let start = if row == 0 {
                     DocPos { piece: 0, off: 0 }
@@ -1727,7 +1805,8 @@ impl EditDoc {
                 };
                 (start, end)
             })
-            .collect()
+            .collect();
+        Some(result)
     }
 
     /// 在已知行区间内解析 `(row, utf16)` → 文档位置（等价 [`Self::resolve_pos`] 的
@@ -2635,5 +2714,105 @@ mod tests {
         ));
         assert_eq!(doc.row_text(0).as_deref(), Some("ab"));
         assert!(!doc.is_dirty());
+    }
+
+    /// 应用阶段取消：完整回滚、无撤销步骤、不推进版本号、不产生脏标记。
+    #[test]
+    fn apply_cancellable_rolls_back_during_apply() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "cancel.txt", b"a\nb\nc\nd\n");
+        let mut doc = EditDoc::open(&path, None, 100).expect("打开失败");
+        let before_rows = doc.fetch_rows(0, doc.rows_total() as usize);
+        let before_state = doc.state_id;
+        let ops = [
+            EditOp::Insert {
+                row: 0,
+                utf16: 0,
+                text: "X".into(),
+            },
+            EditOp::Insert {
+                row: 2,
+                utf16: 0,
+                text: "Y".into(),
+            },
+        ];
+        let flag = std::cell::Cell::new(false);
+        let cancel = || flag.get();
+        let mut apply_calls = 0u32;
+        let result = doc
+            .apply_edits_cancellable(&ops, &cancel, &mut |done, _| {
+                apply_calls += 1;
+                if done >= 1 {
+                    flag.set(true);
+                }
+            })
+            .expect("不应报错");
+        assert!(result.is_none(), "应返回取消（进度回调 {apply_calls} 次）");
+        assert_eq!(doc.state_id, before_state, "取消不应推进版本号");
+        assert_eq!(
+            doc.fetch_rows(0, doc.rows_total() as usize),
+            before_rows,
+            "内容应完整回滚"
+        );
+        assert!(!doc.is_dirty(), "取消不应产生脏标记");
+        assert!(doc.undo().is_none(), "取消不应产生撤销步骤");
+    }
+
+    /// 解析阶段取消（始终取消）：不修改文档且快速返回。
+    #[test]
+    fn apply_cancellable_cancels_before_apply() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = write_file(dir.path(), "cancel2.txt", b"one\ntwo\nthree\n");
+        let mut doc = EditDoc::open(&path, None, 100).expect("打开失败");
+        let before_rows = doc.fetch_rows(0, doc.rows_total() as usize);
+        let result = doc
+            .apply_edits_cancellable(
+                &[EditOp::Insert {
+                    row: 1,
+                    utf16: 0,
+                    text: "Z".into(),
+                }],
+                &|| true,
+                &mut |_, _| {},
+            )
+            .expect("不应报错");
+        assert!(result.is_none());
+        assert_eq!(doc.fetch_rows(0, doc.rows_total() as usize), before_rows);
+        assert!(doc.undo().is_none());
+    }
+
+    /// 不取消时批次编辑与普通路径结果一致，且进度以 (len, len) 收尾。
+    #[test]
+    fn apply_cancellable_matches_apply_and_reports_progress() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path_a = write_file(dir.path(), "batch-a.txt", b"1\n2\n3\n4\n5\n");
+        let path_b = write_file(dir.path(), "batch-b.txt", b"1\n2\n3\n4\n5\n");
+        let mut doc_a = EditDoc::open(&path_a, None, 100).expect("打开失败");
+        let mut doc_b = EditDoc::open(&path_b, None, 100).expect("打开失败");
+        let ops = [
+            EditOp::Insert {
+                row: 0,
+                utf16: 0,
+                text: "A".into(),
+            },
+            EditOp::Insert {
+                row: 4,
+                utf16: 1,
+                text: "B".into(),
+            },
+        ];
+        let expected = doc_a.apply_edits(&ops).expect("普通路径失败");
+        let mut last = (0u64, 0u64);
+        let actual = doc_b
+            .apply_edits_cancellable(&ops, &|| false, &mut |done, total| last = (done, total))
+            .expect("可取消路径失败")
+            .expect("不取消应返回结果");
+        assert_eq!(last, (ops.len() as u64, ops.len() as u64));
+        assert_eq!(actual.rows_total, expected.rows_total);
+        assert_eq!(actual.touched_row, expected.touched_row);
+        assert_eq!(
+            doc_b.fetch_rows(0, doc_b.rows_total() as usize),
+            doc_a.fetch_rows(0, doc_a.rows_total() as usize)
+        );
     }
 }

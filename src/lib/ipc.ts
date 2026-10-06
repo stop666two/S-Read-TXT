@@ -209,6 +209,13 @@ export interface BatchNumberingOutcome {
   affected: number;
 }
 
+/** 批量序号执行报告（取消时 applied 为 null 且文档完整回滚）。 */
+export interface BatchApplyReport {
+  cancelled: boolean;
+  affected: number;
+  applied: EditApplied | null;
+}
+
 /** 行操作种类（与 Rust `LineOp` 对齐；26 种）。 */
 export type LineOp =
   | 'moveUp'
@@ -1495,7 +1502,9 @@ export const ipc = {
     invoke<BatchPreview>('preview_batch_numbering', { tabId, config }),
   /** 执行批量序号（单撤销步）。 */
   applyBatchNumbering: (tabId: number, config: BatchNumberingConfig) =>
-    invoke<BatchNumberingOutcome>('apply_batch_numbering', { tabId, config }),
+    invoke<BatchApplyReport>('apply_batch_numbering', { tabId, config }),
+  cancelBatchNumbering: (tabId: number) =>
+    invoke<boolean>('cancel_batch_numbering', { tabId }),
   /** 预览行操作（无变化/边界等以 warning 呈现；参数非法报 LINE_OP_INVALID）。 */
   previewLineOp: (tabId: number, config: LineOpConfig) =>
     invoke<LineOpPreview>('preview_line_op', { tabId, config }),

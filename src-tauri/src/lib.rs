@@ -19,6 +19,7 @@
 pub mod annotations;
 pub mod app_state;
 pub mod background;
+pub mod batch_jobs;
 pub mod cli;
 pub mod clipboard_history;
 pub mod compare;

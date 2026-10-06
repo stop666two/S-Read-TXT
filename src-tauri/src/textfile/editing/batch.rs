@@ -293,6 +293,18 @@ impl EditDoc {
         &mut self,
         config: &BatchNumberingConfig,
     ) -> Result<BatchNumberingOutcome, BatchError> {
+        Ok(self
+            .apply_batch_numbering_cancellable(config, &|| false, &mut |_, _| {})?
+            .expect("不取消时必然返回执行结果"))
+    }
+
+    /// 可取消并上报进度的批量序号；`Ok(None)` = 已取消（文档完整回滚、无撤销步骤）。
+    pub fn apply_batch_numbering_cancellable(
+        &mut self,
+        config: &BatchNumberingConfig,
+        cancel: &dyn Fn() -> bool,
+        progress: &mut dyn FnMut(u64, u64),
+    ) -> Result<Option<BatchNumberingOutcome>, BatchError> {
         let rows = self.batch_target_rows(config)?;
         validate_capacity(config, rows.len() as u64)?;
         let (date, time) = now_date_time();
@@ -303,6 +315,9 @@ impl EditDoc {
             .unwrap_or_default();
         let mut ops = Vec::with_capacity(rows.len());
         for (index, row) in rows.iter().enumerate() {
+            if index % 512 == 0 && cancel() {
+                return Ok(None);
+            }
             let number = config.start + index as u64 * config.step;
             let insert_text = render_insert(
                 config,
@@ -332,11 +347,11 @@ impl EditDoc {
                 text,
             });
         }
-        let applied = self.apply_edits(&ops)?;
-        Ok(BatchNumberingOutcome {
+        let applied = self.apply_edits_cancellable(&ops, cancel, progress)?;
+        Ok(applied.map(|applied| BatchNumberingOutcome {
             applied,
             affected: rows.len() as u64,
-        })
+        }))
     }
 
     /// 计算目标行集合（校验范围、应用跳过规则、执行上限保护）。
@@ -396,14 +411,24 @@ pub(crate) fn resolve_scope_rows(
         }
     };
     let mut rows = Vec::new();
-    for row in from..=to {
-        if skip_empty {
-            let text = doc.row_text(row).unwrap_or_default();
+    if skip_empty {
+        // 单次扫描取候选行文本（逐行 row_text 在大文件上是 O(行×文件) 的重扫）
+        let candidates: Vec<u64> = (from..=to).collect();
+        let texts = doc.texts_for_rows(&candidates);
+        for (index, text) in texts.iter().enumerate() {
             if text.trim().is_empty() {
                 continue;
             }
+            rows.push(candidates[index]);
+            if rows.len() as u64 > max_rows {
+                return Err(BatchError::TooManyRows {
+                    count: rows.len() as u64,
+                    limit: max_rows,
+                });
+            }
         }
-        rows.push(row);
+    } else {
+        rows.extend(from..=to);
         if rows.len() as u64 > max_rows {
             return Err(BatchError::TooManyRows {
                 count: rows.len() as u64,

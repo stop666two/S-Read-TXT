@@ -1134,6 +1134,9 @@ export const en: Record<MessageKey, string> = {
   'batch.previewTitle': 'Preview (first {shown} of {total} rows)',
   'batch.previewEmpty': 'No rows to number (check the scope or "Skip empty rows")',
   'batch.applied': 'Numbered {count} rows (Ctrl+Z to undo)',
+  'batch.progress': 'Applying: {done}/{total} rows',
+  'batch.cancel': 'Cancel task',
+  'batch.cancelled': 'Batch cancelled; no changes applied',
   // ---- Line operations ----
   'lineOps.title': 'Line operations',
   'lineOps.close': 'Close',

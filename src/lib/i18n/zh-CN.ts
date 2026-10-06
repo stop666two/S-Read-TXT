@@ -1121,6 +1121,9 @@ export const zhCN = {
   'batch.previewTitle': '预览（前 {shown} 条，共 {total} 行）',
   'batch.previewEmpty': '没有可插入的行（请检查范围或「跳过空行」）',
   'batch.applied': '已为 {count} 行插入序号（可 Ctrl+Z 撤销）',
+  'batch.progress': '正在应用：{done}/{total} 行',
+  'batch.cancel': '取消任务',
+  'batch.cancelled': '已取消批量操作，未应用任何修改',
   // ---- 行操作 ----
   'lineOps.title': '行操作',
   'lineOps.close': '关闭',

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // P1-1 批量插入序号 E2E（常驻套件）。
-// 场景（B1–B12）：菜单入口 / 默认预览 / 零填充与前后缀 / 行范围（跳空行）/ 模板 /
-//   应用（单撤销步）+ 撤销还原 / 圆圈数字超限错误就地展示 / BATCH_INVALID 错误码 / Esc 关闭 / 截图。
+// 场景（B1–B15）：菜单入口 / 默认预览 / 零填充与前后缀 / 行范围（跳空行）/ 模板 /
+//   应用（单撤销步）+ 撤销还原 / 圆圈数字超限错误就地展示 / BATCH_INVALID 错误码 / Esc 关闭 /
+//   大范围应用进度事件与完成 / 运行中取消（完整回滚、无撤销步骤）/ 截图。
 // 前置：已构建 debug 可执行文件（`npm run tauri build -- --debug --no-bundle`）。
 // 用法：node scripts/smoke-batch.mjs [--exe <路径>] [--screenshot <路径>]
 
@@ -21,6 +22,7 @@ const watchdogMs = Number(process.env.SRT_SMOKE_WATCHDOG_MS ?? '300000');
 const workDir = join(tmpdir(), `srt-batch-${Date.now()}`);
 const dataDir = join(workDir, 'data');
 const testFile = join(workDir, 'batch-sample.txt');
+const largeFile = join(workDir, 'batch-large.txt');
 const port = 9700 + Math.floor(Math.random() * 250);
 
 const checks = [];
@@ -56,6 +58,11 @@ async function main() {
   mkdirSync(workDir, { recursive: true });
   mkdirSync(dataDir, { recursive: true });
   writeFileSync(testFile, 'l1\nl2\n\nl4\nl5\nl6', 'utf8');
+  writeFileSync(
+    largeFile,
+    Array.from({ length: 8000 }, (_, index) => `x${index}`).join('\n'),
+    'utf8',
+  );
 
   const child = spawn(exePath, [], {
     env: {
@@ -290,6 +297,87 @@ async function main() {
       })()`,
     );
     check('B12 IPC 错误码', typeof invalid === 'string' && invalid.includes('BATCH_INVALID'), invalid.slice(0, 80));
+
+    currentStep = 'B14 大范围应用（进度事件）';
+    await evalJs(
+      `(async () => { await window.__srt.openPath(${JSON.stringify(largeFile)}); return true; })()`,
+    );
+    const largeTab = await waitFor(async () => {
+      const tab = await activeTab();
+      return tab && tab.name === 'batch-large.txt' ? tab : null;
+    }, 10_000, '大文件标签');
+    const largeTabId = largeTab.tabId;
+    if (!(await activeTab())?.editing) {
+      await evalJs(`(document.querySelector('[aria-label="切换编辑模式"]')?.click(), true)`);
+      await waitFor(async () => ((await activeTab())?.editing ? true : null), 8_000, '大文件编辑态');
+    }
+    await waitFor(() => evalJs(`!!document.querySelector('textarea.input-proxy')`), 8_000, '大文件编辑层');
+    await clickByText('编辑');
+    await delay(200);
+    await clickByText('批量插入');
+    await waitFor(() => evalJs(`!!document.querySelector('[data-batch-dialog]')`), 5_000, '批量弹窗');
+    await setControl('[data-setting="batch.scope"]', 'all');
+    await setControl('[data-setting="batch.format"]', 'arabic');
+    await delay(150);
+    await evalJs(`document.querySelector('[data-setting="batch.apply"]').click()`);
+    let sawProgress = false;
+    try {
+      await waitFor(() => evalJs(`!!document.querySelector('[data-batch-progress]')`), 6_000, '进度元素');
+      sawProgress = true;
+    } catch {
+      // 进度未出现：由 B14a 断言报失败
+    }
+    await waitFor(() => evalJs(`!document.querySelector('[data-batch-dialog]')`), 60_000, '批量完成关闭');
+    const rowsLarge = await evalJs(
+      `window.__TAURI_INTERNALS__.invoke('get_rows', { tabId: ${largeTabId}, startRow: 0, count: 1 })`,
+    );
+    const rowsLargeTail = await evalJs(
+      `window.__TAURI_INTERNALS__.invoke('get_rows', { tabId: ${largeTabId}, startRow: 7999, count: 1 })`,
+    );
+    check('B14a 大范围应用显示进度元素', sawProgress === true);
+    check(
+      'B14b 8000 行全部编号',
+      (rowsLarge?.rows?.[0]?.text ?? '').startsWith('1.x0') &&
+        (rowsLargeTail?.rows?.[0]?.text ?? '').startsWith('8000.x7999'),
+      `${rowsLarge?.rows?.[0]?.text} | ${rowsLargeTail?.rows?.[0]?.text}`,
+    );
+    await evalJs(`window.__TAURI_INTERNALS__.invoke('undo_edit', { tabId: ${largeTabId} })`);
+    await delay(400);
+    const restored = await evalJs(
+      `window.__TAURI_INTERNALS__.invoke('get_rows', { tabId: ${largeTabId}, startRow: 0, count: 1 })`,
+    );
+    check(
+      'B14c 撤销恢复原状',
+      (restored?.rows?.[0]?.text ?? '') === 'x0' && (await activeTab())?.dirty === false,
+    );
+
+    currentStep = 'B15 运行中取消';
+    await clickByText('编辑');
+    await delay(200);
+    await clickByText('批量插入');
+    await waitFor(() => evalJs(`!!document.querySelector('[data-batch-dialog]')`), 5_000, '批量弹窗');
+    await setControl('[data-setting="batch.scope"]', 'all');
+    await delay(150);
+    await evalJs(`document.querySelector('[data-setting="batch.apply"]').click()`);
+    await waitFor(() => evalJs(`!!document.querySelector('[data-batch-cancel]')`), 6_000, '取消按钮');
+    await evalJs(`document.querySelector('[data-batch-cancel]').click()`);
+    await waitFor(() => evalJs(`!document.querySelector('[data-batch-cancel]')`), 30_000, '取消完成');
+    const rowsCancelled = await evalJs(
+      `window.__TAURI_INTERNALS__.invoke('get_rows', { tabId: ${largeTabId}, startRow: 0, count: 1 })`,
+    );
+    const undoAfterCancel = await evalJs(
+      `window.__TAURI_INTERNALS__.invoke('undo_edit', { tabId: ${largeTabId} })`,
+    );
+    check(
+      'B15a 取消后文档不变',
+      (rowsCancelled?.rows?.[0]?.text ?? '') === 'x0' && (await activeTab())?.dirty === false,
+      JSON.stringify(rowsCancelled?.rows?.[0]?.text),
+    );
+    check('B15b 取消无撤销步骤', undoAfterCancel === null, JSON.stringify(undoAfterCancel));
+    const dialogStillOpen = await evalJs(`!!document.querySelector('[data-batch-dialog]')`);
+    check('B15c 取消后弹窗保持打开', dialogStillOpen === true);
+    await evalJs(`document.querySelector('[data-setting="batch.close"]').click()`);
+    await delay(300);
 
     currentStep = 'B13 截图';
     const shot = await client.send('Page.captureScreenshot', { format: 'png' });

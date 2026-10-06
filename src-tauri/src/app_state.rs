@@ -1033,6 +1033,18 @@ impl AppState {
         Ok(doc.apply_batch_numbering(config)?)
     }
 
+    /// 执行批量序号（可取消 + 进度回调；`None` = 已取消并完整回滚、无撤销步骤）。
+    pub fn apply_batch_numbering_cancellable(
+        &mut self,
+        tab_id: u64,
+        config: &BatchNumberingConfig,
+        cancel: &dyn Fn() -> bool,
+        progress: &mut dyn FnMut(u64, u64),
+    ) -> Result<Option<BatchNumberingOutcome>, AppStateError> {
+        let doc = self.edit_doc_mut(tab_id)?;
+        Ok(doc.apply_batch_numbering_cancellable(config, cancel, progress)?)
+    }
+
     /// 预览行操作（仅编辑标签）。
     pub fn preview_line_op(
         &self,

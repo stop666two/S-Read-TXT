@@ -5,7 +5,8 @@
   坐标：位置 = (行号, 行内 UTF-16 偏移)，与编辑引擎一致；叠加层坐标相对 .page。
 -->
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
+  import { listen } from '@tauri-apps/api/event';
 
   import { readText, writeHtml, writeText } from '@tauri-apps/plugin-clipboard-manager';
 
@@ -277,6 +278,23 @@ import { annotations } from '../state/annotations.svelte';
 
   /** 批量序号弹窗开关 */
   let batchOpen = $state(false);
+
+  /** 批量序号应用进度（来自 `srt://batch-progress`；null = 未在运行） */
+  let batchProgress = $state<{ done: number; total: number } | null>(null);
+
+  onMount(() => {
+    const unlisten = listen<{ tabId: number; done: number; total: number }>(
+      'srt://batch-progress',
+      (event) => {
+        if (event.payload?.tabId === tabId) {
+          batchProgress = { done: event.payload.done, total: event.payload.total };
+        }
+      },
+    );
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  });
 
   /** 行操作弹窗开关 */
   let lineOpsOpen = $state(false);
@@ -1580,18 +1598,26 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
     return ipc.previewBatchNumbering(tabId, config);
   }
 
-  /** 批量序号：执行（单撤销步；失败先提示再抛出，弹窗保持打开）。 */
-  async function applyBatch(config: BatchNumberingConfig): Promise<void> {
-    let outcome;
+  /** 批量序号：执行（单撤销步；返回是否被取消；错误先提示再抛出，弹窗保持打开）。 */
+  async function applyBatch(config: BatchNumberingConfig): Promise<boolean> {
+    batchProgress = null;
     try {
-      outcome = await ipc.applyBatchNumbering(tabId, config);
+      const report = await ipc.applyBatchNumbering(tabId, config);
+      if (report.cancelled || !report.applied) {
+        toasts.show(t('batch.cancelled'), 'info');
+        return true;
+      }
+      const applied = report.applied;
+      await applyResult(async () => applied);
+      toasts.show(t('batch.applied', { count: report.affected }), 'info');
+      return false;
     } catch (error) {
       const payload = toIpcError(error);
       toasts.error(describeIpcError(payload));
       throw error;
+    } finally {
+      batchProgress = null;
     }
-    await applyResult(async () => outcome.applied);
-    toasts.show(t('batch.applied', { count: outcome.affected }), 'info');
   }
 
   /** 行操作：请求预览（错误向上抛出，由弹窗就地展示）。 */
@@ -2444,8 +2470,10 @@ let clipboardEntries = $state<ClipboardEntry[]>([]);
 {#if batchOpen}
   <BatchNumberingDialog
     selectionRows={batchSelectionRows}
+    progress={batchProgress}
     onPreview={previewBatch}
     onApply={applyBatch}
+    onCancel={() => void ipc.cancelBatchNumbering(tabId)}
     onClose={() => {
       batchOpen = false;
       focusEditorProxy();

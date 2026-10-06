@@ -46,9 +46,7 @@ use s_read_txt::snapshots::SnapshotInfo;
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::migrate_dir::{self as migrate_dir, MigrationReport};
 use s_read_txt::storage::paths::{self, DataDirOrigin};
-use s_read_txt::textfile::editing::batch::{
-    BatchNumberingConfig, BatchNumberingOutcome, BatchPreview,
-};
+use s_read_txt::textfile::editing::batch::{BatchNumberingConfig, BatchPreview};
 use s_read_txt::textfile::editing::edit_doc::{EditApplied, EditOp};
 use s_read_txt::textfile::editing::line_ops::{LineOpConfig, LineOpOutcome, LineOpPreview};
 use s_read_txt::textfile::editing::search::{
@@ -278,17 +276,98 @@ pub fn preview_batch_numbering(
     })
 }
 
-/// 命令：执行批量序号（单次编辑 = 单撤销步；仅编辑标签）。
+/// 批量进度事件名（定向到发起窗口）。
+pub const EVENT_BATCH_PROGRESS: &str = "srt://batch-progress";
+
+/// 批量进度事件载荷（行计数口径）。
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchProgress {
+    tab_id: u64,
+    done: u64,
+    total: u64,
+}
+
+/// 批量序号执行结果（取消时不返回编辑结果）。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchApplyReport {
+    /// 是否被用户取消（取消时文档完整回滚、无撤销步骤）
+    pub cancelled: bool,
+    /// 处理行数（取消时为 0）
+    pub affected: u64,
+    /// 引擎编辑结果（取消时为 null）
+    pub applied: Option<EditApplied>,
+}
+
+/// 命令：执行批量序号（异步 + 进度事件 + 可取消；整批 = 单个撤销步）。
 #[tauri::command]
-pub fn apply_batch_numbering(
+pub async fn apply_batch_numbering(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    jobs: State<'_, s_read_txt::batch_jobs::BatchJobs>,
     tab_id: u64,
     config: BatchNumberingConfig,
-    state: State<'_, Mutex<AppState>>,
-) -> Result<BatchNumberingOutcome, IpcError> {
-    with_context(LogContext::request(), || {
-        let mut app_state = lock_state(&state)?;
-        Ok(app_state.apply_batch_numbering(tab_id, &config)?)
+) -> Result<BatchApplyReport, IpcError> {
+    let flag = jobs.register(tab_id);
+    let label = window.label().to_string();
+    let report = tauri::async_runtime::spawn_blocking(move || {
+        let state = tauri::Manager::state::<Mutex<AppState>>(&app);
+        let mut last_emit = std::time::Instant::now();
+        let mut progress = |done: u64, total: u64| {
+            if done == total || last_emit.elapsed() >= std::time::Duration::from_millis(120) {
+                last_emit = std::time::Instant::now();
+                let _ = app.emit_to(
+                    label.as_str(),
+                    EVENT_BATCH_PROGRESS,
+                    BatchProgress {
+                        tab_id,
+                        done,
+                        total,
+                    },
+                );
+            }
+        };
+        let cancel = {
+            let flag = flag.clone();
+            move || flag.load(std::sync::atomic::Ordering::Relaxed)
+        };
+        let mut guard = state.lock().map_err(|_| IpcError::internal("状态锁中毒"))?;
+        let outcome = guard
+            .apply_batch_numbering_cancellable(tab_id, &config, &cancel, &mut progress)
+            .map_err(IpcError::from)?;
+        Ok::<_, IpcError>(outcome)
     })
+    .await
+    .map_err(|err| IpcError::internal(format!("批量任务调度失败：{err}")))??;
+    jobs.finish(tab_id);
+    log::info!(
+        target: "sread::ipc",
+        "批量序号：tab={tab_id} 取消={} 行数={}",
+        report.is_none(),
+        report.as_ref().map(|item| item.affected).unwrap_or(0)
+    );
+    match report {
+        Some(outcome) => Ok(BatchApplyReport {
+            cancelled: false,
+            affected: outcome.affected,
+            applied: Some(outcome.applied),
+        }),
+        None => Ok(BatchApplyReport {
+            cancelled: true,
+            affected: 0,
+            applied: None,
+        }),
+    }
+}
+
+/// 命令：请求取消运行中的批量序号任务（返回是否存在并已发出取消）。
+#[tauri::command]
+pub fn cancel_batch_numbering(
+    jobs: State<'_, s_read_txt::batch_jobs::BatchJobs>,
+    tab_id: u64,
+) -> bool {
+    jobs.cancel(tab_id)
 }
 
 /// 命令：预览行操作（仅编辑标签）。
