@@ -135,6 +135,26 @@
     );
   }
 
+  /**
+   * 原生拖拽协议链：begin →（期间 move）→ end 必须严格串行发送。
+   * WebView2 存在空闲后首条 IPC 被延迟（实测可达 ~19s）的已知行为；
+   * 若不串行，begin 可能晚于 end 到达后端，end 取不到会话而静默失效
+   * （表现为拖影残留、标签不迁移）。所有 move/end 均挂在此链之后。
+   */
+  let nativeBegin: Promise<unknown> | null = null;
+
+  /** 在 begin 链之后发送拖拽移动（失败静默：拖拽会话可能已取消）。 */
+  function sendDragMove(x: number, y: number): void {
+    void (nativeBegin ?? Promise.resolve()).then(() => ipc.dragMove(x, y)).catch(() => undefined);
+  }
+
+  /** 在 begin 链之后发送拖拽结束（会话不存在时后端为空操作）。 */
+  function sendDragEnd(x: number, y: number, cancelled: boolean): void {
+    const begin = nativeBegin ?? Promise.resolve();
+    nativeBegin = null;
+    void begin.then(() => ipc.dragEnd(x, y, cancelled)).catch(() => undefined);
+  }
+
   /** 坐标是否位于指定元素矩形内（跨渲染点判断用）。 */
   function isInsideRect(el: HTMLElement, clientX: number, clientY: number): boolean {
     const rect = el.getBoundingClientRect();
@@ -160,11 +180,12 @@
     const point = screenPoint(event);
     const label =
       tab.untitled != null ? t('untitled.name', { n: tab.untitled }) : tab.name;
-    void ipc
+    nativeBegin = ipc
       .beginTabDrag(current.tabId, label, tab.color, document.documentElement.dataset.themeBase === 'dark')
       .then(() => ipc.dragMove(point.x, point.y))
       .catch(() => {
         nativeActive = false;
+        nativeBegin = null;
       });
   }
 
@@ -186,7 +207,7 @@
     }
     if (nativeActive) {
       const point = screenPoint(event);
-      void ipc.dragMove(point.x, point.y);
+      sendDragMove(point.x, point.y);
       dropLineLeft = null;
       return;
     }
@@ -215,7 +236,7 @@
       suppressClick = true;
       const point = screenPoint(event);
       dragOrigin = null;
-      void ipc.dragEnd(point.x, point.y, false);
+      sendDragEnd(point.x, point.y, false);
       return;
     }
     if (current.active) {
@@ -242,7 +263,7 @@
       nativeActive = false;
       dropLineLeft = null;
       dragOrigin = null;
-      void ipc.dragEnd(0, 0, true);
+      sendDragEnd(0, 0, true);
       return;
     }
     if (drag?.active) {

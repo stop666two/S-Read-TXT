@@ -526,6 +526,7 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 测试基线：Rust **506**（478 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest **138**；svelte-check 0/0；E2E **42 套 ≈667 项**；verify-all **51 步**（smoke-uninstall 仍按 UAC 策略排除）。
 - 本阶段教训（新增）：Serde 枚举 `rename_all` 只作用变体名，字段需显式 `rename`（拆分模式踩坑）；PowerShell 改写源文件会造成 GBK 往返损坏（merge3.rs 事故，已用 write 工具重建并编码自检）；冲突选择索引语义（全区块下标 vs 冲突序号）需在前后端逐字对齐。
 - 环境已知行为（WebView2 空闲 IPC 唤醒延迟）：窗口输入空闲约 1s+ 后，页面→Rust 的首条 invoke 可能延迟 ~16-19s 才投递（Rust 侧日志证明请求未达；CDP eval 不受影响）；合成鼠标移动（真实用户任一输入等价）或 Rust→页面事件可立即唤醒（实测 4ms/250ms）。已实测产品关键路径不受影响：真实用户操作自带输入；后台空闲下第二实例打开文件（CLI 转发）总时延 **250ms**。纯 eval 自动化套件需显式唤醒：`smoke-cdp.mjs` 新增 `wakeChannel()`，smoke-longline C3 先「唤醒 + 轻量往返」确认通道已热再滚动（此刻即使吃满一次 19s 排空也确定性通过）。
+- **同源回归（P3-6 后修复）**：原生拖拽协议三命令（`begin_tab_drag`→`drag_move`→`drag_end`）随后端日志证实可被空闲 IPC 延迟**乱序投递**——`drag_end` 先于 `begin` 到达且取不到会话，静默返回 Ok（拖影残留、标签不迁移、无报错）。修复分两层：①产品侧 `TabBar.svelte` 将 begin→move→end 严格串行（`nativeBegin` 链，end 永远等 begin 完成后发送，Esc/移动同链）；②测试侧 smoke-windows W6 与 smoke.mjs 就绪等待前调用唤醒（`wakeChannel`/`Input.dispatchMouseEvent`）。另修 smoke-split 清理 EPERM：`system.mjs` 新增 `removeWithRetryAsync`（每轮 300ms、默认 20 次），smoke-windows/split 统一改用。验证：smoke-windows 17/17（W6 拖桌面建窗恢复）、smoke-split 26/26 且目录清理成功、smoke 18/18、smoke-tabs 10/10。
 - 下一切片（已完成）：P3-7 会话扩展——见下节。
 
 ### P3-7 会话恢复扩展（restoreItems，完成）
