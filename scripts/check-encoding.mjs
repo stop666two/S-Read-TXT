@@ -2,16 +2,16 @@
 // 用途：检查项目内文本文件是否满足编码规范——UTF-8（RFC 3629）无 BOM、LF 换行
 // 用法：node scripts/check-encoding.mjs
 // 退出码：0 = 全部通过；1 = 存在违规（违规明细输出到 stdout）
-// 说明：跳过依赖/构建产物目录与二进制文件；大文件（>1MB）不检查（不应入库）
-import { readdirSync, readFileSync } from 'node:fs';
+// 说明：跳过依赖/构建产物/临时目录与二进制文件；大文件（>1MB）不检查（不应入库）
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** 项目根目录（本脚本位于 scripts/ 下） */
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** 跳过扫描的目录名（依赖、版本库、构建产物、运行时数据） */
-const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'gen', 'dist', 'data']);
+/** 跳过扫描的目录名（依赖、版本库、构建产物、运行时数据、临时工作区） */
+const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'gen', 'dist', 'data', 'tmp']);
 
 /** 需要检查的文本扩展名（含无扩展名的钩子文件特例） */
 const TEXT_EXTS = new Set([
@@ -48,8 +48,10 @@ function walk(dir) {
     const isHook = entry.name === 'pre-commit';
     if (!TEXT_EXTS.has(ext) && !isHook) continue;
 
+    // 先按文件大小过滤（避免为超限文件做整读），再读取校验
+    const size = statSync(full).size;
+    if (size > MAX_BYTES) continue;
     const buf = readFileSync(full);
-    if (buf.length > MAX_BYTES) continue;
     checked += 1;
     const rel = path.relative(root, full);
 
