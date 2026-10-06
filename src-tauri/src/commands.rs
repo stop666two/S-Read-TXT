@@ -1215,6 +1215,22 @@ pub fn save_settings(
         settings_store::save_snapshot(&dir, &request)
             .map_err(|err| IpcError::new(CODE_CONFIG_SAVE, format!("保存配置失败：{err}")))?;
         log::info!(target: "sread::ipc", "配置已保存");
+        // 主题可能变化：同步各无边框窗口的窗口画刷底色（避免边缘露出旧色/白底）
+        let theme =
+            theme::resolve_theme(&dir, &settings_store::load_reader_settings(&dir).theme_id).ok();
+        let color = theme
+            .as_ref()
+            .map(crate::theme_background_color)
+            .unwrap_or(tauri::window::Color(0xFA, 0xF9, 0xF7, 0xFF));
+        for (label, window) in app.webview_windows() {
+            if label == "main"
+                || label.starts_with("main-")
+                || label == "settings"
+                || label == "compare"
+            {
+                let _ = window.set_background_color(Some(color));
+            }
+        }
         let _ = app.emit(
             EVENT_SETTINGS_CHANGED,
             serde_json::json!({ "kind": "save" }),
@@ -2795,6 +2811,23 @@ pub async fn open_settings(app: tauri::AppHandle, tab: Option<String>) -> Result
     .center()
     .build()
     .map_err(|err| IpcError::internal(format!("创建设置窗口失败：{err}")))?;
+    // 无边框窗口的边缘区域由窗口画刷绘制：按当前主题设置底色，避免露出默认白底
+    if let Some(window) = app.get_webview_window("settings") {
+        let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))
+            .ok()
+            .or_else(|| app.default_window_icon().cloned());
+        if let Some(icon) = icon {
+            let _ = window.set_icon(icon);
+        }
+        let (dir, _origin) = paths::resolve_data_dir();
+        let theme =
+            theme::resolve_theme(&dir, &settings_store::load_reader_settings(&dir).theme_id).ok();
+        let color = theme
+            .as_ref()
+            .map(crate::theme_background_color)
+            .unwrap_or(tauri::window::Color(0xFA, 0xF9, 0xF7, 0xFF));
+        let _ = window.set_background_color(Some(color));
+    }
     log::info!(target: "sread::ipc", "设置窗口已创建");
     Ok(())
 }

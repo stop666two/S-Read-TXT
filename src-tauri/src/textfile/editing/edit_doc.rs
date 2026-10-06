@@ -2896,7 +2896,12 @@ mod tests {
                 file.write_all(line.as_bytes()).expect("写基准文件失败");
             }
         }
+        let open_start = std::time::Instant::now();
         let doc = EditDoc::open(&path, None, 100).expect("打开失败");
+        println!(
+            "EditDoc::open(100MB/1.3M 行)：{}ms",
+            open_start.elapsed().as_millis()
+        );
         for row in [0u64, 100_000, 600_000, 1_299_000] {
             let start = std::time::Instant::now();
             let rows = doc.fetch_rows(row, 40);
