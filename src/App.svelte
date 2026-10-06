@@ -1878,26 +1878,45 @@ onMount(() => {
       .catch(() => {
         // 忽略：聚焦失败不影响使用（用户点击窗口后仍可正常操作）
       });
+    // 首帧后再执行非关键加载（版本/编码列表/历史预载），降低首屏主线程与 IPC 竞争
+    const scheduleDeferred = (task: () => void): void => {
+      const idle = (
+        window as Window & {
+          requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
+        }
+      ).requestIdleCallback;
+      if (typeof idle === 'function') {
+        idle(task, { timeout: 300 });
+      } else {
+        requestAnimationFrame(() => requestAnimationFrame(task));
+      }
+    };
     // 版本号（状态栏无文件时展示；失败不阻塞启动）
-    void ipc.getAppInfo().then(
-      (info) => {
-        version = `v${info.version}`;
-      },
-      (error: unknown) => toasts.error(describeIpcError(toIpcError(error))),
-    );
+    scheduleDeferred(() => {
+      void ipc.getAppInfo().then(
+        (info) => {
+          version = `v${info.version}`;
+        },
+        (error: unknown) => toasts.error(describeIpcError(toIpcError(error))),
+      );
+    });
     // 编码列表（工具栏编码下拉；失败同样显式提示）
-    void ipc.listEncodings().then(
-      (list) => {
-        encodings = list;
-      },
-      (error: unknown) => toasts.error(describeIpcError(toIpcError(error))),
-    );
+    scheduleDeferred(() => {
+      void ipc.listEncodings().then(
+        (list) => {
+          encodings = list;
+        },
+        (error: unknown) => toasts.error(describeIpcError(toIpcError(error))),
+      );
+    });
     // 数据目录可写性探测（不可写 → 弹引导：选择可写目录 / 仅本次只读运行）
     void dataDirStore.check();
     // 自动化测试钩子：主题切换走真实应用路径（E2E 截图与断言用）
     if (window.__srt) window.__srt.setTheme = (id: string) => setTheme(id);
-    // 历史记录预载（面板与「最近打开」子菜单共用数据源）
-    void historyStore.load();
+    // 历史记录预载（面板与「最近打开」子菜单共用数据源；首帧后加载）
+    scheduleDeferred(() => {
+      void historyStore.load();
+    });
 
     // 窗口关闭拦截（X 按钮/系统关闭）：仅处理**本窗口**标签——
     // 有脏标签走三态确认；确认后落盘会话并关闭（最后一窗写干净退出标记）
