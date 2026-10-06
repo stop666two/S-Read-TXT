@@ -47,6 +47,7 @@ class SettingsStore {
     if (!this.snapshot) return;
     const base = this.pendingApp ?? this.snapshot.app;
     this.pendingApp = buildPatch(base, id, value);
+    this.snapshot = { ...this.snapshot, app: this.pendingApp };
     await this.persist({ app: this.pendingApp, kind: 'app' });
   }
 
@@ -55,6 +56,7 @@ class SettingsStore {
     if (!this.snapshot) return;
     const base = this.pendingReader ?? this.snapshot.reader;
     this.pendingReader = buildPatch(base, id, value);
+    this.snapshot = { ...this.snapshot, reader: this.pendingReader };
     await this.persist({ reader: this.pendingReader, kind: 'reader' });
   }
 
@@ -100,6 +102,17 @@ class SettingsStore {
       this.liveTimer = null;
     }
     await this.saveReader(patch);
+  }
+
+  /** 作废在途保存与挂起态：重置/导入前调用，防止更早发出的保存响应回灌覆盖新快照。 */
+  private invalidatePendingSaves(): void {
+    this.saveSeq += 1;
+    this.pendingApp = null;
+    this.pendingReader = null;
+    if (this.liveTimer !== null) {
+      clearTimeout(this.liveTimer);
+      this.liveTimer = null;
+    }
   }
 
   /** 内部：合并保存并广播（shortcuts 始终带上当前生效表，避免覆盖）。
@@ -149,6 +162,7 @@ class SettingsStore {
 
   /** 重置设置（全部 / 分组 / 单项）并采纳返回快照 */
   async resetScope(scope: ResetScope): Promise<void> {
+    this.invalidatePendingSaves();
     try {
       this.snapshot = await ipc.resetSettings(scope);
     } catch (error) {
@@ -168,6 +182,7 @@ class SettingsStore {
 
   /** 从导出文件导入设置（强校验失败提示具体原因） */
   async importFrom(path: string): Promise<void> {
+    this.invalidatePendingSaves();
     try {
       this.snapshot = await ipc.importSettings(path);
       toasts.show(t('settings.importDone'));

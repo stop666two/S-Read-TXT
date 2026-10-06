@@ -4,8 +4,6 @@
   `onCommit` 立即落盘。内部维护拖动态值，外部值变化（重载/重置）自动同步。
 -->
 <script lang="ts">
-  import { untrack } from 'svelte';
-
   interface Props {
     /** 设置项名称（行标题） */
     label: string;
@@ -36,11 +34,10 @@
   let { label, desc, value, min, max, step, unit, setting, onLive, onCommit, onReset, resetLabel }: Props =
     $props();
 
-  /** 拖动态/输入态当前值（以外部值为源同步；初始值经 untrack 捕获，后续由 $effect 同步） */
-  let current = $state(untrack(() => value));
-  $effect(() => {
-    current = value;
-  });
+  /** 拖动中的本地覆盖值（仅交互期间使用；外部值到达即自动让位，重置/重载天然生效） */
+  let interacting = $state(false);
+  let local = $state(0);
+  const current = $derived(interacting ? local : value);
 
   /** 钳制到允许区间 */
   function clamp(raw: number): number {
@@ -81,12 +78,17 @@
       {step}
       value={current}
       oninput={(event) => {
-        current = Number((event.currentTarget as HTMLInputElement).value);
-        onLive?.(current);
+        interacting = true;
+        local = Number((event.currentTarget as HTMLInputElement).value);
+        onLive?.(local);
       }}
-      onchange={(event) =>
+      onchange={(event) => {
         // 读事件值而非内部状态：change 可能独立于 input 到达（程序化事件/极端时序）
-        onCommit(clamp(Number((event.currentTarget as HTMLInputElement).value)))}
+        const next = clamp(Number((event.currentTarget as HTMLInputElement).value));
+        local = next;
+        onCommit(next);
+        interacting = false;
+      }}
     />
     <input
       class="num"
@@ -100,8 +102,9 @@
       onchange={(event) => {
         const parsed = Number((event.currentTarget as HTMLInputElement).value);
         if (!Number.isFinite(parsed)) return;
-        current = clamp(parsed);
-        onCommit(current);
+        const next = clamp(parsed);
+        local = next;
+        onCommit(next);
       }}
     />
     <span class="unit">{unit}</span>
