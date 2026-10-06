@@ -570,4 +570,5 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
   - 内存红线复测（100MB 单行/多行，含修剪）：只读打开 ~0MB 增量（修剪后工作集 3-12MB 级别）；编辑态 2000 行散布编辑后应用进程私有 ~87MB；双窗口+编辑 ~117MB（进程树合计含 WebView2 运行时 ~630MB）；软限制默认 512MB 语义不变；
   - 启动速度实测（debug 构建，`measure-startup`）：窗口可见 min/median/max = 625/1067/1855ms，内容就绪（首跑冷 WebView2 配置目录 13.7s）/热路径 1.07-3.49s；release 验收数据此前为可见 max 631ms/就绪 median 763ms（验收线内）；
   - 设置窗“左右白条”修复：无边框窗口（设置窗/主窗/比较窗）在创建与主题切换时按解析主题设置**窗口画刷底色**（`set_background_color`），避免边缘区域露出系统默认白底；
-  - 覆盖率（llvm-tools）：工具链未安装（`llvm-cov`/`llvm-profdata` 缺失，用户约定自装），记录为**待工具就绪**，不阻塞本轮交付。
+  - 覆盖率（llvm-tools）：`llvm-tools` 组件与 `cargo-llvm-cov` 已装，但 **windows-gnu 目标缺 `profiler_builtins`**（`-C instrument-coverage` 在构建脚本即 E0463 失败）——需 MSVC 工具链方可实测；记录为**受环境限制待办**，不阻塞本轮交付。
+  - 追加优化（2026-10-07）：**批量应用单遍重建片段表**（非重叠批次 O(文件+操作)，重叠回退旧路径）——100MB/10 万处散布插入 apply **1.76s**（此前推算二次项需约 27 分钟），新增等价/CRLF/多片段/重叠回退 3 项单测（lib 507）；保存加 256KB 缓冲写（10 万片段 2.6s→0.5s）；**启动首帧后延迟加载**（版本/编码/历史）——debug 热启动就绪中位 **1660→1106ms**、可见 1039→824ms，方差显著收敛（冷首跑离群为 Defender/WebView2 配置目录生成）。
