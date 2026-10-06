@@ -4,6 +4,17 @@
 
 ## [未发布]
 
+### P4（系统与发布）
+
+- 设置 schema **v17**：新增可访问性（`a11y.reduceMotion` / `fontScale` / `focusVisible` / `screenReader` / `highContrastOverlay`）、系统（`system.performanceMode` / `memoryLimitMB` / `crashLog` / `offlineMode`）、更新（`update.sourceUrl`）三节；并把全部用户可见上限提升为可调设置：`maxPanes`（1–16）、`maxImportMB`、`file.exportMaxMB` / `printMaxMB`、`tools.compareMaxMB` / `splitMaxMB` / `splitMaxParts` / `splitPreviewParts` / `workspaceMatchCap`、`display.outlineMaxItems` / `foldMaxRegions` / `foldScanMaxRows`、`editor.clipboard.entryMaxChars`、`annotations.maxPerKind` / `noteMaxChars` / `labelMaxChars`、`startup.maxSessionFolds` / `maxWindows`（所有消费方均从设置读取，提示文案随语言本地化）；
+- **命令面板**：`Ctrl+Shift+P`（新快捷键动作 `commandPalette`，默认绑定第 20 项）打开，聚合全部菜单与快捷键动作（46 条），支持分词过滤、上下键选择、回车执行、Esc 关闭；
+- **可访问性运行时**：减少动画跟随系统偏好并可强制覆盖（主题过渡/翻页动画/Toast 等联动）；字体缩放作用于窗口根节点；高对比叠加层、增强焦点轮廓、屏幕阅读器增强播报（Toast 区域 `aria-live`）；
+- **隐私与本地数据**：「系统」页显示各类本地数据用量（历史/会话/快照/批注/剪贴板/日志）并可**按类清除**（含二次确认；逐类容错、被占用文件计入跳过；可保留会话文件）；崩溃日志写入 `logs/crash-<时间戳>.log`（可在设置关闭）；**无网络模式默认开启**——唯一联网行为是手动「检查更新」，且检查前弹出「临时联网」确认；
+- **更新检查**（关于页）：更新源支持 GitHub 仓库地址（自动换算 API）或发布 JSON 地址；展示最新版本与发布页，下载安装包到数据目录 `updates/` 并**强校验 sha256**（不匹配即删除并报错），可定位文件；源缺失/不可达/摘要不符均有本地化提示；
+- 依赖：新增 `ureq`（HTTP，锁 2.12.1）、`sha2`（0.10.9）、`tauri-plugin-opener`（2.7.0，打开链接/定位文件）；
+- 修复：`mem` 模块测试的多余 `unsafe` 警告；
+- 测试：新增 5 个套件并入 verify-all（现 **57 步**；`smoke-palette` 7 / `smoke-caps` 21 / `smoke-a11y` 10 / `smoke-privacy` 10 / `smoke-update` 8）；Rust 529；vitest 154。
+
 ### 性能与内存
 
 - 修复：100MB 级大文件的「文档统计」逐字符字素计数在调试构建下可占满一核约一分钟（实机采样定位为 `unicode_segmentation` 热点）——统计新增**纯 ASCII 快路径**（码点/词/字素按字节计数，CRLF 合并与跨块语义保持，非 ASCII 仍走字素算法），大文件统计降至秒级；实测打开 100MB 单行文件后 CPU 火焰消失；

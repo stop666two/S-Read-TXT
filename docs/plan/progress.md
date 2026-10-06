@@ -550,3 +550,14 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 实测效果（隔离数据目录，100MB 单行文件）：稳定工作集 **~117MB → ~3-12MB**；CPU 火焰消失（统计后归零）；修剪日志实测 `ok=1 135MB→…` 连续生效 4 次；mmap 文件页按需软缺页回读，滚动/取行功能无回归。
 - 测试基线（本补丁后）：Rust **515**（487 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 138；svelte-check 0/0；回归 smoke.mjs 18/18、smoke-longline 9/9、smoke-scroll 4/4。
 - 教训（新）：① 便携数据目录为 **exe 相对**，探针必须显式 `SRT_DATA_DIR` 隔离，否则会话累积污染测量；② frida `enumerateThreads` 会短暂挂起目标进程（高频采样会扰动被测循环，需配合 PS 线程 CPU 差值与一次性采样交叉验证）；③ 调试构建的逐字符算法（字素/UAX 处理）在百 MB 级数据上是分钟级性能陷阱，字节级快路径是必要优化。
+
+## P4：系统与发布（任务 1-5 完成，任务 6-7 进行中，2026-10-06）
+
+- 命令面板（2c9ce72）：Ctrl+Shift+P（新快捷键动作第 20 项）聚合全部菜单/快捷键动作 46 条，分词过滤、上下键、回车执行、Esc 关闭；smoke-palette 7/7。
+- 可访问性（671ed07/aa2efa4）：reduceMotion（跟随系统/强制/关闭）+ fontScale（80-200%，作用于根节点）+ highContrastOverlay + focusVisible + screenReader（Toast aria-live）+ performanceMode，实时联动主窗与设置窗；smoke-a11y 10/10；截图 docs/screenshots/phase-p4-a11y.png。
+- 用户可见上限全部可调（5b0fef9/0d9e79b/3366b9d/e36c40b）：18 项上限进入设置 v17（分屏/窗口数/导出/打印/比较/拆分份数与预览/工作区匹配/大纲/折叠/剪贴板单条/批注三项/导入/会话折叠），全部消费方从设置读取且提示本地化；smoke-caps 21/21（每项成对验证拒绝↔放行，含两次重启的 maxWindows 验证）。
+- 隐私与本地数据：按类用量统计与清除（历史/会话/快照/批注/剪贴板/日志，逐类容错、二次确认、可保留会话）；崩溃日志 panic hook（logs/crash-<ts>.log，可关）；smoke-privacy 10/10。
+- 更新检查：可配置更新源（GitHub 仓库自动换算 API 或发布 JSON 地址）；下载安装包到 updates/ 并强校验 sha256（不符即删除报错）；无网络模式默认开启（检查前二次确认）；桩服务器 + smoke-update 8/8（含摘要篡改/缺源/不可达）。
+- 套件并入：5 个新套件进入 verify-all（现 57 步，默认全量；smoke-uninstall 单列，需 UAC）。
+- 测试基线：Rust 529（501 lib + 15 对抗 + 2 助手 + 6 统计 + 5 集成）；vitest 154；E2E 48 套≈736 项；svelte-check 0/0。
+- 待办（任务 7 技术债）：保存路径 coalesce/mmap 基准、编辑批次异步分片与进度取消、内存红线复测、覆盖率（llvm-tools）。

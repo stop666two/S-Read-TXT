@@ -115,6 +115,11 @@ const steps = [
   { name: 'E2E 主题系统（smoke-theme）', cmd: 'node scripts/smoke-theme.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 背景图（smoke-bg）', cmd: 'node scripts/smoke-bg.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 双阈值（smoke-limits）', cmd: 'node scripts/smoke-limits.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 命令面板（smoke-palette）', cmd: 'node scripts/smoke-palette.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 限额可调（smoke-caps）', cmd: 'node scripts/smoke-caps.mjs', cwd: root, env: process.env, timeout: 900_000 },
+  { name: 'E2E 可访问性（smoke-a11y）', cmd: 'node scripts/smoke-a11y.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 隐私清除（smoke-privacy）', cmd: 'node scripts/smoke-privacy.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 更新检查（smoke-update）', cmd: 'node scripts/smoke-update.mjs', cwd: root, env: process.env, timeout: 600_000 },
   {
     name: '离线核查（offline-check）',
     cmd: 'node scripts/offline-check.mjs --exe src-tauri/target/debug/s-read-txt.exe',

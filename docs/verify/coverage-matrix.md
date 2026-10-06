@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust **515**（487 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 138；E2E 43 套 ≈680 项；verify-all 52 步（默认全量、无排除）。
+- 计数口径：Rust **529**（501 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 154；E2E 48 套 ≈736 项；verify-all 57 步（默认全量、无排除）。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -40,6 +40,11 @@
 | smoke-uninstall | 6 | 卸载：静默安装/卸载/注册表/数据清理 |
 | smoke-abuse | 41 | 对抗：空文件/换行族/BOM/连打/撤销狂按/冲突/长行 |
 | smoke-scroll | 4 | 滚动完整性：跳转/滚轮/震荡/滑块联动 |
+| smoke-palette | 7 | 命令面板：Ctrl+Shift+P 打开/命令数（46）/过滤定位设置命令并回车执行/无文件时 undo 禁用/Esc 关闭/点击新建文件生效 |
+| smoke-caps | 21 | 限额可调（受限拒绝↔放宽放行成对）：分屏 1↔2（含中英提示）、导出 1↔10MB、打印 1MB 拒绝、比较 16↔64MB、拆分份数 2↔10 与预览截断、工作区逐文件截断、大纲 120→100、折叠 150+→100、剪贴板 200→100、注释 150→100 与书签 20→10、导入 1↔8MB、启动窗口 1↔16（两次重启） |
+| smoke-a11y | 10 | 可访问性：系统页与分组、reduce-motion / hc-overlay / focus-strong 实时联动、字体缩放 125%（主窗+设置窗 zoom）、屏幕阅读器 aria-live 切换、性能模式（含减少动画）、截图 |
+| smoke-privacy | 10 | 隐私：用量统计与预置一致、隐私区块渲染、计数回显、清除二次确认、历史/快照/批注/剪贴板清除且未勾选会话保留、清除后用量刷新 |
+| smoke-update | 8 | 更新检查：更新源输入、关于页按钮、无网络模式先确认（取消不联网）、发现新版本、下载摘要一致（本地桩）、摘要不符不落盘、未配置源本地提示、源不可达失败提示 |
 | smoke-limits | 6 | 双阈值：只读标记/编辑禁用/硬上限拒绝/设置滑块 |
 | smoke-settings-io | 24 | 设置 I/O：迁移/导出/篡改拒绝/导入/重置/注册表/**语言持久化（重启英文 UI：工具栏/状态栏/标题栏/菜单/空状态）**/**快捷键导出·导入·未知动作拒绝** |
 | smoke-settings-v2 | 10 | 设置 v2（P0-4）：搜索过滤/无匹配/清空恢复/单项重置/分组重置/全部重置/导入导出按钮原生对话框/语言下拉即时切换/分组折叠 |
@@ -65,6 +70,8 @@
 | open_file / get_rows / set_encoding / list_encodings | smoke-edit/find/ime/i18n/abuse/limits/scroll 全员；Rust textfile 全套 |
 | list_tabs / close_tab / set_active_tab / reorder_tab | smoke-tabs T1–T8；smoke-shortcuts K 系列；Rust app_state 19 项 |
 | open_settings / take_settings_tab | smoke-buttons D12；smoke-settings S9/S13；smoke-limits L6 |
+| privacy_usage / privacy_clear | smoke-privacy P1–P10；Rust privacy（用量/清除/回退）单测 |
+| check_update / download_update / reveal_update_file / open_update_page | smoke-update U1–U8（本地桩服务器：正常/摘要不符/缺源/不可达）；Rust update 8 项（版本比较/URL 归一/摘要解析/资产选择/文件名清洗） |
 | list_fonts / import_font / remove_font / read_font_data | smoke-settings S15a–S15g（含 FontFace 实际加载断言）；Rust fonts 7 项 |
 | toggle_edit / apply_edits / undo_edit / redo_edit | smoke-edit；smoke-abuse（撤销/重做狂按）；smoke-find；Rust editing 84 项 |
 | save_tab / save_tab_as / reload_tab | smoke-edit；smoke-find F12/F14；smoke-shortcuts K12 |
@@ -177,3 +184,4 @@
 - 2026-10-05 P3-7：会话恢复扩展（设置 schema v16 `startup.restoreItems`：光标/滚动/折叠/窗口布局；会话 v4 光标与折叠锚点；恢复期越界裁剪提示与总开关语义；设置字段级挂起态合并修复连点竞态）；smoke-restore 13/13 并入 verify-all（现 **52 步；默认全量、无排除**，smoke-uninstall 运行时弹一次 UAC 确认）；Rust 506；vitest 138。
 - 2026-10-05 P3-6：工具（拆分/批量重命名/比较/三方合并）——首运提示修复（仅确有快照才提示）；拆分引擎（行数/标记双模式）；重命名引擎（组合规则+两阶段改名+撤销日志）；diff（Myers hash）与 diff3 引擎；比较窗口（并排/统一、懒加载、导航）；三方合并（冲突逐块选择、写回 + .bak + 撤销）；smoke-utility 11/11、smoke-compare 19/19 并入 verify-all（现 51 步）；Rust 506；vitest 138；命令新增 preview_split/apply_split/scan_rename_dir/preview_rename/apply_rename/undo_rename/read_rename_log/open_compare_window/take_compare_request/diff_docs/merge3_docs/compare_rows/merge_rows/write_merge_output/undo_merge_writeback；窗口能力白名单增补 compare。
 - 2026-10-06 性能与内存优化：文档统计 ASCII 快路径（修 100MB 文件统计烧满一核约一分钟）；大文件工作集修剪（`mem`：打开/换编码/重载/统计/比较加载后延迟防抖修剪 + 比较窗口关闭释放）；大行看门狗按行宽自适应。实测稳定工作集 ~117MB→~3-12MB、CPU 火焰消失；Rust 515（lib 487 + 新增 stats 4 项 / mem 2 项）；smoke-longline 9/9、smoke-scroll 4/4、smoke.mjs 18/18 回归。
+- 2026-10-06 P4（系统与发布）：设置 schema v17（a11y/system/update 三节 + 全部用户可见上限可调）；命令面板（Ctrl+Shift+P，46 命令）；可访问性运行时（减少动画/字体缩放/高对比/焦点/屏幕阅读器/性能模式）；隐私清除（按类 + 二次确认）与崩溃日志（可关）+ 无网络模式默认开；更新检查（可配置源 + sha256 校验 + 桩服务器测试）；新增 smoke-palette 7/7、smoke-caps 21/21、smoke-a11y 10/10、smoke-privacy 10/10、smoke-update 8/8 并入 verify-all（现 **57 步**）；Rust 529；vitest 154；命令新增 privacy_usage/privacy_clear/check_update/download_update/reveal_update_file/open_update_page；依赖新增 ureq/sha2/tauri-plugin-opener（锁版本）。
