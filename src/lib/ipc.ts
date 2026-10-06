@@ -995,6 +995,30 @@ export interface PrivacyReport extends PrivacyUsage {
   skipped: number;
 }
 
+/** 发布资产（安装包）信息（与 Rust `UpdateAsset` 对应）。 */
+export interface UpdateAsset {
+  name: string;
+  url: string;
+  sha256: string | null;
+  size: number | null;
+}
+
+/** 更新信息（与 Rust `UpdateInfo` 对应）。 */
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  newer: boolean;
+  releaseUrl: string;
+  asset: UpdateAsset | null;
+}
+
+/** 下载结果（与 Rust `DownloadedUpdate` 对应）。 */
+export interface DownloadedUpdate {
+  path: string;
+  bytes: number;
+  sha256: string;
+}
+
 /** 配置聚合快照（`get_settings` 返回体）。 */
 export interface SettingsSnapshot {
   app: AppSettings;
@@ -1616,6 +1640,11 @@ export const ipc = {
   clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
   privacyUsage: () => invoke<PrivacyUsage>('privacy_usage'),
   privacyClear: (scope: PrivacyScope) => invoke<PrivacyReport>('privacy_clear', { scope }),
+  checkUpdate: (source: string, current: string) => invoke<UpdateInfo>('check_update', { source, current }),
+  downloadUpdate: (url: string, sha256: string | null, fileName: string | null) =>
+    invoke<DownloadedUpdate>('download_update', { url, sha256, fileName }),
+  revealUpdateFile: (path: string) => invoke<void>('reveal_update_file', { path }),
+  openUpdatePage: (url: string) => invoke<void>('open_update_page', { url }),
   setBackgroundFile: (path: string) => invoke<BackgroundEntry>('set_background_file', { path }),
   clearBackgroundFile: (fileName: string) => invoke<void>('clear_background_file', { fileName }),
   readBackgroundImage: (fileName: string) =>

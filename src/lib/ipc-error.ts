@@ -57,6 +57,9 @@ const ERROR_MESSAGE_KEYS: Record<string, MessageKey> = {
   SPLIT_INVALID: 'error.splitInvalid',
   RENAME_INVALID: 'error.renameInvalid',
   DIFF_TOO_COMPLEX: 'error.diffTooComplex',
+  UPDATE_SOURCE: 'error.updateSource',
+  UPDATE_FAILED: 'error.updateFailed',
+  UPDATE_DIGEST: 'error.updateDigest',
   INTERNAL: 'error.internal',
 };
 

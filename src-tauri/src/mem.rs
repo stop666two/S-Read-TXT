@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn trim_releases_file_pages() {
         #[cfg(windows)]
-        unsafe {
+        {
             use windows_sys::Win32::System::ProcessStatus::{
                 GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
             };

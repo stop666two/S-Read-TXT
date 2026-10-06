@@ -104,6 +104,12 @@ pub const CODE_THEME_INVALID: &str = "THEME_INVALID";
 pub const CODE_SPLIT_INVALID: &str = "SPLIT_INVALID";
 /// 批量重命名非法（冲突/重名/保留名/位数越界等）。
 pub const CODE_RENAME_INVALID: &str = "RENAME_INVALID";
+/// 更新源地址缺失 / 非法（非 http(s) 或格式不支持）。
+pub const CODE_UPDATE_SOURCE: &str = "UPDATE_SOURCE";
+/// 更新请求失败（网络错误 / 响应解析失败 / 下载中断）。
+pub const CODE_UPDATE_FAILED: &str = "UPDATE_FAILED";
+/// 安装包摘要校验失败。
+pub const CODE_UPDATE_DIGEST: &str = "UPDATE_DIGEST";
 /// 内部错误（锁中毒等）
 pub const CODE_INTERNAL: &str = "INTERNAL";
 

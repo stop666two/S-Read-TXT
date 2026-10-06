@@ -149,6 +149,8 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         // 剪贴板能力（复制/剪切/粘贴走 Rust 侧，避免 WebView 的剪贴板权限弹窗）
         .plugin(tauri_plugin_clipboard_manager::init())
+        // 打开链接/定位文件（更新检查的「打开发布页」「打开文件位置」）
+        .plugin(tauri_plugin_opener::init())
         // 窗口级图标：显式设置（任务栏小图标 + Alt-Tab 大图标均可见）。
         // 优先使用 128px 图标（缩放到各尺寸更清晰），解码失败回退构建期内置图标。
         .setup(move |app| {
@@ -357,6 +359,10 @@ fn main() {
             commands::clear_cache,
             commands::privacy_usage,
             commands::privacy_clear,
+            commands::check_update,
+            commands::download_update,
+            commands::reveal_update_file,
+            commands::open_update_page,
             commands::migrate_data_dir,
             commands::restart_app,
             commands::set_background_file,

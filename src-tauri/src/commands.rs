@@ -29,6 +29,7 @@ use s_read_txt::ipc_error::{
     CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_PRINT_TOO_LARGE, CODE_RENAME_INVALID,
     CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET,
     CODE_SNAPSHOT_INVALID, CODE_SPLIT_INVALID, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
+    CODE_UPDATE_SOURCE,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -1287,6 +1288,61 @@ pub fn privacy_clear(
         // 会话文件被删后，通知各窗口刷新（新窗口不再按旧会话恢复）
         Ok(report)
     })
+}
+
+/// 命令：检查更新（按配置的更新源拉取发布信息；网络请求在阻塞线程池执行）。
+#[tauri::command]
+pub async fn check_update(
+    source: String,
+    current: String,
+) -> Result<s_read_txt::update::UpdateInfo, IpcError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        s_read_txt::update::check_update(&source, &current)
+    })
+    .await
+    .map_err(|err| IpcError::internal(format!("更新检查任务调度失败：{err}")))?
+    .map_err(s_read_txt::update::UpdateError::to_ipc)
+}
+
+/// 命令：下载安装包到数据目录 `updates/`（可带 sha256 强校验；落盘前写 `.part` 临时文件）。
+#[tauri::command]
+pub async fn download_update(
+    url: String,
+    sha256: Option<String>,
+    file_name: Option<String>,
+) -> Result<s_read_txt::update::DownloadedUpdate, IpcError> {
+    let (dir, _origin) = paths::resolve_data_dir();
+    let dest = dir.join("updates");
+    tauri::async_runtime::spawn_blocking(move || {
+        s_read_txt::update::download_asset(&url, sha256.as_deref(), &dest, file_name.as_deref())
+    })
+    .await
+    .map_err(|err| IpcError::internal(format!("下载任务调度失败：{err}")))?
+    .map_err(s_read_txt::update::UpdateError::to_ipc)
+}
+
+/// 命令：在文件管理器中定位已下载的安装包。
+#[tauri::command]
+pub fn reveal_update_file(app: tauri::AppHandle, path: String) -> Result<(), IpcError> {
+    use tauri_plugin_opener::OpenerExt;
+    let target = s_read_txt::update::ensure_revealable(&path)
+        .map_err(s_read_txt::update::UpdateError::to_ipc)?;
+    app.opener()
+        .reveal_item_in_dir(&target)
+        .map_err(|err| IpcError::internal(format!("打开文件位置失败：{err}")))
+}
+
+/// 命令：用系统默认浏览器打开发布页面（仅允许 http(s)）。
+#[tauri::command]
+pub fn open_update_page(app: tauri::AppHandle, url: String) -> Result<(), IpcError> {
+    use tauri_plugin_opener::OpenerExt;
+    let trimmed = url.trim();
+    if !trimmed.starts_with("https://") && !trimmed.starts_with("http://") {
+        return Err(IpcError::new(CODE_UPDATE_SOURCE, "仅允许打开 http(s) 链接"));
+    }
+    app.opener()
+        .open_url(trimmed, None::<&str>)
+        .map_err(|err| IpcError::internal(format!("打开发布页失败：{err}")))
 }
 
 /// 命令：默认快捷键表（动作 id → 组合键；设置界面「恢复默认」的唯一真源）。
