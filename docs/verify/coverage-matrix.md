@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust **529**（501 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 154；E2E 48 套 ≈736 项；verify-all 57 步（默认全量、无排除）。
+- 计数口径：Rust **532**（504 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 154；E2E 48 套 ≈742 项；verify-all 57 步（默认全量、无排除）。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -10,7 +10,7 @@
 |---|---|---|
 | smoke-edit | 12 | 编辑基础：输入/撤销/保存/脏标记/编码弹窗 |
 | smoke-find | 27 | 查找替换：大小写/正则/预览剔除/撤销/高亮/菜单 + 全词/计数/历史/行范围/设置新控件 |
-| smoke-batch | 16 | 批量序号（P1-1）：菜单入口/默认预览（跳空行）/零填充与前后缀/行范围/模板/应用+单撤销/超限错误就地展示/BATCH_INVALID |
+| smoke-batch | 22 | 批量序号（P1-1 + P4）：菜单入口/默认预览（跳空行）/零填充与前后缀/行范围/模板/应用+单撤销/超限错误就地展示/BATCH_INVALID/大范围进度事件与 8000 行全量编号/运行中取消（回滚、无撤销步骤、弹窗保留） |
 | smoke-lineops | 16 | 行操作（P1-2）：菜单入口/默认操作预览/排序预览与应用/单撤销/去重保留末次/缩进参数/末尾换行（文件级）/参数错误就地展示/LINE_OP_INVALID/Esc/截图 |
 | smoke-multi | 18 | 多光标（P1-3）：修饰键单击加/移除光标、多光标连续键入（单撤销步）、单步撤销还原、矩形拖选替换与列键入、Esc 收起、多光标退格（单撤销步）、设置开关门控（禁用/恢复）、截图 |
 | smoke-filter | 13 | 过滤视图（P1-4）：入口可见/字面量过滤与计数/隐藏空行/大小写开关与无匹配/非法正则就地报错/清除恢复/切标签清空/编辑态隐藏入口/截图 |
@@ -76,7 +76,7 @@
 | toggle_edit / apply_edits / undo_edit / redo_edit | smoke-edit；smoke-abuse（撤销/重做狂按）；smoke-find；Rust editing 84 项 |
 | save_tab / save_tab_as / reload_tab | smoke-edit；smoke-find F12/F14；smoke-shortcuts K12 |
 | find_in_edit / replace_in_edit / replace_all_in_edit | smoke-find F1–F23（含 wholeWord/范围）；smoke-i18n I5；Rust search
-| preview_batch_numbering / apply_batch_numbering | smoke-batch B1–B12；Rust batch 18 项 + app_state 2 项 | 测试 |
+| preview_batch_numbering / apply_batch_numbering | smoke-batch B1–B15（含进度/取消）；Rust batch 全套 + app_state 相关 | 测试 |
 | preview_line_op / apply_line_op | smoke-lineops L1–L13；Rust line_ops 15 项 + app_state 1 项 | 测试 |
 | filter_rows / fetch_rows_at | smoke-filter F1–F10；Rust filter 8 项 | 测试 |
 | list/add/remove/clear_clipboard_history | smoke-clipboard C1–C8；Rust clipboard_history 8 项 | 测试 |
@@ -185,3 +185,4 @@
 - 2026-10-05 P3-6：工具（拆分/批量重命名/比较/三方合并）——首运提示修复（仅确有快照才提示）；拆分引擎（行数/标记双模式）；重命名引擎（组合规则+两阶段改名+撤销日志）；diff（Myers hash）与 diff3 引擎；比较窗口（并排/统一、懒加载、导航）；三方合并（冲突逐块选择、写回 + .bak + 撤销）；smoke-utility 11/11、smoke-compare 19/19 并入 verify-all（现 51 步）；Rust 506；vitest 138；命令新增 preview_split/apply_split/scan_rename_dir/preview_rename/apply_rename/undo_rename/read_rename_log/open_compare_window/take_compare_request/diff_docs/merge3_docs/compare_rows/merge_rows/write_merge_output/undo_merge_writeback；窗口能力白名单增补 compare。
 - 2026-10-06 性能与内存优化：文档统计 ASCII 快路径（修 100MB 文件统计烧满一核约一分钟）；大文件工作集修剪（`mem`：打开/换编码/重载/统计/比较加载后延迟防抖修剪 + 比较窗口关闭释放）；大行看门狗按行宽自适应。实测稳定工作集 ~117MB→~3-12MB、CPU 火焰消失；Rust 515（lib 487 + 新增 stats 4 项 / mem 2 项）；smoke-longline 9/9、smoke-scroll 4/4、smoke.mjs 18/18 回归。
 - 2026-10-06 P4（系统与发布）：设置 schema v17（a11y/system/update 三节 + 全部用户可见上限可调）；命令面板（Ctrl+Shift+P，46 命令）；可访问性运行时（减少动画/字体缩放/高对比/焦点/屏幕阅读器/性能模式）；隐私清除（按类 + 二次确认）与崩溃日志（可关）+ 无网络模式默认开；更新检查（可配置源 + sha256 校验 + 桩服务器测试）；新增 smoke-palette 7/7、smoke-caps 21/21、smoke-a11y 10/10、smoke-privacy 10/10、smoke-update 8/8 并入 verify-all（现 **57 步**）；Rust 529；vitest 154；命令新增 privacy_usage/privacy_clear/check_update/download_update/reveal_update_file/open_update_page；依赖新增 ureq/sha2/tauri-plugin-opener（锁版本）。
+- 2026-10-06 P4 任务 7（技术债与性能）：批量编辑单次扫描解析（100MB/1k 处 apply 340s→1.6s，附 `benchmark_scattered_save`）；编辑态行进游标缓存（深行窗口取行 5039ms→126ms，修大文件编辑「滚动/进入即卡死」）；批量序号异步化（`srt://batch-progress` 进度 + 取消完整回滚；smoke-batch **22/22**）；批量范围解析单次化；内存红线复测（只读修剪 3-12MB 级 / 编辑态私有 ~87MB / 双窗 ~117MB）；启动实测（debug 可见 median 1067ms；release 既有 631ms/763ms 验收内）；设置窗左右白边修复（无边框窗口画刷底色随主题）；Rust **532**；覆盖率待 llvm-tools 就绪。

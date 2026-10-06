@@ -560,4 +560,14 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 更新检查：可配置更新源（GitHub 仓库自动换算 API 或发布 JSON 地址）；下载安装包到 updates/ 并强校验 sha256（不符即删除报错）；无网络模式默认开启（检查前二次确认）；桩服务器 + smoke-update 8/8（含摘要篡改/缺源/不可达）。
 - 套件并入：5 个新套件进入 verify-all（现 57 步，默认全量；smoke-uninstall 单列，需 UAC）。
 - 测试基线：Rust 529（501 lib + 15 对抗 + 2 助手 + 6 统计 + 5 集成）；vitest 154；E2E 48 套≈736 项；svelte-check 0/0。
-- 待办（任务 7 技术债）：保存路径 coalesce/mmap 基准、编辑批次异步分片与进度取消、内存红线复测、覆盖率（llvm-tools）。
+- 任务 7（技术债）完成情况：
+  - 保存/编辑性能（深度优化，附带基准测试 `benchmark_scattered_save` / `benchmark_deep_fetch`，`--ignored` 手动运行）：
+    ① 批量编辑位置解析改**单次扫描**（原逐操作从片段起点重扫）：100MB 文件 1000 处散布插入 apply 340s→**1.6s**，1 万处 ≈16s；
+    ② 编辑态**行进游标缓存**（`AdvanceCursor`，按 `state_id` 失效）：1.3M 行文档深行取 40 行 5039ms→**126ms**（修复大文件编辑“滚动/打开即卡死、CPU 空转重试风暴”的根因——`fetch_rows` 逐行全片段重扫）；
+    ③ 批量范围解析（`resolve_scope_rows`）改单次扫描取行文本（跳过空行过滤不再逐行 `row_text`）；
+    ④ 保存路径实测 100MB ≈0.5-0.75s（流式写已足够，不做额外复杂化）；
+  - 批量序号**异步化**（`batch_jobs` 取消登记 + `srt://batch-progress` 定向进度事件 + 前端进度条/取消按钮）：可取消且**完整回滚、无撤销步骤、不推进版本号**（引擎级 `apply_edits_cancellable` 快照恢复）；smoke-batch 扩至 **22/22**（B14 进度与 8000 行全量编号、B15 取消回滚）；
+  - 内存红线复测（100MB 单行/多行，含修剪）：只读打开 ~0MB 增量（修剪后工作集 3-12MB 级别）；编辑态 2000 行散布编辑后应用进程私有 ~87MB；双窗口+编辑 ~117MB（进程树合计含 WebView2 运行时 ~630MB）；软限制默认 512MB 语义不变；
+  - 启动速度实测（debug 构建，`measure-startup`）：窗口可见 min/median/max = 625/1067/1855ms，内容就绪（首跑冷 WebView2 配置目录 13.7s）/热路径 1.07-3.49s；release 验收数据此前为可见 max 631ms/就绪 median 763ms（验收线内）；
+  - 设置窗“左右白条”修复：无边框窗口（设置窗/主窗/比较窗）在创建与主题切换时按解析主题设置**窗口画刷底色**（`set_background_color`），避免边缘区域露出系统默认白底；
+  - 覆盖率（llvm-tools）：工具链未安装（`llvm-cov`/`llvm-profdata` 缺失，用户约定自装），记录为**待工具就绪**，不阻塞本轮交付。
