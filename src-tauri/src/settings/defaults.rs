@@ -26,7 +26,8 @@ use crate::settings::status::CountMode;
 /// v14：新增显示折叠/大纲/面包屑字段。
 /// v15：默认翻页平滑滚动字段补齐（空步迁移）。
 /// v16：新增会话恢复内容细项开关（startup.restoreItems）。
-pub const SCHEMA_VERSION: u32 = 16;
+/// v17：新增可访问性（a11y）与系统节（system/update）。
+pub const SCHEMA_VERSION: u32 = 17;
 
 // ---------- settings.json ----------
 
@@ -181,6 +182,41 @@ pub const DEFAULT_STARTUP_RESTORE_SCROLL: bool = true;
 pub const DEFAULT_STARTUP_RESTORE_FOLDS: bool = false;
 /// 会话语义：默认恢复窗口与栏位布局
 pub const DEFAULT_STARTUP_RESTORE_LAYOUT: bool = true;
+
+// ---------- settings.json / a11y（P4） ----------
+
+/// 默认减少动画策略（跟随系统）
+pub const DEFAULT_A11Y_REDUCE_MOTION: &str = "system";
+/// 默认界面字体缩放（%）
+pub const DEFAULT_A11Y_FONT_SCALE: u32 = 100;
+/// 字体缩放允许范围（%，闭区间）
+pub const A11Y_FONT_SCALE_RANGE: (u32, u32) = (80, 200);
+/// 默认增强键盘焦点轮廓
+pub const DEFAULT_A11Y_FOCUS_VISIBLE: bool = true;
+/// 默认启用屏幕阅读器增强（实时区域播报）
+pub const DEFAULT_A11Y_SCREEN_READER: bool = true;
+/// 默认不启用高对比叠加层
+pub const DEFAULT_A11Y_HIGH_CONTRAST_OVERLAY: bool = false;
+
+// ---------- settings.json / system（P4） ----------
+
+/// 默认不启用性能模式
+pub const DEFAULT_SYSTEM_PERFORMANCE_MODE: bool = false;
+/// 默认内存软上限（MB）：超过时清理缓存并修剪工作集
+pub const DEFAULT_SYSTEM_MEMORY_LIMIT_MB: u32 = 512;
+/// 内存软上限允许范围（MB，闭区间）
+pub const SYSTEM_MEMORY_LIMIT_MB_RANGE: (u32, u32) = (128, 4096);
+/// 默认记录崩溃日志（panic 落盘）
+pub const DEFAULT_SYSTEM_CRASH_LOG: bool = true;
+/// 默认无网络模式开（仅手动更新检查经显式确认后可联网）
+pub const DEFAULT_SYSTEM_OFFLINE_MODE: bool = true;
+
+// ---------- settings.json / update（P4） ----------
+
+/// 默认更新源地址（空 = 未配置，检查更新不可用）
+pub const DEFAULT_UPDATE_SOURCE_URL: &str = "";
+/// 更新源地址最大字符数
+pub const UPDATE_SOURCE_URL_MAX_CHARS: u32 = 512;
 
 // ---------- settings.json / 编辑器行操作默认值 ----------
 

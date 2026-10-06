@@ -24,7 +24,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `16` | `15` | 配置格式版本（当前 v16；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `17` | `15` | 配置格式版本（当前 v17；启动自动迁移旧版，见 §2.7） |
 | `display.lineNumbers` | boolean | `true`/`false` | `false` | 显示行号（显示行序号，1 基；P2-2） |
 | `display.relativeLineNumbers` | boolean | `true`/`false` | `false` | 相对行号（相对编辑光标 / 阅读顶部行） |
 | `display.highlightCurrentLine` | boolean | `true`/`false` | `true` | 高亮当前行 |
@@ -106,12 +106,22 @@
 | `find.multifileConcurrency` | number | 1–128 | `4` | 多文件搜索并发数（同时扫描的只读标签数；F-13） |
 | `regex.timeoutMs` | number | 10–600000 | `500` | 正则扫描超时（毫秒；超时中断并提示，F-03/F-04） |
 | `regex.library` | array | 字符串数组（≤200 条、单条 ≤512 字符、逐项正则编译校验） | `[]` | 常用正则库（F-14） |
+| `a11y.reduceMotion` | string | `system`/`on`/`off` | `system` | 减少动画策略（跟随系统偏好 / 强制减少 / 保留动画；P4） |
+| `a11y.fontScale` | number | 80–200 整数 | `100` | 界面字体缩放（%；作用于窗口根节点；P4） |
+| `a11y.focusVisible` | boolean | `true`/`false` | `true` | 增强键盘焦点轮廓（P4） |
+| `a11y.screenReader` | boolean | `true`/`false` | `true` | 屏幕阅读器增强（提示/状态区实时区域播报；P4） |
+| `a11y.highContrastOverlay` | boolean | `true`/`false` | `false` | 高对比叠加层（叠加于任意主题；P4） |
+| `system.performanceMode` | boolean | `true`/`false` | `false` | 性能模式（关闭动画/背景图/特效；P4） |
+| `system.memoryLimitMB` | number | 128–4096 整数 | `512` | 内存软上限（MB；超过时清理缓存并修剪工作集，不阻断功能；P4） |
+| `system.crashLog` | boolean | `true`/`false` | `true` | 记录崩溃日志（panic 落盘 `logs/`；P4） |
+| `system.offlineMode` | boolean | `true`/`false` | `true` | 无网络模式（仅手动更新检查经确认后联网；P4） |
+| `update.sourceUrl` | string | ≤512 字符（GitHub 仓库 URL 或发布 JSON URL） | `""` | 更新源地址；空 = 未配置（检查更新不可用；P4） |
 
 ### 2.2 `reader.json`（阅读排版子配置）
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `16` | `15` | 配置格式版本（当前 v16；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `17` | `15` | 配置格式版本（当前 v17；启动自动迁移旧版，见 §2.7） |
 | `theme` | string | `system` / `light` / `dark` / `eye-green` / `paper-cream` / `high-contrast` / `minimal-gray` / 用户主题 id | `system` | 主题 id；`system` 跟随系统明暗解析；用户主题来自 `data/themes/<id>.json`（导入生成） |
 | `themeAnimEnabled` | boolean | `true`/`false` | `true` | 主题切换过渡动画（尊重系统「减少动态效果」） |
 | `themeAnimMs` | number | 0–10000 整数 | `200` | 主题过渡时长（ms；0 = 无过渡） |
@@ -148,7 +158,7 @@
 
 | 字段 | 类型 | 可填值 | 默认 | 说明 |
 |---|---|---|---|---|
-| `schemaVersion` | number | 固定 `16` | `15` | 配置格式版本（当前 v16；启动自动迁移旧版，见 §2.7） |
+| `schemaVersion` | number | 固定 `17` | `15` | 配置格式版本（当前 v17；启动自动迁移旧版，见 §2.7） |
 | `bindings` | object | 动作 id → 组合键字符串 | 见下表 | 仅存**被修改过**的绑定；缺失动作使用默认值；恢复默认 = 清空覆盖项 |
 
 组合键字符串格式：修饰键 `Ctrl`/`Shift`/`Alt`（`+` 连接）+ 主键（如 `Ctrl+Shift+H`、`F11`、`PgDn`）。
@@ -206,7 +216,7 @@ v1 单窗口结构（顶层 `window`/`activeTabIndex`/`tabs`）在载入时自�
 
 ### 2.7 配置迁移与导入/导出（P0-2）
 
-**schema 版本（当前 v16）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立，当前 v4）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键；v12→v13 新增 `reading` 节；v13→v14 新增显示折叠/大纲/面包屑字段；v14→v15 新增 `file` 节与快照设置；v15→v16 新增会话恢复内容细项 `startup.restoreItems`）：
+**schema 版本（当前 v17）**：`settings.json` / `reader.json` / `shortcuts.json` 共用 `schemaVersion`（定义于 `settings::defaults::SCHEMA_VERSION`；`session.json` 版本独立，当前 v4）。应用启动时自动迁移旧版文件（v1→v2 字段补齐；v2→v3 主题值 `eye` 映射为 `paper-cream`；v3→v4 新增 `editor.lines` 节字段补齐；v4→v8 依次新增编辑器设置节字段补齐，含 `editor.clipboard`、`editor.insert`、`editor.autoPairs`、`editor.cleanup`；v8→v9 新增 `find.multifile*`；v9→v10 新增 `status` 节；v10→v11 新增 `display`；v11→v12 页边距改为阅读/编辑两套四向——旧 `typography.pagePadding(pagePaddingY)` 映射为左右/上下并移除旧键；v12→v13 新增 `reading` 节；v13→v14 新增显示折叠/大纲/面包屑字段；v14→v15 新增 `file` 节与快照设置；v15→v16 新增会话恢复内容细项 `startup.restoreItems`；v16→v17 新增可访问性 `a11y`、系统 `system`、更新 `update` 三节）：
 
 | 情况 | 行为 |
 |---|---|

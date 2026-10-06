@@ -898,6 +898,71 @@ pub const SPECS: &[SettingSpec] = &[
             integer: true,
         },
     },
+    // ---------- settings.json / a11y（P4） ----------
+    SettingSpec {
+        id: "app.a11y.reduceMotion",
+        group: "app.a11y",
+        kind: SettingKind::Enum {
+            values: &["system", "on", "off"],
+        },
+    },
+    SettingSpec {
+        id: "app.a11y.fontScale",
+        group: "app.a11y",
+        kind: SettingKind::Number {
+            min: defaults::A11Y_FONT_SCALE_RANGE.0 as f64,
+            max: defaults::A11Y_FONT_SCALE_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.a11y.focusVisible",
+        group: "app.a11y",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.a11y.screenReader",
+        group: "app.a11y",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.a11y.highContrastOverlay",
+        group: "app.a11y",
+        kind: SettingKind::Bool,
+    },
+    // ---------- settings.json / system（P4） ----------
+    SettingSpec {
+        id: "app.system.performanceMode",
+        group: "app.system",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.system.memoryLimitMB",
+        group: "app.system",
+        kind: SettingKind::Number {
+            min: defaults::SYSTEM_MEMORY_LIMIT_MB_RANGE.0 as f64,
+            max: defaults::SYSTEM_MEMORY_LIMIT_MB_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
+        id: "app.system.crashLog",
+        group: "app.system",
+        kind: SettingKind::Bool,
+    },
+    SettingSpec {
+        id: "app.system.offlineMode",
+        group: "app.system",
+        kind: SettingKind::Bool,
+    },
+    // ---------- settings.json / update（P4） ----------
+    SettingSpec {
+        id: "app.update.sourceUrl",
+        group: "app.update",
+        kind: SettingKind::Text {
+            max_len: defaults::UPDATE_SOURCE_URL_MAX_CHARS,
+        },
+    },
     // ---------- shortcuts.json ----------
     SettingSpec {
         id: "shortcuts.bindings",

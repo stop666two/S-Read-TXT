@@ -151,7 +151,7 @@ async function main() {
     }
     check('S1a 设置窗口打开且快捷键行完整', rowsReady === true);
     const tabCount = await evalSet(`document.querySelectorAll('.tabs [role="tab"]').length`);
-    check('S1b 设置窗口六个页签', tabCount === 6, `count=${tabCount}`);
+    check('S1b 设置窗口七个页签', tabCount === 7, `count=${tabCount}`);
     if (process.argv.includes('--screenshot')) {
       const shot = await settingsClient.send('Page.captureScreenshot', { format: 'png' });
       writeFileSync(resolve(root, 'docs/screenshots/phase5-settings.png'), Buffer.from(shot.data, 'base64'));

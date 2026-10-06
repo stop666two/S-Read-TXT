@@ -159,6 +159,31 @@ fn normalize_app(settings: &mut AppSettings) {
     normalize_status(&mut settings.status);
     normalize_display(&mut settings.display);
     normalize_file(&mut settings.file);
+    normalize_a11y(&mut settings.a11y);
+    normalize_system(&mut settings.system);
+    normalize_update(&mut settings.update);
+}
+
+/// 可访问性归一：动画策略回退、字体缩放钳制。
+fn normalize_a11y(a11y: &mut crate::settings::model::A11ySettings) {
+    a11y.reduce_motion = a11y.reduce_motion.normalized();
+    let (min_scale, max_scale) = defaults::A11Y_FONT_SCALE_RANGE;
+    a11y.font_scale = a11y.font_scale.clamp(min_scale, max_scale);
+}
+
+/// 系统设置归一：内存软上限钳制。
+fn normalize_system(system: &mut crate::settings::model::SystemSettings) {
+    let (min_mb, max_mb) = defaults::SYSTEM_MEMORY_LIMIT_MB_RANGE;
+    system.memory_limit_mb = system.memory_limit_mb.clamp(min_mb, max_mb);
+}
+
+/// 更新设置归一：源地址去首尾空白并按字符数截断。
+fn normalize_update(update: &mut crate::settings::model::UpdateSettings) {
+    let trimmed = update.source_url.trim().to_string();
+    update.source_url = trimmed
+        .chars()
+        .take(defaults::UPDATE_SOURCE_URL_MAX_CHARS as usize)
+        .collect();
 }
 
 /// 文件与快照设置归一：编码回退、换行归一、数值钳制、扩展名清洗。
@@ -568,6 +593,37 @@ mod tests {
             loaded.file.associations,
             vec![".txt".to_string(), ".md".to_string()]
         );
+    }
+
+    /// v17 新节归一：未知动画策略回退、字体缩放/内存上限钳制、更新源地址去空白与截断。
+    #[test]
+    fn a11y_system_update_normalize_on_load() {
+        let dir = data_dir();
+        let raw = r#"{
+            "schemaVersion": 17,
+            "a11y": { "reduceMotion": "weird", "fontScale": 20 },
+            "system": { "memoryLimitMB": 99999 },
+            "update": { "sourceUrl": "  https://example.com/repo  " }
+        }"#;
+        std::fs::write(app_settings_path(dir.path()), raw).expect("写配置失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(
+            loaded.a11y.reduce_motion,
+            crate::settings::model::ReduceMotion::System
+        );
+        assert_eq!(loaded.a11y.font_scale, 80);
+        assert_eq!(loaded.system.memory_limit_mb, 4096);
+        assert_eq!(loaded.update.source_url, "https://example.com/repo");
+
+        let long = format!("https://example.com/{}", "x".repeat(600));
+        std::fs::write(
+            app_settings_path(dir.path()),
+            serde_json::json!({ "schemaVersion": 17, "update": { "sourceUrl": long } })
+                .to_string(),
+        )
+        .expect("写配置失败");
+        let loaded = load_app_settings(dir.path());
+        assert_eq!(loaded.update.source_url.chars().count(), 512);
     }
 
     /// 主配置往返一致（保存会写入当前 schemaVersion）。

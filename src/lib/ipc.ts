@@ -542,6 +542,40 @@ export interface AppSettings {
   /** 正则设置 */
   regex: RegexSettings;
   startup: StartupSettings;
+  /** 可访问性设置（P4） */
+  a11y: A11ySettings;
+  /** 系统与性能设置（P4） */
+  system: SystemSettings;
+  /** 更新检查设置（P4） */
+  update: UpdateSettings;
+}
+
+/** 减少动画策略（与 Rust `ReduceMotion` 对应）。 */
+export type ReduceMotion = 'system' | 'on' | 'off';
+
+/** 可访问性设置（与 Rust `A11ySettings` 对应）。 */
+export interface A11ySettings {
+  reduceMotion: ReduceMotion;
+  /** 界面字体缩放（%；80–200） */
+  fontScale: number;
+  focusVisible: boolean;
+  screenReader: boolean;
+  highContrastOverlay: boolean;
+}
+
+/** 系统与性能设置（与 Rust `SystemSettings` 对应）。 */
+export interface SystemSettings {
+  performanceMode: boolean;
+  /** 内存软上限（MB；128–4096） */
+  memoryLimitMB: number;
+  crashLog: boolean;
+  offlineMode: boolean;
+}
+
+/** 更新检查设置（与 Rust `UpdateSettings` 对应）。 */
+export interface UpdateSettings {
+  /** 更新源地址（空 = 未配置） */
+  sourceUrl: string;
 }
 
 /** 折叠方式。 */

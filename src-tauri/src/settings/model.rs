@@ -185,6 +185,117 @@ impl Default for RestoreItems {
     }
 }
 
+/// 减少动画策略（`app.a11y.reduceMotion`）：跟随系统 / 强制开 / 强制关。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReduceMotion {
+    /// 跟随系统 `prefers-reduced-motion`
+    System,
+    /// 强制减少动画
+    On,
+    /// 强制保留动画
+    Off,
+}
+
+/// 手写反序列化：宽容未知取值（回退 `System`）。
+impl<'de> Deserialize<'de> for ReduceMotion {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.trim().to_ascii_lowercase().as_str() {
+            "on" => Self::On,
+            "off" => Self::Off,
+            _ => Self::System,
+        })
+    }
+}
+
+impl Default for ReduceMotion {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
+impl ReduceMotion {
+    /// 归一：仅接受三种已知策略，其余回退跟随系统（当前反序列化已保证）。
+    pub fn normalized(self) -> Self {
+        self
+    }
+}
+
+/// 可访问性设置（`settings.json` 的嵌套对象 `a11y`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct A11ySettings {
+    /// 减少动画策略（跟随系统 / 强制开 / 强制关）
+    pub reduce_motion: ReduceMotion,
+    /// 界面字体缩放（%；80–200）
+    pub font_scale: u32,
+    /// 增强键盘焦点轮廓（提高 `:focus-visible` 可见性）
+    pub focus_visible: bool,
+    /// 屏幕阅读器增强（为提示/状态区启用实时区域播报）
+    pub screen_reader: bool,
+    /// 高对比叠加层（在任意主题上增强边框与文本对比）
+    pub high_contrast_overlay: bool,
+}
+
+impl Default for A11ySettings {
+    fn default() -> Self {
+        Self {
+            reduce_motion: ReduceMotion::default(),
+            font_scale: defaults::DEFAULT_A11Y_FONT_SCALE,
+            focus_visible: defaults::DEFAULT_A11Y_FOCUS_VISIBLE,
+            screen_reader: defaults::DEFAULT_A11Y_SCREEN_READER,
+            high_contrast_overlay: defaults::DEFAULT_A11Y_HIGH_CONTRAST_OVERLAY,
+        }
+    }
+}
+
+/// 系统与性能设置（`settings.json` 的嵌套对象 `system`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SystemSettings {
+    /// 性能模式（关闭动画/背景/特效，降低资源占用）
+    pub performance_mode: bool,
+    /// 内存软上限（MB）：超过时清理缓存并修剪工作集（不阻断功能）。
+    /// JSON 名显式固定为 `memoryLimitMB`（serde camelCase 会生成 `memoryLimitMb`）。
+    #[serde(rename = "memoryLimitMB")]
+    pub memory_limit_mb: u32,
+    /// 记录崩溃日志（panic 堆栈落盘 `logs/`）
+    pub crash_log: bool,
+    /// 无网络模式（开：除手动更新检查经确认外不发起任何网络请求）
+    pub offline_mode: bool,
+}
+
+impl Default for SystemSettings {
+    fn default() -> Self {
+        Self {
+            performance_mode: defaults::DEFAULT_SYSTEM_PERFORMANCE_MODE,
+            memory_limit_mb: defaults::DEFAULT_SYSTEM_MEMORY_LIMIT_MB,
+            crash_log: defaults::DEFAULT_SYSTEM_CRASH_LOG,
+            offline_mode: defaults::DEFAULT_SYSTEM_OFFLINE_MODE,
+        }
+    }
+}
+
+/// 更新检查设置（`settings.json` 的嵌套对象 `update`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct UpdateSettings {
+    /// 更新源地址（空 = 未配置；支持 GitHub 仓库 URL 或直连发布 JSON）
+    pub source_url: String,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            source_url: defaults::DEFAULT_UPDATE_SOURCE_URL.to_string(),
+        }
+    }
+}
+
 /// 查找范围默认值（`app.find.defaultScope`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -338,6 +449,12 @@ pub struct AppSettings {
     pub find: FindSettings,
     /// 正则设置
     pub regex: RegexSettings,
+    /// 可访问性（P4）
+    pub a11y: A11ySettings,
+    /// 系统与性能（P4）
+    pub system: SystemSettings,
+    /// 更新检查（P4）
+    pub update: UpdateSettings,
 }
 
 impl Default for AppSettings {
@@ -359,6 +476,9 @@ impl Default for AppSettings {
             file: FileSettings::default(),
             find: FindSettings::default(),
             regex: RegexSettings::default(),
+            a11y: A11ySettings::default(),
+            system: SystemSettings::default(),
+            update: UpdateSettings::default(),
         }
     }
 }

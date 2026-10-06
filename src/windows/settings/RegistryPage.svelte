@@ -17,6 +17,7 @@ import StringListRow from './parts/StringListRow.svelte';
   import BackgroundRow from './parts/BackgroundRow.svelte';
   import SliderRow from './parts/SliderRow.svelte';
   import ToggleRow from './parts/ToggleRow.svelte';
+  import TextRow from './parts/TextRow.svelte';
   import { getSettingValue } from './registry-util';
   import { settings } from './store.svelte';
 
@@ -47,6 +48,8 @@ import StringListRow from './parts/StringListRow.svelte';
       'reader.typography.pagePaddingY': 'px',
       'reader.typography.paragraphSpacing': 'px',
       'reader.typography.firstLineIndent': chars,
+      'app.a11y.fontScale': '%',
+      'app.system.memoryLimitMB': 'MB',
     } as Record<string, string>;
   });
 
@@ -91,6 +94,11 @@ import StringListRow from './parts/StringListRow.svelte';
     'reader.typography.textAlign': {
       left: 'setting.enum.align.left',
       justify: 'setting.enum.align.justify',
+    },
+    'app.a11y.reduceMotion': {
+      system: 'setting.enum.reduceMotion.system',
+      on: 'setting.enum.reduceMotion.on',
+      off: 'setting.enum.reduceMotion.off',
     },
   };
 
@@ -278,6 +286,17 @@ import StringListRow from './parts/StringListRow.svelte';
                 value={String(getSettingValue(snapshot, spec.id) ?? '')}
                 options={enumOptions(spec)}
                 setting={spec.id}
+                onCommit={(value) => commit(spec, value)}
+                onReset={() => applyScope({ kind: 'field', id: spec.id })}
+                resetLabel={t('settings.resetField')}
+              />
+            {:else if spec.kind.type === 'text'}
+              <TextRow
+                {label}
+                {desc}
+                value={String(getSettingValue(snapshot, spec.id) ?? '')}
+                setting={spec.id}
+                maxLen={spec.kind.maxLen}
                 onCommit={(value) => commit(spec, value)}
                 onReset={() => applyScope({ kind: 'field', id: spec.id })}
                 resetLabel={t('settings.resetField')}

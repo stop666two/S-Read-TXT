@@ -45,6 +45,11 @@ import DiskSection from './DiskSection.svelte';
       icon: 'M8 2.8a5.2 5.2 0 1 0 5.2 5.2M8 5.4V8l2 1.4',
     },
     {
+      id: 'system',
+      labelKey: 'settings.category.system',
+      icon: 'M8 5.6A2.4 2.4 0 1 0 8 10.4 2.4 2.4 0 0 0 8 5.6zM8 2.6v1.6M8 11.8v1.6M2.6 8h1.6M11.8 8h1.6M4.2 4.2l1.1 1.1M10.7 10.7l1.1 1.1M11.8 4.2l-1.1 1.1M5.3 10.7l-1.1 1.1',
+    },
+    {
       id: 'about',
       labelKey: 'settings.category.about',
       icon: 'M8 2.8a5.2 5.2 0 1 0 0 10.4A5.2 5.2 0 0 0 8 2.8zM8 7.4v4M8 5.2h.01',
@@ -166,6 +171,8 @@ import DiskSection from './DiskSection.svelte';
         <ShortcutsTab />
       {:else if tab === 'history'}
         <HistoryTab {query} />
+      {:else if tab === 'system'}
+        <RegistryPage groups={['app.a11y', 'app.system', 'app.update']} {query} />
       {:else}
         <AboutTab />
       {/if}
