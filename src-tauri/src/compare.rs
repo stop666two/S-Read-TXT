@@ -140,6 +140,11 @@ impl LoadedDoc {
             .map(|item| item.text)
             .collect()
     }
+
+    /// 文件规模（字节；用于加载后的工作集修剪决策）。
+    fn bytes(&self) -> u64 {
+        self.session.byte_len()
+    }
 }
 
 /// 差异块 DTO。
@@ -281,11 +286,19 @@ impl CompareState {
             .and_then(|mut guard| guard.request.take())
     }
 
+    /// 清空全部装载状态（比较窗口关闭时调用：释放 mmap 会话与行哈希）。
+    pub fn clear(&self) {
+        if let Ok(mut guard) = self.inner.lock() {
+            *guard = CompareInner::default();
+        }
+    }
+
     /// 加载两个文件并计算行级差异。
     pub fn load_diff(&self, left: &str, right: &str) -> Result<DiffDocsDto, CompareError> {
         let left_doc = LoadedDoc::load(Path::new(left))?;
         let right_doc = LoadedDoc::load(Path::new(right))?;
         let diff = diff_lines(&left_doc.hashes, &right_doc.hashes)?;
+        let touched = left_doc.bytes().max(right_doc.bytes());
         let dto = DiffDocsDto {
             left_name: left_doc.name.clone(),
             right_name: right_doc.name.clone(),
@@ -311,6 +324,8 @@ impl CompareState {
         guard.extra = None;
         guard.diff = Some(diff);
         guard.merge = None;
+        drop(guard);
+        crate::mem::trim_after_large_work(touched);
         Ok(dto)
     }
 
@@ -325,6 +340,10 @@ impl CompareState {
         let ours_doc = LoadedDoc::load(Path::new(ours))?;
         let theirs_doc = LoadedDoc::load(Path::new(theirs))?;
         let merge = merge3(&base_doc.hashes, &ours_doc.hashes, &theirs_doc.hashes)?;
+        let touched = base_doc
+            .bytes()
+            .max(ours_doc.bytes())
+            .max(theirs_doc.bytes());
         let dto = MergeDocsDto {
             base_name: base_doc.name.clone(),
             ours_name: ours_doc.name.clone(),
@@ -345,6 +364,8 @@ impl CompareState {
         guard.extra = Some(theirs_doc);
         guard.diff = None;
         guard.merge = Some(merge);
+        drop(guard);
+        crate::mem::trim_after_large_work(touched);
         Ok(dto)
     }
 
@@ -629,5 +650,21 @@ mod tests {
         // 撤销本次写回：恢复到写回前（上一次结果）
         assert!(state.undo_writeback(&target.to_string_lossy()).unwrap());
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "a\nX\nc\nD\n");
+    }
+
+    #[test]
+    fn clear_releases_loaded_docs() {
+        let dir = tempfile::tempdir().unwrap();
+        let left = write_file(dir.path(), "left.txt", "a\n");
+        let right = write_file(dir.path(), "right.txt", "b\n");
+        let state = CompareState::new();
+        state
+            .load_diff(&left.to_string_lossy(), &right.to_string_lossy())
+            .unwrap();
+        state.clear();
+        assert!(matches!(
+            state.rows(CompareSide::Left, 0, 1),
+            Err(CompareError::NotLoaded)
+        ));
     }
 }

@@ -78,6 +78,19 @@ impl StatsAccumulator {
         if self.capped || chunk.is_empty() {
             return;
         }
+        // 纯 ASCII 快路径：字素=字节数（仅 CR×LF 合并为一个簇）。
+        // 逐字符 unicode_segmentation 在调试构建下对百 MB 文本需分钟级 CPU
+        // （实测 100MB 单行文件每次统计烧满一核约一分钟）；字节扫描将其
+        // 压到秒级以内，且不触碰文件外的额外内存。
+        if chunk.is_ascii() {
+            self.push_ascii(chunk);
+            return;
+        }
+        // 上限语义：达到上限立即停止（与非 ASCII 路径逐字符检查一致）
+        if self.codepoints as usize >= self.max_chars {
+            self.capped = true;
+            return;
+        }
         for ch in chunk.chars() {
             if self.codepoints as usize >= self.max_chars {
                 self.capped = true;
@@ -101,6 +114,44 @@ impl StatsAccumulator {
             return;
         }
         self.rebuild_carry(chunk);
+    }
+
+    /// ASCII 块快速计数：码点/词/字素按字节推进，携带仅保留末字符。
+    /// ASCII 的字素规则只有一处特例——CR 后紧跟的 LF 合并为一个簇；
+    /// 跨块的 CR|LF 由携带的末字符状态衔接。
+    fn push_ascii(&mut self, chunk: &str) {
+        let bytes = chunk.as_bytes();
+        let remaining = self.max_chars - self.codepoints as usize;
+        if remaining == 0 {
+            self.capped = true;
+            return;
+        }
+        let limit = remaining.min(bytes.len());
+        let mut prev_cr = self.carry.ends_with('\r');
+        let mut graphemes = 0u64;
+        for &byte in &bytes[..limit] {
+            let whitespace = matches!(byte, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r');
+            if !whitespace && self.prev_whitespace {
+                self.words += 1;
+            }
+            self.prev_whitespace = whitespace;
+            if byte == b'\n' && prev_cr {
+                // CRLF：LF 与前一 CR 同属一个字素簇，不重复计数
+            } else {
+                graphemes += 1;
+            }
+            prev_cr = byte == b'\r';
+        }
+        self.codepoints += limit as u64;
+        self.graphemes += graphemes;
+        if limit < bytes.len() {
+            // 达到上限：与非 ASCII 路径一致，停止后续处理且不再更新携带
+            self.capped = true;
+            return;
+        }
+        let last = &chunk[chunk.len() - 1..];
+        self.carry = last.to_string();
+        self.carry_graphemes = 1;
     }
 
     /// 重建块间携带（保留末尾至多 `CARRY_BYTES` 字节，且落在字符边界）。
@@ -173,6 +224,50 @@ mod tests {
         assert_eq!(stats.words, 2);
         assert_eq!(stats.bytes, 11);
         assert!(!stats.capped);
+    }
+
+    /// CRLF：同块内 CR+LF 合并为 1 个字素簇，单独 LF/CR 各计 1。
+    #[test]
+    fn ascii_crlf_within_chunk() {
+        let mut acc = StatsAccumulator::new(STATS_MAX_CHARS);
+        acc.push_str("a\r\nb\n\r");
+        let stats = acc.finish(6);
+        assert_eq!(stats.graphemes, 5, "a + CRLF + b + LF + CR");
+        assert_eq!(stats.codepoints, 6);
+    }
+
+    /// CRLF 跨块：CR 在块尾、LF 在下一块头，仍合并为 1 个字素簇。
+    #[test]
+    fn ascii_crlf_across_chunks() {
+        let mut acc = StatsAccumulator::new(STATS_MAX_CHARS);
+        acc.push_str("a\r");
+        acc.push_str("\nb");
+        let stats = acc.finish(4);
+        assert_eq!(stats.graphemes, 3, "a + CRLF + b");
+        assert_eq!(stats.codepoints, 4);
+    }
+
+    /// 大块 ASCII 快路径：百万字符计数正确。
+    #[test]
+    fn ascii_large_chunk() {
+        let mut acc = StatsAccumulator::new(STATS_MAX_CHARS);
+        let text = "x".repeat(1_000_000);
+        acc.push_str(&text);
+        let stats = acc.finish(1_000_000);
+        assert_eq!(stats.graphemes, 1_000_000);
+        assert_eq!(stats.codepoints, 1_000_000);
+        assert_eq!(stats.words, 1);
+    }
+
+    /// ASCII 块达到码点上限：立即 capped，不再继续计数。
+    #[test]
+    fn ascii_chunk_caps_at_limit() {
+        let mut acc = StatsAccumulator::new(5);
+        acc.push_str("abcdef");
+        let stats = acc.finish(6);
+        assert!(stats.capped);
+        assert_eq!(stats.codepoints, 5);
+        assert_eq!(stats.graphemes, 5);
     }
 
     /// 跨块组合序列：块边界落在基字符与组合记号之间。

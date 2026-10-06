@@ -538,3 +538,14 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
 - 验收证据：smoke-restore **13/13**（开关/折叠保存恢复/折叠失效丢弃/光标恢复/越界裁剪 30:3+提示/滚动关闭回顶/布局关闭合并单栏/总开关语义两窗口零标签/布局激活栏恢复/截图）；回归 smoke-session 11/11、smoke-windows 19/19、smoke-split 26/26、smoke-utility 11/11、smoke-compare 19/19。
 - 测试基线：Rust **506**（478 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest **138**；svelte-check 0/0；E2E **43 套 ≈680 项**；verify-all **52 步（默认全量、无排除；smoke-uninstall 需 UAC，运行时弹一次提权确认）**。
 - 下一切片：P4 收尾（release 打包与安装级验证、发布与备份流程）。
+
+## 内存占用与 CPU 优化（P3-7 后补丁，完成）
+
+- 背景：用户反馈「程序占用内存偏高」。实测画像（8GB 机器，100MB 单行/多行文件）：Rust 进程基线 ~11-25MB；打开 100MB 文件后**工作集 ~117MB 长期驻留**（mmap 文件页）；WebView2 ~300MB 为运行时基线；CPU 侧更严重——打开 100MB 单行文件后**单核 100% 持续燃烧**（50s+ 不降）。
+- 定位过程（依次排除）：外部 EmptyWorkingSet 对照（修剪有效）→ 探针数据目录发现为 **exe 相对便携目录**（探针间会话累积多个 100MB 标签造成测量污染，改用 `SRT_DATA_DIR` 隔离）→ frida 线程上下文 + RBP 帧采样 + objdump 符号解析 → 火焰热点为 `unicode_segmentation::grapheme::check_pair`（文档统计逐字符字素计数，调试构建 100MB 需分钟级）。
+- 修复一（stats.rs）：**纯 ASCII 快路径**——码点/词/字素改为字节扫描（字素=字节数，CRLF 合并；跨块 CR|LF 由携带末字符衔接；非 ASCII 仍走字素算法）；新增 4 项单测（CRLF 同块/跨块、百万字符大块、块内上限）。
+- 修复二（mem.rs，新增模块）：**大文件工作集修剪**——`K32EmptyWorkingSet` 把 mmap 文件页转入系统待机列表（软缺页即刻换回，无功能影响）；调用点：打开（非复用）/换编码/重载/文档统计/比较加载（`trim_after_large_work`，≥16MB 触发）+ **延迟防抖二次修剪**（`trim_after_settle`：最后一次活动后 3s 清一次，覆盖首屏取行与统计高峰）；比较窗口关闭释放 `CompareState`（mmap 与行哈希）并修剪。日志为 debug 级（含前后工作集）。
+- 修复三（ReaderView）：大行看门狗超时按平均行宽自适应（>1MB → 30s、>64KB → 10s、其余 1.2s），避免仍在途的整行取回被误判丢失而重复解码。
+- 实测效果（隔离数据目录，100MB 单行文件）：稳定工作集 **~117MB → ~3-12MB**；CPU 火焰消失（统计后归零）；修剪日志实测 `ok=1 135MB→…` 连续生效 4 次；mmap 文件页按需软缺页回读，滚动/取行功能无回归。
+- 测试基线（本补丁后）：Rust **515**（487 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 138；svelte-check 0/0；回归 smoke.mjs 18/18、smoke-longline 9/9、smoke-scroll 4/4。
+- 教训（新）：① 便携数据目录为 **exe 相对**，探针必须显式 `SRT_DATA_DIR` 隔离，否则会话累积污染测量；② frida `enumerateThreads` 会短暂挂起目标进程（高频采样会扰动被测循环，需配合 PS 线程 CPU 差值与一次性采样交叉验证）；③ 调试构建的逐字符算法（字素/UAX 处理）在百 MB 级数据上是分钟级性能陷阱，字节级快路径是必要优化。

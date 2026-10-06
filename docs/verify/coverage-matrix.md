@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust 506（478 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 138；E2E 43 套 ≈680 项；verify-all 52 步（默认全量、无排除）。
+- 计数口径：Rust **515**（487 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 138；E2E 43 套 ≈680 项；verify-all 52 步（默认全量、无排除）。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -176,3 +176,4 @@
 - 2026-10-05 P3-5：窗口内分屏与栏位独立标签组（≤4 栏树形切分、分隔条、栏间与跨窗拖放支持栏位级落点、会话 v3 逐栏恢复、v1/v2 迁移）；smoke-split 26/26 并入 verify-all（现 49 步）；Rust 463；命令新增 move_tab_to_pane（new_file/open_file/list_tabs 增 pane 参数）。
 - 2026-10-05 P3-7：会话恢复扩展（设置 schema v16 `startup.restoreItems`：光标/滚动/折叠/窗口布局；会话 v4 光标与折叠锚点；恢复期越界裁剪提示与总开关语义；设置字段级挂起态合并修复连点竞态）；smoke-restore 13/13 并入 verify-all（现 **52 步；默认全量、无排除**，smoke-uninstall 运行时弹一次 UAC 确认）；Rust 506；vitest 138。
 - 2026-10-05 P3-6：工具（拆分/批量重命名/比较/三方合并）——首运提示修复（仅确有快照才提示）；拆分引擎（行数/标记双模式）；重命名引擎（组合规则+两阶段改名+撤销日志）；diff（Myers hash）与 diff3 引擎；比较窗口（并排/统一、懒加载、导航）；三方合并（冲突逐块选择、写回 + .bak + 撤销）；smoke-utility 11/11、smoke-compare 19/19 并入 verify-all（现 51 步）；Rust 506；vitest 138；命令新增 preview_split/apply_split/scan_rename_dir/preview_rename/apply_rename/undo_rename/read_rename_log/open_compare_window/take_compare_request/diff_docs/merge3_docs/compare_rows/merge_rows/write_merge_output/undo_merge_writeback；窗口能力白名单增补 compare。
+- 2026-10-06 性能与内存优化：文档统计 ASCII 快路径（修 100MB 文件统计烧满一核约一分钟）；大文件工作集修剪（`mem`：打开/换编码/重载/统计/比较加载后延迟防抖修剪 + 比较窗口关闭释放）；大行看门狗按行宽自适应。实测稳定工作集 ~117MB→~3-12MB、CPU 火焰消失；Rust 515（lib 487 + 新增 stats 4 项 / mem 2 项）；smoke-longline 9/9、smoke-scroll 4/4、smoke.mjs 18/18 回归。

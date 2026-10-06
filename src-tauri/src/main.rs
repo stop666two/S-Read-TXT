@@ -301,6 +301,12 @@ fn main() {
             if !matches!(event, tauri::WindowEvent::Destroyed) {
                 return;
             }
+            // 比较窗口关闭：释放装载的文档（mmap 会话与行哈希）并修剪工作集
+            if label == s_read_txt::compare::COMPARE_WINDOW {
+                window.app_handle().state::<CompareState>().clear();
+                s_read_txt::mem::trim_working_set();
+                return;
+            }
             if label != "main" && !label.starts_with("main-") {
                 return;
             }

@@ -1034,7 +1034,9 @@ pub fn fetch_rows_at(
 ) -> Result<Vec<s_read_txt::textfile::window::RowText>, IpcError> {
     with_context(LogContext::request(), || {
         let app_state = lock_state(&state)?;
-        Ok(app_state.rows_at(tab_id, &rows)?)
+        let result = app_state.rows_at(tab_id, &rows)?;
+        drop(app_state);
+        Ok(result)
     })
 }
 
@@ -1399,6 +1401,9 @@ pub fn open_file(
             info.encoding,
             if reused { "（复用已有标签）" } else { "" }
         );
+        if !reused {
+            s_read_txt::mem::trim_after_large_work(info.byte_len);
+        }
         Ok(info)
     })
 }
@@ -1412,9 +1417,10 @@ pub fn get_rows(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<RowsPayload, IpcError> {
     with_context(LogContext::request(), || {
-        lock_state(&state)?
+        let payload = lock_state(&state)?
             .rows(tab_id, start_row, count)
-            .map_err(IpcError::from)
+            .map_err(IpcError::from)?;
+        Ok(payload)
     })
 }
 
@@ -1434,6 +1440,7 @@ pub fn set_encoding(
             tab_id,
             info.encoding
         );
+        s_read_txt::mem::trim_after_large_work(info.byte_len);
         Ok(info)
     })
 }
@@ -1780,6 +1787,7 @@ pub fn reload_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabI
         let settings = settings_store::load_app_settings(&dir);
         let info = lock_state(&state)?.reload_tab(tab_id, &settings)?;
         log::info!(target: "sread::ipc", "重载：标签 {}", tab_id);
+        s_read_txt::mem::trim_after_large_work(info.byte_len);
         Ok(info)
     })
 }
@@ -2264,9 +2272,11 @@ pub fn document_stats(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<s_read_txt::stats::TextStats, IpcError> {
     with_context(LogContext::request(), || {
-        lock_state(&state)?
+        let stats = lock_state(&state)?
             .document_stats(tab_id, s_read_txt::stats::STATS_MAX_CHARS)
-            .map_err(IpcError::from)
+            .map_err(IpcError::from)?;
+        s_read_txt::mem::trim_after_large_work(stats.bytes);
+        Ok(stats)
     })
 }
 

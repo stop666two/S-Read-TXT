@@ -117,9 +117,16 @@
   const cache = new RowCache();
   /** 在途取行批次键 → 发起时间（看门狗：响应偶发丢失时超时重试，防永久空白） */
   const inflight = new Map<string, number>();
-  /** 在途批次看门狗超时（ms）：超过即视为丢失，允许重新取行
-   *  （实测取行响应 <1ms；快速滚动下偶发请求未达后端，故设置较短超时保证可见区及时补齐） */
-  const INFLIGHT_TIMEOUT_MS = 1200;
+  /** 在途批次看门狗超时基数（ms）：超过即视为丢失，允许重新取行
+   *  （普通文本实测取行响应 <1ms；快速滚动下偶发请求未达后端，短超时保证可见区及时补齐） */
+  const BASE_INFLIGHT_TIMEOUT_MS = 1200;
+  /** 大行看门狗超时（ms）：整行解码与传输可达数秒，固定短超时会把仍在途的批次
+   *  误判为丢失并重复发起整行取回（100MB 行会反复全量解码），按平均行宽放大。 */
+  function inflightTimeoutMs(avgRowBytes: number): number {
+    if (avgRowBytes > 1024 * 1024) return 30_000;
+    if (avgRowBytes > 64 * 1024) return 10_000;
+    return BASE_INFLIGHT_TIMEOUT_MS;
+  }
   /** 同时最多在途批次数（快速滚动时不淹没 IPC，降低消息丢失概率） */
   const MAX_INFLIGHT = 4;
   /** 延迟补取定时器（有被跳过的批次时兜底重试） */
@@ -520,14 +527,15 @@
    *  过滤启用时：批次中的显示行经 `filterRows` 映射为文件行，经 `fetch_rows_at` 稀疏取回，
    *  并按「显示行」键写入缓存（虚拟列表与百分比均以显示行为准）。 */
   function ensureRows(start: number, end: number): void {
-    // 看门狗：清掉超时未回的在途键（IPC 响应偶发丢失；不清将永久跳过该窗口）
-    const now = Date.now();
-    for (const [key, at] of inflight) {
-      if (now - at > INFLIGHT_TIMEOUT_MS) inflight.delete(key);
-    }
     // 大行文件（如 100MB 无换行按 8KB 分段）自适应缩小批次与并发：
     // 单批载荷从 ~400KB 降到 ~128KB，降低 IPC 拥塞窗口与丢失概率。
     const avgRowBytes = tab.rowsTotal > 0 ? (tab.byteLen ?? 0) / tab.rowsTotal : 0;
+    const timeoutMs = inflightTimeoutMs(avgRowBytes);
+    // 看门狗：清掉超时未回的在途键（IPC 响应偶发丢失；不清将永久跳过该窗口）
+    const now = Date.now();
+    for (const [key, at] of inflight) {
+      if (now - at > timeoutMs) inflight.delete(key);
+    }
     const batchMax = avgRowBytes > 1024 ? 16 : avgRowBytes > 256 ? 64 : MAX_BATCH;
     const maxInflight = avgRowBytes > 1024 ? 2 : MAX_INFLIGHT;
     const wanted: number[] = [];
@@ -578,7 +586,7 @@
     // 有批次因在途/上限被跳过：按退避延时重试；仅“已发出但在途”：
     // 安排看门狗检查（响应偶发丢失时超时剪枝并重新取行，防永久空白）。
     if (deferred) scheduleEnsureRetry(retryDelayMs);
-    else if (inflight.size > 0) scheduleEnsureRetry(INFLIGHT_TIMEOUT_MS + retryDelayMs);
+    else if (inflight.size > 0) scheduleEnsureRetry(timeoutMs + retryDelayMs);
   }
 
   /** 编辑结果回报：失效受影响行起的缓存与行高（行号平移的最小正确范围），
