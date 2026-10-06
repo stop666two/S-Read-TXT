@@ -507,4 +507,69 @@ mod tests {
         assert_eq!(reopened.row_text(0).as_deref(), Some("第一行X"));
         assert_eq!(reopened.row_text(1).as_deref(), Some("第二行"));
     }
+
+    /// 大文件散布编辑保存基准（手动运行，输出耗时与工作集）：
+    /// `cargo test --lib benchmark_scattered_save -- --ignored --nocapture`
+    #[test]
+    #[ignore = "性能基准，手动运行"]
+    fn benchmark_scattered_save() {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let path = dir.path().join("bench.txt");
+        // 每行约 79 字节 × 130 万行 ≈ 100MB
+        let line: &str =
+            "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-=-=--==-=-=--==0\n";
+        let rows_total: u64 = 1_300_000;
+        {
+            use std::io::Write as _;
+            let mut file =
+                std::io::BufWriter::new(std::fs::File::create(&path).expect("创建基准文件失败"));
+            for _ in 0..rows_total {
+                file.write_all(line.as_bytes()).expect("写基准文件失败");
+            }
+        }
+        for count in [1_000u64, 10_000u64] {
+            let mut doc = open_doc(&path);
+            let stride = (rows_total / (count + 1)).max(1);
+            let ops: Vec<EditOp> = (0..count)
+                .map(|index| EditOp::Insert {
+                    row: index * stride,
+                    utf16: 0,
+                    text: format!("[{index}]"),
+                })
+                .collect();
+            let start = std::time::Instant::now();
+            doc.apply_edits(&ops).expect("批量插入失败");
+            let apply_ms = start.elapsed().as_millis();
+            let start = std::time::Instant::now();
+            let outcome = save_doc(&mut doc, &path, &plain_options()).expect("保存失败");
+            let save_ms = start.elapsed().as_millis();
+            println!(
+                "基准 edits={count}: apply={apply_ms}ms save={save_ms}ms bytes={} 工作集={}MB",
+                outcome.bytes_written,
+                working_set_mb()
+            );
+        }
+    }
+
+    /// 当前进程工作集（MB；非 Windows 返回 0，基准仅本机参考）。
+    fn working_set_mb() -> u64 {
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::System::ProcessStatus::{
+                GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+            };
+            use windows_sys::Win32::System::Threading::GetCurrentProcess;
+            // SAFETY: 全零计数器为合法 POD；长度与结构体匹配
+            unsafe {
+                let mut counters: PROCESS_MEMORY_COUNTERS = std::mem::zeroed();
+                let size = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+                GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, size);
+                counters.WorkingSetSize as u64 / (1024 * 1024)
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            0
+        }
+    }
 }

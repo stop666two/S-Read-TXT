@@ -1152,40 +1152,30 @@ impl EditDoc {
         if ops.is_empty() {
             return Ok(self.applied(0, (0, 0)));
         }
-        // 1) 解析所有操作（相对编辑前状态）：全局字节区间 + 替换文本 + 受影响行
-        let mut resolved: Vec<(u64, u64, Vec<u8>, u64)> = Vec::with_capacity(ops.len());
+        // 1) 解析所有操作（相对编辑前状态）：批量单次扫描行位置（等价逐操作解析，
+        //    但避免每个操作都从片段起点重扫——大文件批量编辑的关键路径）
+        let positions = self.resolve_batch_positions(ops)?;
         // 超长行分段维护所需的区间统计（应用前坐标系）
+        let mut resolved: Vec<(u64, u64, Vec<u8>, u64)> = Vec::with_capacity(ops.len());
         let mut old_end = 0u64;
         let mut deleted_rows = 0u64;
         let mut inserted_newlines = 0u64;
-        for op in ops {
-            let (start, end, text, touched_row, span_rows, span_newlines) = match op {
-                EditOp::Insert { row, utf16, text } => {
-                    let pos = self.resolve_pos(*row, *utf16)?;
-                    let global = self.global_offset(pos);
-                    (
-                        global,
-                        global,
-                        text.clone().into_bytes(),
-                        *row,
-                        0,
-                        count_newlines(text.as_bytes()),
-                    )
-                }
+        for (index, op) in ops.iter().enumerate() {
+            let (start, end) = positions[index];
+            let (text, touched_row, span_rows, span_newlines) = match op {
+                EditOp::Insert { row, text, .. } => (
+                    text.clone().into_bytes(),
+                    *row,
+                    0,
+                    count_newlines(text.as_bytes()),
+                ),
                 EditOp::Delete {
-                    start_row,
-                    start_utf16,
-                    end_row,
-                    end_utf16,
+                    start_row, end_row, ..
                 } => {
-                    let a = self.global_offset(self.resolve_pos(*start_row, *start_utf16)?);
-                    let b = self.global_offset(self.resolve_pos(*end_row, *end_utf16)?);
-                    if b < a {
+                    if end < start {
                         return Err(EditError::InvalidPosition);
                     }
                     (
-                        a,
-                        b,
                         Vec::new(),
                         *start_row,
                         end_row.saturating_sub(*start_row),
@@ -1194,19 +1184,14 @@ impl EditDoc {
                 }
                 EditOp::Replace {
                     start_row,
-                    start_utf16,
                     end_row,
-                    end_utf16,
                     text,
+                    ..
                 } => {
-                    let a = self.global_offset(self.resolve_pos(*start_row, *start_utf16)?);
-                    let b = self.global_offset(self.resolve_pos(*end_row, *end_utf16)?);
-                    if b < a {
+                    if end < start {
                         return Err(EditError::InvalidPosition);
                     }
                     (
-                        a,
-                        b,
                         text.clone().into_bytes(),
                         *start_row,
                         end_row.saturating_sub(*start_row),
@@ -1547,6 +1532,216 @@ impl EditDoc {
             return Ok(start);
         }
         let end = self.row_end_pos(row)?;
+        let mut remaining = utf16;
+        let mut pos = start;
+        while pos.piece < self.pieces.len() {
+            if pos.piece == end.piece && pos.off >= end.off {
+                break;
+            }
+            let piece = self.pieces[pos.piece];
+            let stop = if pos.piece == end.piece {
+                end.off
+            } else {
+                piece.len
+            };
+            let text = self.decode_slice(&piece, pos.off, stop);
+            let encoding = self.encoding_for(&piece);
+            let mut prefix = String::new();
+            for ch in text.chars() {
+                let width = ch.len_utf16() as u64;
+                if remaining < width {
+                    // 落在代理对中间：吸附到字符起点
+                    let byte_off = pos.off + encoded_len(&prefix, encoding);
+                    return Ok(self.normalize_pos(DocPos {
+                        piece: pos.piece,
+                        off: byte_off,
+                    }));
+                }
+                remaining -= width;
+                prefix.push(ch);
+                if remaining == 0 {
+                    let byte_off = pos.off + encoded_len(&prefix, encoding);
+                    return Ok(self.normalize_pos(DocPos {
+                        piece: pos.piece,
+                        off: byte_off,
+                    }));
+                }
+            }
+            pos = DocPos {
+                piece: pos.piece + 1,
+                off: 0,
+            };
+        }
+        Err(EditError::Utf16OutOfRange { row, utf16 })
+    }
+
+    /// 批量解析操作位置：对全部请求行做单次顺序扫描（每次 apply 只扫一遍片段），
+    /// 返回与 `ops` 顺序一致的全局字节区间 `(start, end)`。
+    ///
+    /// 语义与逐操作 [`Self::resolve_pos`] 完全一致（含行越界与 UTF-16 越界报错、
+    /// 代理对中间吸附、跨片段 CRLF 单元处理）。
+    fn resolve_batch_positions(&self, ops: &[EditOp]) -> Result<Vec<(u64, u64)>, EditError> {
+        let mut requests: Vec<(u64, u64)> = Vec::with_capacity(ops.len() * 2);
+        let mut slots: Vec<(usize, usize)> = Vec::with_capacity(ops.len());
+        for op in ops {
+            let (start_req, end_req) = match op {
+                EditOp::Insert { row, utf16, .. } => ((*row, *utf16), (*row, *utf16)),
+                EditOp::Delete {
+                    start_row,
+                    start_utf16,
+                    end_row,
+                    end_utf16,
+                } => ((*start_row, *start_utf16), (*end_row, *end_utf16)),
+                EditOp::Replace {
+                    start_row,
+                    start_utf16,
+                    end_row,
+                    end_utf16,
+                    ..
+                } => ((*start_row, *start_utf16), (*end_row, *end_utf16)),
+            };
+            slots.push((requests.len(), requests.len() + 1));
+            requests.push(start_req);
+            requests.push(end_req);
+        }
+        for (row, _) in &requests {
+            if *row >= self.rows_total() {
+                return Err(EditError::RowOutOfRange { row: *row });
+            }
+        }
+        let mut rows: Vec<u64> = requests.iter().map(|(row, _)| *row).collect();
+        rows.sort_unstable();
+        rows.dedup();
+        let spans = self.scan_row_spans(&rows);
+
+        let lookup = |row: u64| -> (DocPos, DocPos) {
+            let index = rows.binary_search(&row).expect("请求行已在扫描集合中");
+            spans[index]
+        };
+        let mut resolved_requests: Vec<u64> = Vec::with_capacity(requests.len());
+        for (row, utf16) in &requests {
+            let (start, end) = lookup(*row);
+            let pos = if *utf16 == 0 {
+                start
+            } else {
+                self.resolve_within(*row, *utf16, start, end)?
+            };
+            resolved_requests.push(self.global_offset(pos));
+        }
+        let mut result = Vec::with_capacity(ops.len());
+        for (start_slot, end_slot) in slots {
+            result.push((resolved_requests[start_slot], resolved_requests[end_slot]));
+        }
+        Ok(result)
+    }
+
+    /// 扫描指定行的 `(起始, 结束)` 文档位置（按行号升序单次遍历片段）。
+    ///
+    /// `rows` 必须已升序去重；行 0 起始为文档起点，末行结束为文档末尾
+    /// （无结尾换行时无对应单元）。
+    fn scan_row_spans(&self, rows: &[u64]) -> Vec<(DocPos, DocPos)> {
+        let units_total = self.line_tree.total();
+        // 需要扫描的单元 id：行 r 的起点 = 单元 r-1 的终点；行 r 的终点 = 单元 r 的起点
+        let mut needed: Vec<u64> = Vec::with_capacity(rows.len() * 2);
+        for &row in rows {
+            if row > 0 {
+                needed.push(row - 1);
+            }
+            if row < units_total {
+                needed.push(row);
+            }
+        }
+        needed.sort_unstable();
+        needed.dedup();
+        // 单次顺序扫描：逐片段枚举换行单元，只记录需要的单元 span
+        let mut spans: Vec<(DocPos, DocPos)> = Vec::with_capacity(needed.len());
+        let mut pointer = 0usize;
+        if !needed.is_empty() {
+            let mut unit_id: u64 = 0;
+            'pieces: for (piece_index, piece) in self.pieces.iter().enumerate() {
+                if pointer >= needed.len() {
+                    break;
+                }
+                let bytes = self.piece_bytes(piece);
+                let encoding = self.encoding_for(piece);
+                let len = bytes.len() as u64;
+                let mut pos = 0u64;
+                if self.prev_cr(piece_index) && starts_with_lf(bytes, encoding, 0, len) {
+                    pos += newline_width(encoding);
+                }
+                while let Some((newline_start, newline_end)) = find_newline(bytes, encoding, pos) {
+                    if pointer >= needed.len() {
+                        break 'pieces;
+                    }
+                    let end_off = newline_end.min(len);
+                    while pointer < needed.len() && needed[pointer] == unit_id {
+                        // 跨片 `\r`+`\n`：单元在片段末尾以 `\r` 结束时，终点越过下一片开头的 `\n`
+                        let mut end_pos = DocPos {
+                            piece: piece_index,
+                            off: end_off,
+                        };
+                        if end_off == len && ends_with_cr(bytes, encoding, 0, len) {
+                            if let Some(next) = self.pieces.get(piece_index + 1) {
+                                let next_bytes = self.piece_bytes(next);
+                                let next_encoding = self.encoding_for(next);
+                                if starts_with_lf(next_bytes, next_encoding, 0, next.len) {
+                                    end_pos = DocPos {
+                                        piece: piece_index + 1,
+                                        off: newline_width(next_encoding),
+                                    };
+                                }
+                            }
+                        }
+                        spans.push((
+                            DocPos {
+                                piece: piece_index,
+                                off: newline_start,
+                            },
+                            self.normalize_pos(end_pos),
+                        ));
+                        pointer += 1;
+                    }
+                    unit_id += 1;
+                    if end_off >= len {
+                        break;
+                    }
+                    pos = end_off;
+                }
+            }
+        }
+        let span_of = |unit: u64| -> (DocPos, DocPos) {
+            let index = needed.binary_search(&unit).expect("所需单元已在扫描集合中");
+            spans[index]
+        };
+        rows.iter()
+            .map(|&row| {
+                let start = if row == 0 {
+                    DocPos { piece: 0, off: 0 }
+                } else {
+                    span_of(row - 1).1
+                };
+                let end = if row < units_total {
+                    span_of(row).0
+                } else {
+                    self.doc_end_pos()
+                };
+                (start, end)
+            })
+            .collect()
+    }
+
+    /// 在已知行区间内解析 `(row, utf16)` → 文档位置（等价 [`Self::resolve_pos`] 的
+    /// 行内推进，但复用批量扫描得到的行起点/终点，避免重复全片段重扫）。
+    fn resolve_within(
+        &self,
+        row: u64,
+        utf16: u64,
+        start: DocPos,
+        end: DocPos,
+    ) -> Result<DocPos, EditError> {
+        if utf16 == 0 {
+            return Ok(start);
+        }
         let mut remaining = utf16;
         let mut pos = start;
         while pos.piece < self.pieces.len() {
