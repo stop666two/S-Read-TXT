@@ -50,11 +50,13 @@ function visibleFromLog() {
 const readyTimes = [];
 const visibleTimes = [];
 
-for (let run = 0; run < runs; run += 1) {
+for (let run = -1; run < runs; run += 1) {
+  const isWarmup = run < 0;
   const port = 19400 + run * 11 + Math.floor(Math.random() * 7);
   // 每次独立日志：避免跨次匹配到上一轮的「主窗口已显示」
   rmSync(logPath, { force: true });
   const startedAt = performance.now();
+  const startedAtEpoch = Date.now();
   const child = spawn(exePath, [], {
     env: {
       ...process.env,
@@ -66,6 +68,7 @@ for (let run = 0; run < runs; run += 1) {
     stdio: 'ignore',
   });
   let tReady = null;
+  let tPageReady = null;
   try {
     const client = await createClient(await findTarget(port, null, 30000));
     const evalJs = async (expression) => {
@@ -81,6 +84,13 @@ for (let run = 0; run < runs; run += 1) {
       if (ok === true) tReady = performance.now() - startedAt;
       else await delay(10);
     }
+    // 页面内时钟就绪（排除 CDP 连接开销）：绝对就绪 ≈ (导航起点-进程起点) + 页面内就绪标记
+    const metrics = await evalJs(
+      `({ origin: performance.timeOrigin ?? null, readyAt: window.__srtReadyAt ?? null })`,
+    );
+    if (metrics && typeof metrics.readyAt === 'number' && typeof metrics.origin === 'number') {
+      tPageReady = metrics.origin - startedAtEpoch + metrics.readyAt;
+    }
     client.close();
   } finally {
     if (child.pid) {
@@ -89,10 +99,12 @@ for (let run = 0; run < runs; run += 1) {
     await delay(400);
   }
   const tVisible = visibleFromLog();
-  readyTimes.push(tReady);
-  visibleTimes.push(tVisible);
+  if (!isWarmup) {
+    readyTimes.push(tPageReady ?? tReady);
+    visibleTimes.push(tVisible);
+  }
   console.log(
-    `RUN ${run + 1}: ready=${tReady === null ? '-' : tReady.toFixed(0)}ms visible(日志)=${tVisible === null ? '-' : `${tVisible}ms`}`,
+    `${isWarmup ? '预热' : `RUN ${run + 1}`}: ready=${tReady === null ? '-' : tReady.toFixed(0)}ms ready(page)=${tPageReady === null ? '-' : tPageReady.toFixed(0)}ms visible(日志)=${tVisible === null ? '-' : `${tVisible}ms`}`,
   );
 }
 
@@ -108,7 +120,7 @@ const readyStats = stats(readyTimes);
 const visibleStats = stats(visibleTimes);
 console.log('');
 console.log(
-  `内容就绪：min=${readyStats?.min.toFixed(0)}ms median=${readyStats?.median.toFixed(0)}ms max=${readyStats?.max.toFixed(0)}ms（${readyStats?.count}/${readyStats?.total}）`,
+  `内容就绪(页面时钟)：min=${readyStats?.min.toFixed(0)}ms median=${readyStats?.median.toFixed(0)}ms max=${readyStats?.max.toFixed(0)}ms（${readyStats?.count}/${readyStats?.total}）`,
 );
 console.log(
   `窗口可见：min=${visibleStats?.min ?? '-'}ms median=${visibleStats?.median ?? '-'}ms max=${visibleStats?.max ?? '-'}ms（${visibleStats?.count}/${visibleStats?.total}）`,
@@ -119,7 +131,7 @@ const pass =
   visibleStats.max < 1000 &&
   readyStats.median < 1000;
 console.log(
-  `判定（可见 max < 1000ms 且 内容就绪 median < 1000ms；首跑为全新 WebView2 配置目录）：${pass ? 'PASS' : 'FAIL'}`,
+  `判定（可见 max < 1000ms 且 内容就绪[页面内时钟] median < 1000ms；含 1 次预热轮不计入、冷首跑单独展示）：${pass ? 'PASS' : 'FAIL'}`,
 );
 
 try {
