@@ -392,7 +392,7 @@ export const en: Record<MessageKey, string> = {
   'setting.app.startup.maxSessionFolds': 'Session fold restore cap',
   'setting.app.startup.maxSessionFolds.desc': 'Fold anchors restored per tab; 0 disables fold restore.',
   'setting.app.startup.maxWindows': 'Restored window cap',
-  'setting.app.startup.maxWindows.desc': 'Maximum windows restored on startup.',
+  'setting.app.startup.maxWindows.desc': 'Maximum windows restored on startup (including the main window).',
   'setting.enum.newEol.lf': 'LF (\\n)',
   'setting.enum.newEol.crlf': 'CRLF (\\r\\n)',
   'setting.enum.newEol.cr': 'CR (\\r)',

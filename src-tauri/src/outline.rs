@@ -200,6 +200,9 @@ fn indent_regions(
             break;
         }
         for row in &rows {
+            if regions.len() >= max_regions {
+                break;
+            }
             if row.text.trim().is_empty() {
                 continue;
             }
@@ -221,9 +224,12 @@ fn indent_regions(
         }
         start += rows.len() as u64;
     }
-    // 收尾：剩余栈按扫描范围末尾闭合
+    // 收尾：剩余栈按扫描范围末尾闭合（仍受上限约束）
     let last_scanned = total.saturating_sub(1);
     for (_, head) in stack {
+        if regions.len() >= max_regions {
+            break;
+        }
         if last_scanned > head + 1 {
             regions.push(FoldRegion {
                 start_row: head,
@@ -232,6 +238,7 @@ fn indent_regions(
         }
     }
     regions.sort_by_key(|region| (region.start_row, region.end_row));
+    regions.truncate(max_regions);
     regions
 }
 

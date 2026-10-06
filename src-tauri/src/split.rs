@@ -122,7 +122,7 @@ impl std::fmt::Display for SplitError {
             SplitError::InvalidPattern(reason) => write!(formatter, "正则表达式无效：{reason}"),
             SplitError::EmptyResult => write!(formatter, "没有产生任何分片"),
             SplitError::TooManyParts(count) => {
-                write!(formatter, "分片数量 {count} 超出上限 {MAX_PARTS}")
+                write!(formatter, "分片数量 {count} 超出设置上限")
             }
             SplitError::TooLarge(bytes) => write!(formatter, "文件过大（{bytes} 字节）"),
             SplitError::Io(err) => write!(formatter, "读写失败：{err}"),

@@ -384,7 +384,7 @@ export const zhCN = {
   'setting.app.startup.maxSessionFolds': '会话折叠恢复上限（条）',
   'setting.app.startup.maxSessionFolds.desc': '每条标签恢复的折叠锚点上限；0 表示不恢复折叠。',
   'setting.app.startup.maxWindows': '恢复窗口数上限',
-  'setting.app.startup.maxWindows.desc': '启动时最多自动恢复的窗口数量。',
+  'setting.app.startup.maxWindows.desc': '启动时最多自动恢复的窗口数量（含主窗口）。',
   'setting.enum.newEol.lf': 'LF（\\n）',
   'setting.enum.newEol.crlf': 'CRLF（\\r\\n）',
   'setting.enum.newEol.cr': 'CR（\\r）',

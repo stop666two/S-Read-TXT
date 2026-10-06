@@ -99,6 +99,9 @@ pub fn scan_edit_doc(
                         end_utf16: hit.end_utf16,
                         preview,
                     });
+                } else {
+                    // 展示列表被上限截断（总数仍完整统计）
+                    outcome.truncated = true;
                 }
                 if outcome.total as usize >= MATCH_COUNT_LIMIT {
                     outcome.truncated = true;
@@ -152,6 +155,9 @@ pub fn scan_file_session(
                         end_utf16,
                         preview: preview_of(&row_text.text),
                     });
+                } else {
+                    // 展示列表被上限截断（总数仍完整统计）
+                    outcome.truncated = true;
                 }
                 if outcome.total as usize >= MATCH_COUNT_LIMIT {
                     outcome.truncated = true;
@@ -265,7 +271,8 @@ mod tests {
             scan_file_session(&session, &request("x", SearchMode::Literal), 2).expect("扫描失败");
         assert_eq!(outcome.matches.len(), 2);
         assert_eq!(outcome.total, 4);
-        assert!(!outcome.truncated);
+        // 展示列表被 cap 截断时标记 truncated（总数仍完整统计）
+        assert!(outcome.truncated);
     }
 
     /// 非法正则返回可读错误。

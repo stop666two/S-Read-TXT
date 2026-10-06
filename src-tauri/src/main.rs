@@ -233,7 +233,8 @@ fn main() {
                                 .chars()
                                 .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
                     })
-                    .take(max_restore_windows)
+                    // 上限为「窗口总数（含主窗口）」：额外恢复数 = 上限 − 1
+                    .take(max_restore_windows.saturating_sub(1))
                     .collect();
                 if !extras.is_empty() {
                     let app_handle = app.handle().clone();
