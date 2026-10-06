@@ -12,6 +12,7 @@
   import { setLocale, t } from '../../lib/i18n/index.svelte';
   import { ipc } from '../../lib/ipc';
   import { applyThemeTokens } from '../../lib/theme';
+  import { applyA11ySettings } from '../../lib/a11y';
   import AboutTab from './AboutTab.svelte';
 import BackupSection from './BackupSection.svelte';
 import DataSection from './DataSection.svelte';
@@ -70,6 +71,12 @@ import DiskSection from './DiskSection.svelte';
   // 界面语言跟随配置：载入与修改时同步本窗口语言包（即时切换）
   $effect(() => {
     setLocale(settings.snapshot?.app.locale ?? 'zh-CN');
+  });
+
+  // 可访问性跟随配置：字体缩放/减少动画/高对比等即时应用到本窗口
+  $effect(() => {
+    const app = settings.snapshot?.app;
+    if (app) applyA11ySettings(app);
   });
 
   /** 设置窗口自身主题：按当前主题解析令牌并写入 CSS 变量（失败保持默认浅色） */

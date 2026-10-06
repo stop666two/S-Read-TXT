@@ -3,9 +3,10 @@
   import Icon from './Icon.svelte';
   import { t } from '../i18n/index.svelte';
   import { toasts } from '../state/toasts.svelte';
+  import { isScreenReaderEnhanced } from '../a11y';
 </script>
 
-<div class="toast-region" aria-live="polite">
+<div class="toast-region" aria-live={isScreenReaderEnhanced() ? 'polite' : 'off'}>
   {#each toasts.items as item (item.id)}
     <div class="toast" class:error={item.kind === 'error'} class:warn={item.kind === 'warn'}>
       <span class="bar" aria-hidden="true"></span>

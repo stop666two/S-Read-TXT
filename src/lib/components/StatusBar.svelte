@@ -8,6 +8,7 @@
   import { t } from '../i18n/index.svelte';
   import type { StatusSettings, TextStats } from '../ipc';
   import EncodingMenu from './EncodingMenu.svelte';
+  import { isScreenReaderEnhanced } from '../a11y';
 
   /** 状态栏显示项（设置缺省时的兜底顺序；与 Rust DEFAULT_STATUS_ITEMS 对齐）。 */
   const DEFAULT_ITEMS = ['lineCol', 'counts', 'progress', 'size', 'encoding', 'eol', 'modified'];
@@ -153,7 +154,11 @@
   }
 </script>
 
-<footer class="status-bar">
+<footer
+  class="status-bar"
+  role={isScreenReaderEnhanced() ? 'status' : undefined}
+  aria-live={isScreenReaderEnhanced() ? 'polite' : 'off'}
+>
   {#if fileName !== undefined}
     <span class="left">
       <span class="name">{fileName}</span>

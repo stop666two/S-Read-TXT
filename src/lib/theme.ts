@@ -8,6 +8,7 @@
 // - 失败回滚：本模块只负责 UI 应用，令牌合法性由后端强校验；调用方在 IPC 失败时保留现状。
 
 import type { ResolvedTheme } from './ipc';
+import { isReduceMotion } from './a11y';
 
 /** 令牌键（camelCase）→ CSS 变量名（kebab-case，`--` 前缀） */
 export function tokenToCssVar(token: string): string {
@@ -32,6 +33,11 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+/** 是否应跳过主题过渡：系统偏好或用户设置（含性能模式）要求减少动画。 */
+function reduceMotionNow(): boolean {
+  return prefersReducedMotion() || isReduceMotion();
+}
+
 /**
  * 应用主题令牌到当前文档（主窗口与设置窗口共用）。
  *
@@ -46,7 +52,7 @@ export function applyThemeTokens(theme: ResolvedTheme, transition?: ThemeTransit
   const animate =
     transition?.enabled === true &&
     (transition.durationMs ?? 0) > 0 &&
-    !prefersReducedMotion();
+    !reduceMotionNow();
   if (animate) {
     root.style.setProperty('--theme-anim-ms', `${transition?.durationMs ?? 200}ms`);
     root.classList.add('theme-anim');

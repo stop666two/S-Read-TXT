@@ -106,3 +106,31 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--muted);
 }
+
+/* ---------- 可访问性与性能模式（根节点类，由 lib/a11y.ts 应用） ---------- */
+
+/* 减少动画：保留状态切换，把过渡与动画压缩到近乎瞬时 */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+}
+
+/* 性能模式：隐藏背景图层，降低重绘开销 */
+.performance-mode [data-bg-layer] {
+  display: none !important;
+}
+
+/* 高对比叠加：在任意主题上提升对比（整体滤镜，避免与主题令牌冲突） */
+.hc-overlay {
+  filter: contrast(1.15);
+}
+
+/* 增强键盘焦点：统一可见的强调轮廓 */
+.focus-strong :focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px !important;
+}

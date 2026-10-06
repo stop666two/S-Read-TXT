@@ -6,6 +6,7 @@
 
   import EditLayer from './EditLayer.svelte';
   import type { EditorAction } from '../edit/actions';
+  import { isReduceMotion } from '../a11y';
   import { t } from '../i18n/index.svelte';
   import {
     describeIpcError,
@@ -1064,7 +1065,11 @@
     if (spreadTween !== undefined) cancelAnimationFrame(spreadTween);
     const from = spreadOffset;
     const ms = pagedSpread ? Math.max(0, readingSettings?.pageAnimMs ?? 320) : 0;
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduce =
+      isReduceMotion() ||
+      (typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     if (ms === 0 || reduce) {
       spreadOffset = target;
       reportSpreadTop();

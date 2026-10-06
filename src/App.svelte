@@ -65,6 +65,7 @@ import SnapshotsPanel from './lib/components/SnapshotsPanel.svelte';
   import { comboFromEvent } from './lib/shortcuts/keys';
   import type { ShortcutAction, ShortcutMap } from './lib/shortcuts/types';
   import { applyThemeTokens } from './lib/theme';
+  import { applyA11ySettings } from './lib/a11y';
 
   /** 当前主题 id（设置值；`system` 表示跟随系统） */
   let themeId = $state('system');
@@ -283,6 +284,7 @@ let outlineOpen = $state(false);
       const snapshot = await ipc.getSettings();
       if (seq !== settingsLoadSeq) return;
       appSettings = snapshot.app;
+      applyA11ySettings(snapshot.app);
       readerSettings = snapshot.reader;
         shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
         themeId = snapshot.reader.theme;
@@ -310,6 +312,7 @@ let outlineOpen = $state(false);
       if (seq !== readerSaveSeq) return;
       settingsLoadSeq += 1;
       appSettings = snapshot.app;
+      applyA11ySettings(snapshot.app);
       readerSettings = snapshot.reader;
         shortcuts = snapshot.shortcuts.bindings as ShortcutMap;
         themeId = snapshot.reader.theme;
