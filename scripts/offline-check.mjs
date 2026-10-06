@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 离线核查：
-//  A. 静态：依赖树扫描——Cargo.lock / package.json 中不应出现 HTTP 客户端库（本项目零联网）。
+//  A. 静态：依赖树扫描——Windows 目标依赖树仅允许白名单 HTTP 客户端（ureq：仅手动更新检查；
+//     无网络模式默认开启，检查前二次确认）；其余 HTTP 客户端与前端 HTTP 库一律不允许。
 //  B. 运行时：启动应用（无调试端口）→ 采样进程树 TCP 连接 → 不应存在对外（非本机）连接。
 // 用法：node scripts/offline-check.mjs [--exe <路径>]
 
@@ -30,17 +31,27 @@ const cargoTree = spawnSync('cargo', ['tree', '--prefix', 'none'], {
   maxBuffer: 64 * 1024 * 1024,
 });
 const httpCrates = ['reqwest', 'hyper', 'ureq', 'isahc', 'attohttpc', 'curl', 'surf', 'awc'];
+// 白名单：更新检查为唯一显式联网功能（无网络模式默认开启，仅手动检查前二次确认）；
+// 其余 HTTP 客户端一律不允许进入 Windows 目标依赖树。
+const allowedHttpCrates = ['ureq'];
 const treeNames = new Set(
   (cargoTree.stdout ?? '')
     .split(/\r?\n/)
     .map((line) => line.trim().split(' ')[0])
     .filter(Boolean),
 );
-const foundCrates = httpCrates.filter((name) => treeNames.has(name));
+const foundCrates = httpCrates.filter(
+  (name) => treeNames.has(name) && !allowedHttpCrates.includes(name),
+);
+const allowedFound = httpCrates.filter(
+  (name) => treeNames.has(name) && allowedHttpCrates.includes(name),
+);
 check(
-  'A1 Windows 目标依赖树无 HTTP 客户端（cargo tree 实测）',
+  'A1 Windows 目标依赖树仅许可更新检查 HTTP 客户端（白名单：ureq）',
   foundCrates.length === 0,
-  foundCrates.length === 0 ? `扫描 ${treeNames.size} 个 crate，未发现` : `发现：${foundCrates.join(', ')}`,
+  foundCrates.length === 0
+    ? `扫描 ${treeNames.size} 个 crate${allowedFound.length > 0 ? `；白名单命中：${allowedFound.join(', ')}（仅手动更新检查）` : '，未发现'}`
+    : `发现未许可：${foundCrates.join(', ')}`,
 );
 
 const cargoLock = join(root, 'src-tauri', 'Cargo.lock');
