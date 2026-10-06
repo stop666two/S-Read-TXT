@@ -11,7 +11,7 @@
 //   W9  重启：仅恢复存活窗口与标签
 // 依赖：debug 构建（npm run tauri build -- --debug --no-bundle）。
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,7 +21,9 @@ import {
   dismissOnboarding,
   findTarget,
   waitForValue,
+  wakeChannel,
 } from './lib/smoke-cdp.mjs';
+import { removeWithRetryAsync } from './lib/system.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exe = join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe');
@@ -293,6 +295,9 @@ try {
   await waitForValue(async () => ((await tabNames(byLabel.main)).includes('a.txt') ? true : null), 8000);
   const aPoint = await tabPoint(byLabel.main, 'a.txt');
   const desktop = { x: 500, y: 1000 };
+  // 拖拽协议依赖页面→Rust 的 IPC 到达顺序；WebView2 空闲后首条 invoke 可能被延迟 ~19s，
+  // 合成一次鼠标移动预热通道（与 smoke-longline 同一对策），保证桌面落点裁决稳定。
+  await wakeChannel(byLabel.main);
   await mouse(byLabel.main, 'mousePressed', aPoint.x, aPoint.y, 1);
   await dragSteps(byLabel.main, aPoint, desktop);
   await mouse(byLabel.main, 'mouseReleased', desktop.x, desktop.y, 0);
@@ -396,9 +401,9 @@ try {
 } finally {
   clearTimeout(watchdog);
   killAll();
-  await delay(800);
+  await delay(1200);
   if (failed === 0) {
-    rmSync(work, { recursive: true, force: true });
+    await removeWithRetryAsync(work);
   } else {
     console.log(`失败：保留工作目录供诊断 → ${work}`);
   }

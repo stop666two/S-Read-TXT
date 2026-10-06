@@ -18,7 +18,7 @@
 //   S16 截图归档
 // 依赖：debug 构建（npm run tauri build -- --debug --no-bundle）。
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +29,7 @@ import {
   findTarget,
   waitForValue,
 } from './lib/smoke-cdp.mjs';
+import { removeWithRetryAsync } from './lib/system.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exe = join(root, 'src-tauri', 'target', 'debug', 's-read-txt.exe');
@@ -583,9 +584,9 @@ try {
 } finally {
   clearTimeout(watchdog);
   killAll();
-  await delay(800);
+  await delay(1200);
   if (failed === 0) {
-    rmSync(work, { recursive: true, force: true });
+    await removeWithRetryAsync(work);
   } else {
     console.log(`失败：保留工作目录供诊断 → ${work}`);
   }

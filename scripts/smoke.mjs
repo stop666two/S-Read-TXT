@@ -115,7 +115,14 @@ const invokeCaught = (cmd, payload = {}) =>
   );
 
 // 等待页面注入 Tauri 内部 API（CDP 目标出现可能早于页面脚本执行完毕）
-async function waitForReady(timeoutMs = 10000) {
+async function waitForReady(timeoutMs = 20000) {
+  // 唤醒 WebView2 空闲 IPC 通道：页面初始化中的首个 invoke 可能被延迟 ~19s，
+  // 合成一次鼠标移动可立即恢复（与 smoke-longline 同一对策）
+  try {
+    await sendCdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 160, y: 320, buttons: 0 }, 3000);
+  } catch {
+    // 唤醒失败不阻断主流程
+  }
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {

@@ -43,6 +43,20 @@ export function removeWithRetry(path, attempts = 24) {
   }
 }
 
+/** 带重试删除（异步版）：每轮之间等待 delayMs，适合进程刚被杀、句柄尚未释放的套件清理。 */
+export async function removeWithRetryAsync(path, attempts = 20, delayMs = 300) {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      rmSync(path, { recursive: true, force: true });
+    } catch {
+      // 忽略并重试
+    }
+    if (!existsSync(path)) return true;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return false;
+}
+
 /**
  * 进程树详情：每个进程的名称、角色、专用工作集、工作集。
  * 口径：WorkingSetPrivate 与任务管理器「内存」一致（mmap 文件缓存页不计入）；
