@@ -247,7 +247,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases/tags/$RELEASE_TAG" --jq .id)
+          # 刚创建的 Release 可能在数秒内不可见（API 最终一致）：短重试
+          RELEASE_ID=""
+          for i in 1 2 3 4 5 6; do
+            RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases/tags/$RELEASE_TAG" --jq .id 2>/dev/null || true)
+            if [ -n "$RELEASE_ID" ]; then break; fi
+            echo "Release 暂不可见，重试（$i/6）…"
+            sleep 4
+          done
+          if [ -z "$RELEASE_ID" ]; then
+            echo "无法获取 Release ID"; exit 1
+          fi
           NAME_ENC=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "清理右键与打开方式.bat")
           gh api -X POST \
             "repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=${NAME_ENC}" \
