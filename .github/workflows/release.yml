@@ -239,9 +239,22 @@ jobs:
             --notes-file release-notes.md $PRERELEASE_FLAG \
             release-assets-all/*.exe \
             release-assets-all/*.zip \
-            release-assets-all/*.bat \
+            release-assets-all/cleanup-shell-integration.bat \
             release-assets-all/SHA256SUMS.txt \
             release-meta/test-summary.md
+      - name: 上传中文名清理脚本（REST 显式命名，规避 gh CLI 对 Unicode 资产名的降级）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases/tags/$RELEASE_TAG" --jq .id)
+          NAME_ENC=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "清理右键与打开方式.bat")
+          gh api -X POST \
+            "repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=${NAME_ENC}" \
+            -H "Content-Type: application/octet-stream" \
+            --input packaging/cleanup-shell-integration.bat
+          echo "已上传中文名脚本：清理右键与打开方式.bat"
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name'
       - name: 附加完整测试报告（如仓库已有）
         env:
           GH_TOKEN: ${{ github.token }}
