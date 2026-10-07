@@ -60,7 +60,7 @@ async function main() {
   writeFileSync(testFile, 'l1\nl2\n\nl4\nl5\nl6', 'utf8');
   writeFileSync(
     largeFile,
-    Array.from({ length: 8000 }, (_, index) => `x${index}`).join('\n'),
+    Array.from({ length: 150_000 }, (_, index) => `x${index}`).join('\n'),
     'utf8',
   );
 
@@ -332,13 +332,13 @@ async function main() {
       `window.__TAURI_INTERNALS__.invoke('get_rows', { tabId: ${largeTabId}, startRow: 0, count: 1 })`,
     );
     const rowsLargeTail = await evalJs(
-      `window.__TAURI_INTERNALS__.invoke('get_rows', { tabId: ${largeTabId}, startRow: 7999, count: 1 })`,
+      `window.__TAURI_INTERNALS__.invoke('get_rows', { tabId: ${largeTabId}, startRow: 149999, count: 1 })`,
     );
     check('B14a 大范围应用显示进度元素', sawProgress === true);
     check(
-      'B14b 8000 行全部编号',
+      'B14b 15 万行全部编号',
       (rowsLarge?.rows?.[0]?.text ?? '').startsWith('1.x0') &&
-        (rowsLargeTail?.rows?.[0]?.text ?? '').startsWith('8000.x7999'),
+        (rowsLargeTail?.rows?.[0]?.text ?? '').startsWith('150000.x149999'),
       `${rowsLarge?.rows?.[0]?.text} | ${rowsLargeTail?.rows?.[0]?.text}`,
     );
     await evalJs(`window.__TAURI_INTERNALS__.invoke('undo_edit', { tabId: ${largeTabId} })`);
@@ -360,6 +360,7 @@ async function main() {
     await delay(150);
     await evalJs(`document.querySelector('[data-setting="batch.apply"]').click()`);
     await waitFor(() => evalJs(`!!document.querySelector('[data-batch-cancel]')`), 6_000, '取消按钮');
+    await waitFor(() => evalJs(`!!document.querySelector('[data-batch-progress]')`), 8_000, '进度元素');
     await evalJs(`document.querySelector('[data-batch-cancel]').click()`);
     await waitFor(() => evalJs(`!document.querySelector('[data-batch-cancel]')`), 30_000, '取消完成');
     const rowsCancelled = await evalJs(
