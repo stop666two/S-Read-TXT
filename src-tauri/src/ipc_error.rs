@@ -110,6 +110,10 @@ pub const CODE_UPDATE_SOURCE: &str = "UPDATE_SOURCE";
 pub const CODE_UPDATE_FAILED: &str = "UPDATE_FAILED";
 /// 安装包摘要校验失败。
 pub const CODE_UPDATE_DIGEST: &str = "UPDATE_DIGEST";
+/// 系统集成操作需要管理员权限（全局作用域 / UAC 被取消）。
+pub const CODE_NEEDS_ELEVATION: &str = "NEEDS_ELEVATION";
+/// 系统集成注册/注销失败。
+pub const CODE_INTEGRATION: &str = "INTEGRATION_FAILED";
 /// 内部错误（锁中毒等）
 pub const CODE_INTERNAL: &str = "INTERNAL";
 

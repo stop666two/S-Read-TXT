@@ -83,6 +83,10 @@ fn main() {
     if let Some(code) = s_read_txt::elevation::maybe_run_prepare_mode() {
         std::process::exit(code);
     }
+    // 系统集成助手模式同理：只写注册表（全局作用域）后退出，不进入 Tauri/WebView2。
+    if let Some(code) = s_read_txt::shell_integration::maybe_run_helper_mode() {
+        std::process::exit(code);
+    }
     // WebView2 附加参数必须在任何 WebView 创建之前设置（含内存策略与离线加固项）。
     configure_webview2_extra_args();
     // 日志先行：级别来源 SRT_LOG_LEVEL > settings.json 的 logLevel > 默认 info；
@@ -366,6 +370,8 @@ fn main() {
             commands::download_update,
             commands::reveal_update_file,
             commands::open_update_page,
+            commands::integration_status,
+            commands::integration_apply,
             commands::migrate_data_dir,
             commands::restart_app,
             commands::set_background_file,

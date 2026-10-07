@@ -60,6 +60,8 @@ const ERROR_MESSAGE_KEYS: Record<string, MessageKey> = {
   UPDATE_SOURCE: 'error.updateSource',
   UPDATE_FAILED: 'error.updateFailed',
   UPDATE_DIGEST: 'error.updateDigest',
+  NEEDS_ELEVATION: 'error.needsElevation',
+  INTEGRATION_FAILED: 'error.integrationFailed',
   INTERNAL: 'error.internal',
 };
 

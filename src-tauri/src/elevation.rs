@@ -217,12 +217,12 @@ pub fn ensure_data_dir_access(data_dir: &Path) -> AccessOutcome {
                 return AccessOutcome::Failed;
             };
             match spawn_elevated_prepare(data_dir, &sid) {
-                PrepareSpawn::Started(handle) => {
+                RunAsOutcome::Started(handle) => {
                     wait_for_exit(handle);
                     finalize_access(data_dir)
                 }
-                PrepareSpawn::Cancelled => AccessOutcome::Declined,
-                PrepareSpawn::Failed => AccessOutcome::Failed,
+                RunAsOutcome::Cancelled => AccessOutcome::Declined,
+                RunAsOutcome::Failed => AccessOutcome::Failed,
             }
         }
     }
@@ -249,7 +249,7 @@ fn finalize_access(data_dir: &Path) -> AccessOutcome {
 /// 实现：打开自身进程令牌，查询 `TokenElevation`；任何一步失败都按「非提权」处理
 /// （宁可多弹一次 UAC，不可漏判导致功能不可用）。
 #[cfg(windows)]
-fn is_process_elevated() -> bool {
+pub fn is_process_elevated() -> bool {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::Security::{
         GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
@@ -360,9 +360,9 @@ fn grant_user_modify(dir: &Path, sid: &str) -> std::io::Result<()> {
     }
 }
 
-/// 提权助手的拉起结果。
+/// `runas` 拉起自身（提权）的结果。
 #[cfg(windows)]
-enum PrepareSpawn {
+pub enum RunAsOutcome {
     /// 已拉起（含进程句柄，调用方等待其退出）。
     Started(windows_sys::Win32::Foundation::HANDLE),
     /// 用户在 UAC 弹窗中选择取消。
@@ -371,15 +371,12 @@ enum PrepareSpawn {
     Failed,
 }
 
-/// 以管理员身份（`runas`）拉起自身助手模式 `--prepare-data-dir <路径> --grant-sid <SID>`。
+/// 以管理员身份（`runas`）拉起自身并附参数（`SW_HIDE` 无界面）。
 ///
-/// 说明：
-/// - 参数经命令行传入（环境变量同样会继承，但显式参数对调试更直观且不受环境清理影响）；
-/// - `SW_HIDE`：助手无界面（其内部 icacls 亦被 `CREATE_NO_WINDOW` 静默）；
-/// - 请求 `SEE_MASK_NOCLOSEPROCESS` 以获得进程句柄，交由调用方等待退出；
-/// - 用户取消 → `ERROR_CANCELLED`(1223) → [`PrepareSpawn::Cancelled`]。
+/// 用途：数据目录权限初始化助手（`--prepare-data-dir`）与系统集成助手
+/// （`--integration-write`）共用；调用方负责等待进程与结果校验。
 #[cfg(windows)]
-fn spawn_elevated_prepare(data_dir: &Path, sid: &str) -> PrepareSpawn {
+pub fn runas_self(params: &str) -> RunAsOutcome {
     use windows_sys::Win32::Foundation::ERROR_CANCELLED;
     use windows_sys::Win32::UI::Shell::{
         ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
@@ -387,15 +384,11 @@ fn spawn_elevated_prepare(data_dir: &Path, sid: &str) -> PrepareSpawn {
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
     let Ok(exe) = std::env::current_exe() else {
-        return PrepareSpawn::Failed;
+        return RunAsOutcome::Failed;
     };
-    let params = format!(
-        "{ARG_PREPARE} \"{}\" {ARG_GRANT_SID} {sid}",
-        data_dir.display()
-    );
     let verb = to_wide_os(std::ffi::OsStr::new("runas"));
     let file = to_wide_os(exe.as_os_str());
-    let params = to_wide(&params);
+    let params = to_wide(params);
 
     let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
     info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
@@ -407,20 +400,36 @@ fn spawn_elevated_prepare(data_dir: &Path, sid: &str) -> PrepareSpawn {
     if unsafe { ShellExecuteExW(&mut info) } == 0 {
         let code = std::io::Error::last_os_error().raw_os_error().unwrap_or(0) as u32;
         return if code == ERROR_CANCELLED {
-            PrepareSpawn::Cancelled
+            RunAsOutcome::Cancelled
         } else {
-            PrepareSpawn::Failed
+            RunAsOutcome::Failed
         };
     }
     if info.hProcess.is_null() {
-        return PrepareSpawn::Failed;
+        return RunAsOutcome::Failed;
     }
-    PrepareSpawn::Started(info.hProcess)
+    RunAsOutcome::Started(info.hProcess)
+}
+
+/// 以管理员身份拉起数据目录权限初始化助手（`--prepare-data-dir <路径> --grant-sid <SID>`）。
+///
+/// 说明：
+/// - 参数经命令行传入（环境变量同样会继承，但显式参数对调试更直观且不受环境清理影响）；
+/// - `SW_HIDE`：助手无界面（其内部 icacls 亦被 `CREATE_NO_WINDOW` 静默）；
+/// - 请求 `SEE_MASK_NOCLOSEPROCESS` 以获得进程句柄，交由调用方等待退出；
+/// - 用户取消 → `ERROR_CANCELLED`(1223) → [`RunAsOutcome::Cancelled`]。
+#[cfg(windows)]
+fn spawn_elevated_prepare(data_dir: &Path, sid: &str) -> RunAsOutcome {
+    let params = format!(
+        "{ARG_PREPARE} \"{}\" {ARG_GRANT_SID} {sid}",
+        data_dir.display()
+    );
+    runas_self(&params)
 }
 
 /// 等待助手进程退出并释放句柄（超时后放弃等待，改由写探针判定结果）。
 #[cfg(windows)]
-fn wait_for_exit(handle: windows_sys::Win32::Foundation::HANDLE) {
+pub fn wait_for_exit(handle: windows_sys::Win32::Foundation::HANDLE) {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::WaitForSingleObject;
 

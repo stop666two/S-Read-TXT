@@ -641,6 +641,8 @@ export const zhCN = {
   'error.updateSource': '未配置或无效的更新源地址，请在设置中填写。',
   'error.updateFailed': '更新源访问失败，请检查网络或更新源地址。',
   'error.updateDigest': '安装包校验失败：文件摘要与发布信息不一致，已删除。',
+  'error.needsElevation': '该操作需要管理员权限：请在系统弹窗（UAC）中允许后重试。',
+  'error.integrationFailed': '系统集成操作失败，请重试或查看日志。',
   'error.internal': '内部错误，请重试。',
   'error.unknown': '操作失败（{code}）。',
 

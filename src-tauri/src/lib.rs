@@ -41,6 +41,7 @@ pub mod rename;
 pub mod resources;
 pub mod session;
 pub mod settings;
+pub mod shell_integration;
 pub mod snapshots;
 pub mod split;
 pub mod stats;

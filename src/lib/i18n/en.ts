@@ -652,6 +652,8 @@ export const en: Record<MessageKey, string> = {
   'error.updateSource': 'No update source configured, or the address is invalid. Set it in Settings.',
   'error.updateFailed': 'Failed to reach the update source. Check the network or the source URL.',
   'error.updateDigest': 'Package verification failed: digest mismatch. The file was deleted.',
+  'error.needsElevation': 'Administrator permission required: allow it in the UAC prompt and retry.',
+  'error.integrationFailed': 'System integration failed. Please retry or check the logs.',
   'error.internal': 'Internal error. Please retry.',
   'error.unknown': 'Operation failed ({code}).',
 

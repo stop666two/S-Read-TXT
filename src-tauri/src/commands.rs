@@ -25,11 +25,11 @@ use s_read_txt::history::entry::HistoryEntry;
 use s_read_txt::history::store as history_store;
 use s_read_txt::ipc_error::{
     IpcError, CODE_BACKGROUND_INVALID, CODE_CONFIG_SAVE, CODE_FILE_TOO_LARGE, CODE_HISTORY_SAVE,
-    CODE_INVALID_ENCODING, CODE_INVALID_EOL, CODE_INVALID_POSITION, CODE_INVALID_REGEX,
-    CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_PRINT_TOO_LARGE, CODE_RENAME_INVALID,
-    CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT, CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET,
-    CODE_SNAPSHOT_INVALID, CODE_SPLIT_INVALID, CODE_TAB_NOT_FOUND, CODE_THEME_INVALID,
-    CODE_UPDATE_SOURCE,
+    CODE_INTEGRATION, CODE_INVALID_ENCODING, CODE_INVALID_EOL, CODE_INVALID_POSITION,
+    CODE_INVALID_REGEX, CODE_INVALID_SCOPE, CODE_IO, CODE_MIGRATE_FAILED, CODE_NEEDS_ELEVATION,
+    CODE_PRINT_TOO_LARGE, CODE_RENAME_INVALID, CODE_SESSION_SAVE, CODE_SETTINGS_EXPORT,
+    CODE_SETTINGS_IMPORT, CODE_SETTINGS_RESET, CODE_SNAPSHOT_INVALID, CODE_SPLIT_INVALID,
+    CODE_TAB_NOT_FOUND, CODE_THEME_INVALID, CODE_UPDATE_SOURCE,
 };
 use s_read_txt::logging;
 use s_read_txt::logging::context::{with_context, LogContext};
@@ -42,6 +42,7 @@ use s_read_txt::settings::reset::{self as settings_reset, ResetScope};
 use s_read_txt::settings::store as settings_store;
 use s_read_txt::settings::theme::{self, ResolvedTheme, ThemeSummary};
 use s_read_txt::settings::{bundle, shortcut_io, SettingsSaveRequest, SettingsSnapshot};
+use s_read_txt::shell_integration::{self, IntegOptions, IntegStatus};
 use s_read_txt::snapshots::SnapshotInfo;
 use s_read_txt::storage::data_dir;
 use s_read_txt::storage::migrate_dir::{self as migrate_dir, MigrationReport};
@@ -1438,6 +1439,83 @@ pub fn open_update_page(app: tauri::AppHandle, url: String) -> Result<(), IpcErr
     app.opener()
         .open_url(trimmed, None::<&str>)
         .map_err(|err| IpcError::internal(format!("打开发布页失败：{err}")))
+}
+
+/// 命令：读取系统集成状态（用户级 HKCU / 全局 HKLM）。
+#[tauri::command]
+pub fn integration_status() -> IntegStatus {
+    with_context(LogContext::request(), shell_integration::status)
+}
+
+/// 命令：应用系统集成目标状态（幂等）。
+///
+/// 语义：`scope=user` 直接写入（无需管理员）；`scope=machine` 需要管理员——
+/// 已提权时直写；未提权且 `elevate=true` 时经 `runas` 提权助手写入（UAC 一次）；
+/// 未提权且 `elevate=false` 时返回 [`CODE_NEEDS_ELEVATION`] 供前端确认。
+#[tauri::command]
+pub async fn integration_apply(
+    scope: String,
+    options: IntegOptions,
+    elevate: bool,
+) -> Result<IntegStatus, IpcError> {
+    let Some(scope_value) = shell_integration::Scope::parse(&scope) else {
+        return Err(IpcError::new(CODE_INTEGRATION, "未知的注册作用域"));
+    };
+    match scope_value {
+        shell_integration::Scope::User => {
+            shell_integration::set_state(scope_value, &options)
+                .map_err(|err| IpcError::new(CODE_INTEGRATION, err))?;
+        }
+        shell_integration::Scope::Machine => {
+            apply_machine_integration(options, elevate)?;
+        }
+    }
+    Ok(shell_integration::status())
+}
+
+/// 全局（HKLM）集成写入：已提权直写，未提权经提权助手（UAC）。
+#[cfg(windows)]
+fn apply_machine_integration(options: IntegOptions, elevate: bool) -> Result<(), IpcError> {
+    use s_read_txt::elevation::{is_process_elevated, runas_self, wait_for_exit, RunAsOutcome};
+
+    if is_process_elevated() {
+        return shell_integration::set_state(shell_integration::Scope::Machine, &options)
+            .map_err(|err| IpcError::new(CODE_INTEGRATION, err));
+    }
+    if !elevate {
+        return Err(IpcError::new(
+            CODE_NEEDS_ELEVATION,
+            "全局注册需要管理员权限",
+        ));
+    }
+    let params = format!(
+        "--integration-write machine {} {} {}",
+        u8::from(options.txt),
+        u8::from(options.log),
+        u8::from(options.context_menu),
+    );
+    match runas_self(&params) {
+        RunAsOutcome::Started(handle) => {
+            wait_for_exit(handle);
+            let state = shell_integration::read_state(shell_integration::Scope::Machine);
+            if state == options {
+                Ok(())
+            } else {
+                Err(IpcError::new(
+                    CODE_INTEGRATION,
+                    "全局注册未生效（UAC 未通过或写入被拒绝）",
+                ))
+            }
+        }
+        RunAsOutcome::Cancelled => Err(IpcError::new(CODE_NEEDS_ELEVATION, "已取消管理员授权")),
+        RunAsOutcome::Failed => Err(IpcError::new(CODE_INTEGRATION, "无法启动管理员助手")),
+    }
+}
+
+/// 非 Windows 平台桩：集成功能仅面向 Windows 发布。
+#[cfg(not(windows))]
+fn apply_machine_integration(_options: IntegOptions, _elevate: bool) -> Result<(), IpcError> {
+    Err(IpcError::new(CODE_INTEGRATION, "系统集成仅支持 Windows"))
 }
 
 /// 命令：默认快捷键表（动作 id → 组合键；设置界面「恢复默认」的唯一真源）。
