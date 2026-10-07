@@ -10,7 +10,7 @@
 //       依赖系统已安装 WebView2 运行时（Win10/11 通常预装）。
 
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,15 +26,52 @@ const version = pkg.version;
 const arch = argValue('--arch', 'x64');
 const exe = resolve(argValue('--exe', join(root, 'src-tauri', 'target', 'release', 's-read-txt.exe')));
 const outDir = resolve(argValue('--out', join(root, 'portable-dist')));
-const dll = join(dirname(exe), 'WebView2Loader.dll');
 const license = join(root, 'LICENSE');
+
+/**
+ * 定位 WebView2Loader.dll：优先 exe 同目录；缺失时在 target 树内回退查找
+ * （CI 以 --target <triple> 构建时，dll 可能位于 webview2-com-sys 构建输出目录）。
+ */
+function findWebView2Loader() {
+  const seen = new Set();
+  const queue = [
+    { dir: dirname(exe), depth: 0 },
+    { dir: join(root, 'src-tauri', 'target'), depth: 0 },
+  ];
+  while (queue.length > 0) {
+    const { dir, depth } = queue.shift();
+    if (depth > 7 || seen.has(dir)) continue;
+    seen.add(dir);
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isFile() && entry.name.toLowerCase() === 'webview2loader.dll') return full;
+      if (entry.isDirectory()) {
+        if (entry.name === 'incremental' || entry.name === '.fingerprint') continue;
+        queue.push({ dir: full, depth: depth + 1 });
+      }
+    }
+  }
+  return null;
+}
+
+const dll = join(dirname(exe), 'WebView2Loader.dll');
+const resolvedDll = existsSync(dll) ? dll : findWebView2Loader();
+if (resolvedDll && resolvedDll !== dll) {
+  console.log(`WebView2Loader.dll 取自回退路径：${resolvedDll}`);
+}
 
 for (const [label, path] of [
   ['可执行文件', exe],
-  ['WebView2Loader.dll', dll],
+  ['WebView2Loader.dll', resolvedDll ?? dll],
   ['LICENSE', license],
 ]) {
-  if (!existsSync(path)) {
+  if (!path || !existsSync(path)) {
     console.error(`缺少${label}：${path}`);
     console.error('请先完成 release 构建：npm run tauri build -- --target <target>');
     process.exit(1);
@@ -68,7 +105,7 @@ const readmeLines = [
 ];
 writeFileSync(join(staging, '便携版说明.txt'), readmeLines.join('\r\n'), 'utf8');
 copyFileSync(exe, join(staging, 's-read-txt.exe'));
-copyFileSync(dll, join(staging, 'WebView2Loader.dll'));
+copyFileSync(resolvedDll ?? dll, join(staging, 'WebView2Loader.dll'));
 copyFileSync(license, join(staging, 'LICENSE'));
 const cleanupScript = join(root, 'packaging', 'cleanup-shell-integration.bat');
 if (existsSync(cleanupScript)) {
