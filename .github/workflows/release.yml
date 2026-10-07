@@ -258,14 +258,24 @@ jobs:
           if [ -z "$RELEASE_ID" ]; then
             echo "无法获取 Release ID"; exit 1
           fi
-          NAME_ENC=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "清理右键与打开方式.bat")
           # 资产上传必须走 uploads.github.com（api.github.com 的 assets 路径不存在，会 404）
-          curl -sS -f -X POST \
+          # 先以 multipart filename 方式上传中文名；若平台未保留（历史上会被降级为 default.bat），再尝试 PATCH 改名
+          UP_JSON=$(curl -sS -X POST \
             -H "Authorization: Bearer ${{ github.token }}" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @packaging/cleanup-shell-integration.bat \
-            "https://uploads.github.com/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=${NAME_ENC}" \
-            | jq -r '"已上传中文名脚本：" + .name'
+            -F "file=@packaging/cleanup-shell-integration.bat;filename=清理右键与打开方式.bat;type=application/octet-stream" \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets")
+          ASSET_NAME=$(printf '%s' "$UP_JSON" | jq -r '.name // empty')
+          ASSET_ID=$(printf '%s' "$UP_JSON" | jq -r '.id // empty')
+          if [ "$ASSET_NAME" != "清理右键与打开方式.bat" ] && [ -n "$ASSET_ID" ]; then
+            echo "平台未保留中文名（得到：$ASSET_NAME），尝试 PATCH 改名…"
+            gh api -X PATCH "repos/${{ github.repository }}/releases/assets/${ASSET_ID}" \
+              -f name="清理右键与打开方式.bat" >/dev/null 2>&1 || true
+            ASSET_NAME=$(gh api "repos/${{ github.repository }}/releases/assets/${ASSET_ID}" --jq .name 2>/dev/null || echo "$ASSET_NAME")
+          fi
+          echo "中文名脚本最终资产名：$ASSET_NAME"
+          if [ "$ASSET_NAME" != "清理右键与打开方式.bat" ]; then
+            echo "注意：GitHub 平台未保留中文资产名；中文名文件已随仓库 packaging/ 与便携版 zip 提供"
+          fi
           gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name'
       - name: 附加完整测试报告（如仓库已有）
         env:
