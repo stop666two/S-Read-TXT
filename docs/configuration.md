@@ -125,6 +125,7 @@
 | `tools.splitMaxParts` | number | 2–9999 整数 | `9999` | 拆分最多份数；P4 可调 |
 | `tools.splitPreviewParts` | number | 1–200 整数 | `20` | 拆分预览展示份数；P4 可调 |
 | `tools.workspaceMatchCap` | number | 10–100000 整数 | `200` | 工作区搜索匹配条数上限；P4 可调 |
+| `tools.singleOpMaxRows` | number | 1000–1000000 整数 | `200000` | 单次批量操作上限（行/处；批量编号、行操作、全部替换共用）；P4 可调 |
 | `display.outlineMaxItems` | number | 100–50000 整数 | `5000` | 大纲条目上限；P4 可调 |
 | `display.foldMaxRegions` | number | 100–50000 整数 | `5000` | 折叠区域上限；P4 可调 |
 | `display.foldScanMaxRows` | number | 10000–100000000 整数 | `1000000` | 折叠扫描行数上限；P4 可调 |

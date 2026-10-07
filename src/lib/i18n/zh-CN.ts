@@ -366,6 +366,8 @@ export const zhCN = {
   'setting.app.tools.splitPreviewParts.desc': '拆分预览列表中展示的最大条目数。',
   'setting.app.tools.workspaceMatchCap': '工作区搜索匹配上限（条）',
   'setting.app.tools.workspaceMatchCap.desc': '多文件搜索返回的匹配条数上限。',
+  'setting.app.tools.singleOpMaxRows': '单次批量操作上限（行/处）',
+  'setting.app.tools.singleOpMaxRows.desc': '批量编号、行操作与全部替换单次处理的行数（或命中处数）上限；超过时提示缩小范围。',
   'setting.app.display.outlineMaxItems': '大纲条目上限',
   'setting.app.display.outlineMaxItems.desc': '大纲面板最多展示的章节条目数。',
   'setting.app.display.foldMaxRegions': '折叠区域上限',

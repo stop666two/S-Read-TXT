@@ -177,10 +177,12 @@ fn main() {
                 // 窗口几何恢复：在显示之前应用（避免先显示再跳动的观感）；
                 // 会话缺失/损坏时保持 tauri.conf.json 默认值（居中 1100×760）；
                 // 启动行为设置可关闭恢复（关闭后使用默认几何）。
-                let restore_window =
-                    s_read_txt::settings::store::load_app_settings(&startup_dir)
-                        .startup
-                        .restore_window;
+                let boot_settings =
+                    s_read_txt::settings::store::load_app_settings(&startup_dir);
+                s_read_txt::textfile::editing::op_limits::set_max_items(
+                    boot_settings.tools.single_op_max_rows as u64,
+                );
+                let restore_window = boot_settings.startup.restore_window;
                 let window_state = if restore_window {
                     session_store::load_window(&startup_dir, "main").window
                 } else {

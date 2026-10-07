@@ -241,6 +241,11 @@ pub const DEFAULT_SPLIT_MAX_MB: u32 = 256;
 /// 拆分单文件上限允许范围（MB，闭区间）
 pub const SPLIT_MAX_MB_RANGE: (u32, u32) = (1, 4096);
 /// 默认拆分最多份数
+/// 单次批量操作上限（行/处；批量编号、行操作、全部替换共用）默认值。
+pub const DEFAULT_SINGLE_OP_MAX_ROWS: u32 = 200_000;
+/// 单次批量操作上限可调区间（行/处）。
+pub const SINGLE_OP_MAX_ROWS_RANGE: (u32, u32) = (1_000, 1_000_000);
+
 pub const DEFAULT_SPLIT_MAX_PARTS: u32 = 9999;
 /// 拆分最多份数允许范围（闭区间）
 pub const SPLIT_MAX_PARTS_RANGE: (u32, u32) = (2, 9999);

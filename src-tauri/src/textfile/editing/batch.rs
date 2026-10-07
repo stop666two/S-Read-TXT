@@ -5,14 +5,15 @@
 //! - 10 种内置格式（阿拉伯 / 补零 / 中文小写 / 中文大写 / 括号 / 方括号 / 带圈 / 实心带圈 / 罗马 / 罗马小写）；
 //! - 超范围保护：带圈超 20、罗马超 3999、中文大数超 9999 一律**报错中止**（预览时即暴露）；
 //! - 模板变量：`{n} {total} {line} {date} {time} {filename}`；未知变量报错；
-//! - 全部插入合为**单次编辑**（一次撤销还原）；行数上限 [`BATCH_MAX_ROWS`] 防失控；
+//! - 全部插入合为**单次编辑**（一次撤销还原）；行数上限见 [`op_limits::max_items`] 防失控；
 //! - 预览与执行共用同一渲染路径，保证「所见即所得」。
 
 use serde::{Deserialize, Serialize};
 
 use crate::textfile::editing::edit_doc::{EditApplied, EditDoc, EditError, EditOp};
+use crate::textfile::editing::op_limits;
 
-/// 单次批量操作的最大行数（超出报错；异步分片待实现）
+/// 单次批量操作的最大行数默认值（运行时可被设置 `tools.singleOpMaxRows` 覆盖）
 pub const BATCH_MAX_ROWS: u64 = 200_000;
 
 /// 序号格式（10 种内置）
@@ -366,7 +367,12 @@ impl EditDoc {
                 width: config.zero_pad_width,
             });
         }
-        resolve_scope_rows(self, &config.scope, config.skip_empty, BATCH_MAX_ROWS)
+        resolve_scope_rows(
+            self,
+            &config.scope,
+            config.skip_empty,
+            op_limits::max_items(),
+        )
     }
 }
 
@@ -967,5 +973,27 @@ mod tests {
         cfg.suffix = " ".to_string();
         doc.apply_batch_numbering(&cfg).expect("执行失败");
         assert_eq!(doc.row_text(0).as_deref(), Some("1、 a"));
+    }
+
+    #[test]
+    fn op_limit_is_dynamic() {
+        let tmp = tempfile::tempdir().expect("临时目录");
+        let path = tmp.path().join("thirty.txt");
+        fs::write(
+            &path,
+            (0..30)
+                .map(|index| format!("x{index}\n"))
+                .collect::<String>(),
+        )
+        .expect("写失败");
+        let doc = EditDoc::open(&path, None, 64).expect("打开失败");
+        let cfg = config(NumberFormat::Arabic, BatchScope::All);
+        crate::textfile::editing::op_limits::set_max_items(20);
+        let result = doc.preview_batch_numbering(&cfg);
+        crate::textfile::editing::op_limits::set_max_items(0);
+        assert!(matches!(
+            result,
+            Err(BatchError::TooManyRows { limit: 20, .. })
+        ));
     }
 }

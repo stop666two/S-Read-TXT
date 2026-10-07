@@ -1046,6 +1046,15 @@ pub const SPECS: &[SettingSpec] = &[
         },
     },
     SettingSpec {
+        id: "app.tools.singleOpMaxRows",
+        group: "app.tools",
+        kind: SettingKind::Number {
+            min: defaults::SINGLE_OP_MAX_ROWS_RANGE.0 as f64,
+            max: defaults::SINGLE_OP_MAX_ROWS_RANGE.1 as f64,
+            integer: true,
+        },
+    },
+    SettingSpec {
         id: "app.display.outlineMaxItems",
         group: "app.display",
         kind: SettingKind::Number {

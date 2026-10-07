@@ -572,3 +572,4 @@ eader.rs BackgroundSettings/BackgroundFill + defaults；store 归一；registry 
   - 设置窗“左右白条”修复：无边框窗口（设置窗/主窗/比较窗）在创建与主题切换时按解析主题设置**窗口画刷底色**（`set_background_color`），避免边缘区域露出系统默认白底；
   - 覆盖率（llvm-tools）：`llvm-tools` 组件与 `cargo-llvm-cov` 已装，但 **windows-gnu 目标缺 `profiler_builtins`**（`-C instrument-coverage` 在构建脚本即 E0463 失败）——需 MSVC 工具链方可实测；记录为**受环境限制待办**，不阻塞本轮交付。
   - 追加优化（2026-10-07）：**批量应用单遍重建片段表**（非重叠批次 O(文件+操作)，重叠回退旧路径）——100MB/10 万处散布插入 apply **1.76s**（此前推算二次项需约 27 分钟），新增等价/CRLF/多片段/重叠回退 3 项单测（lib 507）；保存加 256KB 缓冲写（10 万片段 2.6s→0.5s）；**启动关键路径去阻塞**（主题 IPC 与挂载竞速 ≤150ms、`__srt` 挂载前暴露）——release 热启动（页面内时钟，含 1 次预热轮）可见中位 **614ms**、就绪中位 **827ms**（PASS，判定排除冷首跑环境离群）；测量脚本新增页面时钟与预热轮口径。
+  - 上限可调补全（2026-10-07）：新增 `tools.singleOpMaxRows`（默认 200000，区间 1000–1000000）——批量编号、行操作、全部替换共用单次上限，经 `textfile/editing/op_limits.rs` 运行时注入（启动加载与保存/导入/重置设置即时同步，越限提示含实际上限值）；smoke-batch B14/B15 的 15 万行负载即用它验证（B14a 进度元素 + B14b 全量编号 + B15 取消回滚）；probe-limits 增 L15 成对断言。lib 509。

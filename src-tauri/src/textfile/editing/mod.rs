@@ -19,6 +19,7 @@ pub mod edit_doc;
 pub mod edit_stats;
 pub mod fenwick;
 pub mod line_ops;
+pub mod op_limits;
 pub mod piece;
 pub mod save;
 pub mod search;

@@ -374,6 +374,8 @@ export const en: Record<MessageKey, string> = {
   'setting.app.tools.splitPreviewParts.desc': 'Maximum entries listed in the split preview.',
   'setting.app.tools.workspaceMatchCap': 'Workspace search match cap',
   'setting.app.tools.workspaceMatchCap.desc': 'Maximum matches returned by a multi-file search.',
+  'setting.app.tools.singleOpMaxRows': 'Single batch operation limit (rows/items)',
+  'setting.app.tools.singleOpMaxRows.desc': 'Upper bound of rows (or matches) processed by batch numbering, line operations, and replace-all in one run; you are asked to narrow the scope when exceeded.',
   'setting.app.display.outlineMaxItems': 'Outline item cap',
   'setting.app.display.outlineMaxItems.desc': 'Maximum chapter entries shown in the outline panel.',
   'setting.app.display.foldMaxRegions': 'Fold region cap',

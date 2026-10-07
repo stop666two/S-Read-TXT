@@ -6,7 +6,7 @@
 //!   （中间空行包含在内，内容类操作由 `skip_empty` 决定是否跳过空行）；
 //! - 执行以「单区间替换」组装为一次 `apply_edits`（单撤销步）；
 //! - 输出为空集合（如删除/清空）时改为删除「跨度 + 相邻换行」，避免残留空行；
-//! - 行数上限与批量序号同口径（[`LINE_OP_MAX_ROWS`]），防止大文件内存峰值；
+//! - 行数上限与批量序号同口径（[`op_limits::max_items`]），防止大文件内存峰值；
 //! - 结构性操作（排序/去重/移动等）不做 `skip_empty` 过滤（语义为整块变换）；
 //! - 内部分隔符统一用文档首选换行（`preferred_newline`，CRLF 文件不会被改写成 LF）。
 
@@ -15,9 +15,8 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::textfile::editing::batch::{resolve_scope_rows, BatchError, BatchScope};
 use crate::textfile::editing::edit_doc::{EditApplied, EditDoc, EditError, EditOp};
+use crate::textfile::editing::op_limits;
 
-/// 行操作单次作用的行数上限（与批量序号同口径）。
-pub const LINE_OP_MAX_ROWS: u64 = 200_000;
 /// 预览默认条数（前端可覆盖）。
 pub const DEFAULT_PREVIEW_LINES: usize = 10;
 
@@ -313,7 +312,7 @@ impl EditDoc {
         if matches!(config.op, LineOp::EnsureTrailingNewline) {
             return Ok(self.preview_trailing_newline());
         }
-        let rows = resolve_scope_rows(self, &config.scope, false, LINE_OP_MAX_ROWS)?;
+        let rows = resolve_scope_rows(self, &config.scope, false, op_limits::max_items())?;
         let (first, last, warning) = self.plan_span(config, &rows)?;
         let input = self.span_texts(first, last);
         let output = if warning.is_some() {
@@ -350,7 +349,7 @@ impl EditDoc {
         if matches!(config.op, LineOp::EnsureTrailingNewline) {
             return self.apply_trailing_newline();
         }
-        let rows = resolve_scope_rows(self, &config.scope, false, LINE_OP_MAX_ROWS)?;
+        let rows = resolve_scope_rows(self, &config.scope, false, op_limits::max_items())?;
         let (first, last, warning) = self.plan_span(config, &rows)?;
         let input = self.span_texts(first, last);
         if warning.is_some() {

@@ -13,7 +13,7 @@
 //!   按行锚定（multi-line）；零宽匹配跳过；替换支持 `$1`/`${name}` 捕获展开；
 //! - **替换流程**：全部替换 = 预览（[`EditDoc::preview_replace_all`]）→
 //!   二次确认（可逐条剔除）→ 执行（[`EditDoc::replace_matches`]，单撤销步）；
-//!   命中数超过 [`REPLACE_ALL_LIMIT`] 一律拒绝（防止构造超大操作批次）；
+//!   命中数超过运行时上限（[`op_limits::max_items`]，默认 [`REPLACE_ALL_LIMIT`]）一律拒绝（防止构造超大操作批次）；
 //! - 以 CRLF 的 `\n` 起始的命中会向前扩展包含 `\r`，保证替换坐标可精确解析。
 
 use regex::Regex;
@@ -22,12 +22,14 @@ use serde::Serialize;
 use std::time::{Duration, Instant};
 
 use super::edit_doc::{EditApplied, EditDoc, EditError, EditOp};
+use super::op_limits;
 use super::piece::PieceSource;
 
 /// 扫描块大小（文件字节）。
 const SEARCH_CHUNK_BYTES: usize = 1 << 20;
 
-/// 「全部替换」命中数上限（超出报 [`EditError::TooManyMatches`]）。
+/// 「全部替换」命中数默认上限（超出报 [`EditError::TooManyMatches`]；
+/// 运行时可被设置 `tools.singleOpMaxRows` 覆盖，见 [`op_limits::max_items`]）。
 pub const REPLACE_ALL_LIMIT: usize = 200_000;
 
 /// 正则模式的固定接续区大小：两解码块之间保留的尾部字节数
@@ -363,7 +365,7 @@ impl EditDoc {
 
     /// 全部替换为 `replacement`（单次编辑 = 单个撤销步）。
     ///
-    /// 命中数上限 [`REPLACE_ALL_LIMIT`]；超出时报 `TooManyMatches` 且文档不变。
+    /// 命中数上限见 [`op_limits::max_items`]（默认 [`REPLACE_ALL_LIMIT`]）；超出时报 `TooManyMatches` 且文档不变。
     /// 说明：IPC 层的「全部替换」走「预览 → 二次确认（可逐条剔除）→ 执行」流程
     /// （见 [`EditDoc::preview_replace_all`] 与 [`EditDoc::replace_matches`]）；
     /// 本方法是引擎级便捷入口（单测使用）。
@@ -398,6 +400,7 @@ impl EditDoc {
         )?;
         let mut hits: Vec<(FindHit, String)> = Vec::new();
         let mut overflow = false;
+        let limit = op_limits::max_items() as usize;
         self.scan(
             &matcher,
             None,
@@ -405,7 +408,7 @@ impl EditDoc {
             request.deadline(),
             |found, matched| {
                 hits.push((found, matcher.expand(matched, replacement)));
-                if hits.len() > REPLACE_ALL_LIMIT {
+                if hits.len() > limit {
                     overflow = true;
                     false
                 } else {
@@ -414,16 +417,14 @@ impl EditDoc {
             },
         )?;
         if overflow {
-            return Err(EditError::TooManyMatches {
-                limit: REPLACE_ALL_LIMIT,
-            });
+            return Err(EditError::TooManyMatches { limit });
         }
         self.apply_hits(hits)
     }
 
     /// 生成「全部替换」预览：命中总数 + 前 `max_items` 条前后文本（含展开后的替换文本）。
     ///
-    /// - 命中数超过 [`REPLACE_ALL_LIMIT`] 时返回 `TooManyMatches`（与执行口径一致）；
+    /// - 命中数超过运行时上限（[`op_limits::max_items`]）时返回 `TooManyMatches`（与执行口径一致）；
     /// - `truncated` 为真表示仅列举了部分命中（前端此时仅支持整体替换）。
     pub fn preview_replace_all(
         &self,
@@ -468,10 +469,11 @@ impl EditDoc {
         let mut total = 0usize;
         let mut items: Vec<ReplacePreviewItem> = Vec::new();
         let mut overflow = false;
+        let limit = op_limits::max_items() as usize;
         self.scan(&matcher, None, None, request.deadline(), |hit, matched| {
             let index = total;
             total += 1;
-            if total > REPLACE_ALL_LIMIT {
+            if total > limit {
                 overflow = true;
                 return false;
             }
@@ -499,9 +501,7 @@ impl EditDoc {
             true
         })?;
         if overflow {
-            return Err(EditError::TooManyMatches {
-                limit: REPLACE_ALL_LIMIT,
-            });
+            return Err(EditError::TooManyMatches { limit });
         }
         Ok(ReplacePreview {
             state_id,
@@ -515,7 +515,7 @@ impl EditDoc {
     /// （升序下标，来自预览条目；用于用户在确认弹窗中剔除个别项）。
     ///
     /// - `expect_state_id` 必须等于当前文档状态号（预览后文档被修改时报 `StaleSearch`）；
-    /// - 单次编辑 = 单个撤销步；命中数上限 [`REPLACE_ALL_LIMIT`]。
+    /// - 单次编辑 = 单个撤销步；命中数上限见 [`op_limits::max_items`]（默认 [`REPLACE_ALL_LIMIT`]）。
     pub fn replace_matches(
         &mut self,
         query: &str,
@@ -555,6 +555,7 @@ impl EditDoc {
         let mut hits: Vec<(FindHit, String)> = Vec::new();
         let mut index = 0usize;
         let mut overflow = false;
+        let limit = op_limits::max_items() as usize;
         self.scan(&matcher, None, None, request.deadline(), |hit, matched| {
             let include = match indices {
                 None => true,
@@ -564,7 +565,7 @@ impl EditDoc {
                 hits.push((hit, matcher.expand(matched, replacement)));
             }
             index += 1;
-            if index > REPLACE_ALL_LIMIT {
+            if index > limit {
                 overflow = true;
                 false
             } else {
@@ -572,9 +573,7 @@ impl EditDoc {
             }
         })?;
         if overflow {
-            return Err(EditError::TooManyMatches {
-                limit: REPLACE_ALL_LIMIT,
-            });
+            return Err(EditError::TooManyMatches { limit });
         }
         self.apply_hits(hits)
     }

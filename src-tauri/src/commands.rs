@@ -1235,7 +1235,7 @@ pub fn save_settings(
             EVENT_SETTINGS_CHANGED,
             serde_json::json!({ "kind": "save" }),
         );
-        Ok(settings_store::load_snapshot(&dir))
+        Ok(snapshot_with_runtime_sync(&dir))
     })
 }
 
@@ -1266,7 +1266,7 @@ pub fn import_settings(app: tauri::AppHandle, path: String) -> Result<SettingsSn
             EVENT_SETTINGS_CHANGED,
             serde_json::json!({ "kind": "import" }),
         );
-        Ok(settings_store::load_snapshot(&dir))
+        Ok(snapshot_with_runtime_sync(&dir))
     })
 }
 
@@ -1294,7 +1294,7 @@ pub fn import_shortcuts(app: tauri::AppHandle, path: String) -> Result<SettingsS
             EVENT_SETTINGS_CHANGED,
             serde_json::json!({ "kind": "import" }),
         );
-        Ok(settings_store::load_snapshot(&dir))
+        Ok(snapshot_with_runtime_sync(&dir))
     })
 }
 
@@ -1313,7 +1313,7 @@ pub fn reset_settings(
             EVENT_SETTINGS_CHANGED,
             serde_json::json!({ "kind": "reset" }),
         );
-        Ok(settings_store::load_snapshot(&dir))
+        Ok(snapshot_with_runtime_sync(&dir))
     })
 }
 
@@ -2013,6 +2013,15 @@ pub fn reload_tab(tab_id: u64, state: State<'_, Mutex<AppState>>) -> Result<TabI
 fn current_app_settings() -> s_read_txt::settings::model::AppSettings {
     let (dir, _origin) = paths::resolve_data_dir();
     s_read_txt::settings::store::load_app_settings(&dir)
+}
+
+/// 读取设置快照并把「单次操作上限」同步到编辑引擎（保存/导入/重置后调用）。
+fn snapshot_with_runtime_sync(dir: &Path) -> SettingsSnapshot {
+    let snapshot = settings_store::load_snapshot(dir);
+    s_read_txt::textfile::editing::op_limits::set_max_items(
+        snapshot.app.tools.single_op_max_rows as u64,
+    );
+    snapshot
 }
 
 /// 界面语言 → BCP 47 标签（导出/打印等 Rust 侧生成内容的语言标注用）。

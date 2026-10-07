@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust **535**（507 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 154；E2E 48 套 ≈742 项；verify-all 57 步（默认全量、无排除）。
+- 计数口径：Rust **537**（509 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 154；E2E 48 套 ≈742 项；verify-all 57 步（默认全量、无排除）。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -187,3 +187,4 @@
 - 2026-10-06 P4（系统与发布）：设置 schema v17（a11y/system/update 三节 + 全部用户可见上限可调）；命令面板（Ctrl+Shift+P，46 命令）；可访问性运行时（减少动画/字体缩放/高对比/焦点/屏幕阅读器/性能模式）；隐私清除（按类 + 二次确认）与崩溃日志（可关）+ 无网络模式默认开；更新检查（可配置源 + sha256 校验 + 桩服务器测试）；新增 smoke-palette 7/7、smoke-caps 21/21、smoke-a11y 10/10、smoke-privacy 10/10、smoke-update 8/8 并入 verify-all（现 **57 步**）；Rust 529；vitest 154；命令新增 privacy_usage/privacy_clear/check_update/download_update/reveal_update_file/open_update_page；依赖新增 ureq/sha2/tauri-plugin-opener（锁版本）。
 - 2026-10-06 P4 任务 7（技术债与性能）：批量编辑单次扫描解析（100MB/1k 处 apply 340s→1.6s，附 `benchmark_scattered_save`）；编辑态行进游标缓存（深行窗口取行 5039ms→126ms，修大文件编辑「滚动/进入即卡死」）；批量序号异步化（`srt://batch-progress` 进度 + 取消完整回滚；smoke-batch **22/22**）；批量范围解析单次化；内存红线复测（只读修剪 3-12MB 级 / 编辑态私有 ~87MB / 双窗 ~117MB）；启动实测（debug 可见 median 1067ms；release 既有 631ms/763ms 验收内）；设置窗左右白边修复（无边框窗口画刷底色随主题）；Rust **532**；覆盖率待 llvm-tools 就绪。
 - 2026-10-07 P4 任务 7 追加：**批量应用单遍重建片段表**（非重叠批次 O(文件+操作)；10 万处散布编辑 apply **1.76s**，二次项消除；重叠回退旧路径；新增等价/CRLF 多片段/重叠回退单测）；保存缓冲写（10 万片段 2.6s→0.5s）；**启动关键路径去阻塞 + 测量口径升级**（页面时钟 + 预热轮；release 热启动可见中位 **614ms**、就绪中位 **827ms** PASS）；覆盖率结论更新：windows-gnu 缺 `profiler_builtins`，`-C instrument-coverage` 不可用（需 MSVC 工具链，受环境限制）；Rust **535**（lib 507）。
+- 2026-10-07 P4 任务 7 追加（上限可调）：**单次操作上限可调** `tools.singleOpMaxRows`（默认 200000，区间 1000–1000000；批量编号/行操作/全部替换共用，运行时经 `op_limits` 注入，保存/导入/重置设置即时同步；错误提示含实际上限值）；probe-limits 增 L15 成对断言（1000 拒 2000 行 ↔ 3000 放行）；smoke-batch B14/B15 改 15 万行；Rust **537**（lib 509）。

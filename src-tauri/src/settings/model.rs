@@ -320,6 +320,10 @@ pub struct ToolsSettings {
     pub split_preview_parts: u32,
     /// 工作区搜索匹配条数上限
     pub workspace_match_cap: u32,
+    /// 单次批量操作上限（行/处；批量编号、行操作、全部替换共用）。
+    /// JSON 名显式固定为 `singleOpMaxRows`。
+    #[serde(rename = "singleOpMaxRows")]
+    pub single_op_max_rows: u32,
 }
 
 impl Default for ToolsSettings {
@@ -330,6 +334,7 @@ impl Default for ToolsSettings {
             split_max_parts: defaults::DEFAULT_SPLIT_MAX_PARTS,
             split_preview_parts: defaults::DEFAULT_SPLIT_PREVIEW_PARTS,
             workspace_match_cap: defaults::DEFAULT_WORKSPACE_MATCH_CAP,
+            single_op_max_rows: defaults::DEFAULT_SINGLE_OP_MAX_ROWS,
         }
     }
 }
