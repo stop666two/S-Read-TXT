@@ -176,6 +176,9 @@ jobs:
               fi
             done
           done
+          # 清理脚本（中英双份命名，内容一致）：随 Releases 发布，供便携版残留自助清理
+          cp packaging/cleanup-shell-integration.bat "release-assets-all/清理右键与打开方式.bat"
+          cp packaging/cleanup-shell-integration.bat "release-assets-all/cleanup-shell-integration.bat"
           ls -la release-assets-all
           node scripts/ci/sha256sums.mjs release-assets-all > release-assets-all/SHA256SUMS.txt
           cat release-assets-all/SHA256SUMS.txt
@@ -229,6 +232,7 @@ jobs:
             --title "S-Read-TXT $RELEASE_TAG" \
             --notes-file release-notes.md $PRERELEASE_FLAG \
             release-assets-all/*.exe \
+            release-assets-all/*.bat \
             release-assets-all/SHA256SUMS.txt \
             release-meta/test-summary.md
       - name: 附加完整测试报告（如仓库已有）

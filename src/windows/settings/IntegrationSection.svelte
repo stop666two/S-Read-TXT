@@ -57,6 +57,15 @@
   }
 
   /** 「所有用户」操作前确认（会触发 UAC）。 */
+  /** 打开系统「默认应用」设置页（系统不允许程序静默设为默认，需用户手动确认）。 */
+  async function openDefaults(): Promise<void> {
+    try {
+      await ipc.openDefaultAppsSettings();
+    } catch (error) {
+      toasts.error(describeIpcError(toIpcError(error)));
+    }
+  }
+
   function askMachine(remove: boolean): void {
     pendingMachine = { remove };
     confirmOpen = true;
@@ -184,6 +193,19 @@
         onclick={() => askMachine(true)}
       >
         {t('settings.integration.removeMachine')}
+      </button>
+    </span>
+  </div>
+  <div class="row">
+    <span class="label">{t('settings.integration.defaultApps')}</span>
+    <span class="control integration-actions">
+      <button
+        class="btn"
+        type="button"
+        data-integration-open-defaults
+        onclick={() => void openDefaults()}
+      >
+        {t('settings.integration.openDefaults')}
       </button>
     </span>
   </div>

@@ -2862,6 +2862,29 @@ pub fn update_history_progress(
 /// 用进程级静态而非 AppState：设置窗口生命周期与标签状态无关，且值极小。
 static SETTINGS_PENDING_TAB: Mutex<Option<String>> = Mutex::new(None);
 
+/// 命令：打开系统「默认应用」设置页。
+///
+/// 说明：Windows 10+ 的默认程序由系统 UserChoice 保护，程序无法静默设为默认；
+/// 本命令仅引导用户前往系统设置手动选择（配合「系统集成」面板使用）。
+#[tauri::command]
+pub fn open_default_apps_settings() -> Result<(), IpcError> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", "ms-settings:defaultapps"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|err| IpcError::internal(format!("打开系统设置失败：{err}")))?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        Err(IpcError::internal("仅支持 Windows".to_string()))
+    }
+}
+
 /// 命令：打开设置窗口（已存在则显示并聚焦；不存在按需创建）。
 ///
 /// 说明：设置窗口按需创建而非启动时常驻——隐藏的 WebView 仍占内存（约数十 MB），

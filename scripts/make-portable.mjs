@@ -51,12 +51,18 @@ const readmeLines = [
   `S-Read-TXT ${version}（便携版）`,
   '========================================',
   '',
-  '1. 解压到任意可写目录（本地磁盘或 U 盘均可），双击 s-read-txt.exe 即可使用。',
+  '1. 解压到任意可写目录（本地磁盘或 U 盘均可），双击 s-read-txt.exe 即可使用；',
+  '   启动不需要管理员权限（除非所选文件夹本身受限，届时系统会提示）。',
   '2. 全部数据（设置/历史/会话/阅读进度）都写入本目录下的 data\\ 文件夹；',
   '   整个文件夹可随时复制到其他电脑继续使用，删除文件夹即完成卸载。',
-  '3. 本程序不写注册表、不写系统环境变量、完全离线（无联网、无遥测）。',
-  '4. 系统要求：Windows 10 1803 或更高（x64 / x86 / ARM64）。',
-  '5. 依赖系统 WebView2 运行时（Windows 10/11 通常已预装；缺失时请安装',
+  '3. 默认不写注册表、不写系统环境变量、完全离线（无联网、无遥测）。',
+  '   如需「用 S-Read-TXT 打开」等系统集成，可在 设置 → 系统 中手动开启：',
+  '   - 当前用户级：写 HKCU，不需要管理员权限；',
+  '   - 全局级：会弹出一次 UAC 请求；其余功能不受影响，可随时注销。',
+  '4. 若更换了文件夹位置或出现「打开方式」残留，可运行同目录下的',
+  '   「清理右键与打开方式.bat」一键清除（不需要管理员权限）。',
+  '5. 系统要求：Windows 10 1803 或更高（x64 / x86 / ARM64）。',
+  '6. 依赖系统 WebView2 运行时（Windows 10/11 通常已预装；缺失时请安装',
   '   微软官方 Evergreen 运行时）。',
   '',
 ];
@@ -64,6 +70,14 @@ writeFileSync(join(staging, '便携版说明.txt'), readmeLines.join('\r\n'), 'u
 copyFileSync(exe, join(staging, 's-read-txt.exe'));
 copyFileSync(dll, join(staging, 'WebView2Loader.dll'));
 copyFileSync(license, join(staging, 'LICENSE'));
+const cleanupScript = join(root, 'packaging', 'cleanup-shell-integration.bat');
+if (existsSync(cleanupScript)) {
+  copyFileSync(cleanupScript, join(staging, '清理右键与打开方式.bat'));
+  copyFileSync(cleanupScript, join(staging, 'cleanup-shell-integration.bat'));
+} else {
+  console.error(`缺少清理脚本：${cleanupScript}`);
+  process.exit(1);
+}
 
 mkdirSync(outDir, { recursive: true });
 rmSync(zipPath, { force: true });

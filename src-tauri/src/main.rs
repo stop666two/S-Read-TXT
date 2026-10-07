@@ -452,6 +452,7 @@ fn main() {
             tab_drag::drag_end,
             commands::reorder_tab,
             commands::open_settings,
+            commands::open_default_apps_settings,
             commands::take_settings_tab,
     commands::list_fonts,
     commands::import_font,

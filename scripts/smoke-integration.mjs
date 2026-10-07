@@ -138,6 +138,7 @@ try {
     settings,
     `document.querySelector('[data-integration-chip="user-txt"]')?.getAttribute('data-on')`,
     (v) => v === 'true',
+    15_000,
   );
   check(
     'I2 应用后用户级状态=已登记',
@@ -201,6 +202,28 @@ try {
   check(
     'I13 取消后确认框关闭且无变更',
     dialogGone === true && !(await chipOn('machine-txt')) && !regExists('HKLM\\Software\\Classes\\SReadTXT.txt'),
+  );
+
+  // ---- I14：系统默认应用引导按钮（Win10+ 不允许程序静默设默认，提供跳转入口） ----
+  const openDefaultsBtn = await evalIn(
+    settings,
+    `!!document.querySelector('[data-integration-open-defaults]')`,
+  );
+  check('I14 系统默认应用引导按钮存在', openDefaultsBtn === true);
+
+  // ---- I15-I17：清理脚本（packaging/cleanup-shell-integration.bat）往返 ----
+  spawnSync(exe, ['--integration-write', 'user', '1', '1', '1'], { stdio: 'ignore' });
+  check('I15 脚本执行前已登记（ProgID 存在）', regExists('HKCU\\Software\\Classes\\SReadTXT.txt'));
+  const cleanupBat = join(root, 'packaging', 'cleanup-shell-integration.bat');
+  const batRun = spawnSync('cmd', ['/c', cleanupBat, '/quiet'], {
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
+  check('I16 清理脚本执行成功（退出码 0）', batRun.status === 0, `status=${batRun.status}`);
+  check(
+    'I17 清理脚本后注册表归零',
+    !regExists('HKCU\\Software\\Classes\\SReadTXT.txt') &&
+      !regExists('HKCU\\Software\\Classes\\SystemFileAssociations\\.txt\\shell\\S-Read-TXT'),
   );
 
   console.log(`\n系统集成冒烟：${passed}/${passed + failed} 通过`);

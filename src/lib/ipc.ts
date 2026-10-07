@@ -1666,6 +1666,7 @@ export const ipc = {
   privacyUsage: () => invoke<PrivacyUsage>('privacy_usage'),
   privacyClear: (scope: PrivacyScope) => invoke<PrivacyReport>('privacy_clear', { scope }),
   integrationStatus: () => invoke<IntegStatus>('integration_status'),
+  openDefaultAppsSettings: () => invoke<void>('open_default_apps_settings'),
   integrationApply: (scope: IntegScope, options: IntegOptions, elevate: boolean) =>
     invoke<IntegStatus>('integration_apply', { scope, options, elevate }),
   checkUpdate: (source: string, current: string) => invoke<UpdateInfo>('check_update', { source, current }),
