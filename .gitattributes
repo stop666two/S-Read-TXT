@@ -2,6 +2,8 @@
 * text=auto eol=lf
 
 # 二进制文件不做行尾转换，避免损坏
+# Windows 批处理：必须保持 CRLF（GBK 编码），不做任何转换
+*.bat -text
 *.png binary
 *.ico binary
 *.icns binary
