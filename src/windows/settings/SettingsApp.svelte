@@ -18,6 +18,7 @@ import BackupSection from './BackupSection.svelte';
 import DataSection from './DataSection.svelte';
 import DiskSection from './DiskSection.svelte';
   import PrivacySection from './PrivacySection.svelte';
+  import IntegrationSection from './IntegrationSection.svelte';
   import HistoryTab from './HistoryTab.svelte';
   import RegistryPage from './RegistryPage.svelte';
   import ThemeEditor from './parts/ThemeEditor.svelte';
@@ -183,6 +184,7 @@ import DiskSection from './DiskSection.svelte';
         <RegistryPage groups={['app.a11y', 'app.system', 'app.tools', 'app.annotations', 'app.update']} {query} />
         {#if !searchActive}
           <PrivacySection />
+          <IntegrationSection />
         {/if}
       {:else}
         <AboutTab />

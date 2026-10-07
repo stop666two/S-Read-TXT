@@ -1002,6 +1002,22 @@ export interface PrivacyReport extends PrivacyUsage {
   skipped: number;
 }
 
+/** 系统集成开关集合（与 Rust `IntegOptions` 对应；user/machine 各一份）。 */
+export interface IntegOptions {
+  txt: boolean;
+  log: boolean;
+  contextMenu: boolean;
+}
+
+/** 系统集成状态（与 Rust `IntegStatus` 对应）。 */
+export interface IntegStatus {
+  user: IntegOptions;
+  machine: IntegOptions;
+}
+
+/** 系统集成作用域。 */
+export type IntegScope = 'user' | 'machine';
+
 /** 发布资产（安装包）信息（与 Rust `UpdateAsset` 对应）。 */
 export interface UpdateAsset {
   name: string;
@@ -1649,6 +1665,9 @@ export const ipc = {
   clearCache: (scope: 'logs' | 'webview' | 'backups') => invoke<ClearResult>('clear_cache', { scope }),
   privacyUsage: () => invoke<PrivacyUsage>('privacy_usage'),
   privacyClear: (scope: PrivacyScope) => invoke<PrivacyReport>('privacy_clear', { scope }),
+  integrationStatus: () => invoke<IntegStatus>('integration_status'),
+  integrationApply: (scope: IntegScope, options: IntegOptions, elevate: boolean) =>
+    invoke<IntegStatus>('integration_apply', { scope, options, elevate }),
   checkUpdate: (source: string, current: string) => invoke<UpdateInfo>('check_update', { source, current }),
   downloadUpdate: (url: string, sha256: string | null, fileName: string | null) =>
     invoke<DownloadedUpdate>('download_update', { url, sha256, fileName }),
