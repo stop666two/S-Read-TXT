@@ -259,11 +259,13 @@ jobs:
             echo "无法获取 Release ID"; exit 1
           fi
           NAME_ENC=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "清理右键与打开方式.bat")
-          gh api -X POST \
-            "repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=${NAME_ENC}" \
+          # 资产上传必须走 uploads.github.com（api.github.com 的 assets 路径不存在，会 404）
+          curl -sS -f -X POST \
+            -H "Authorization: Bearer ${{ github.token }}" \
             -H "Content-Type: application/octet-stream" \
-            --input packaging/cleanup-shell-integration.bat
-          echo "已上传中文名脚本：清理右键与打开方式.bat"
+            --data-binary @packaging/cleanup-shell-integration.bat \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=${NAME_ENC}" \
+            | jq -r '"已上传中文名脚本：" + .name'
           gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name'
       - name: 附加完整测试报告（如仓库已有）
         env:
