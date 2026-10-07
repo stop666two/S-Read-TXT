@@ -205,7 +205,7 @@ jobs:
             echo "### 提交列表"
             echo
             echo '```'
-            git log --oneline --no-decorate "$RANGE" | head -200
+            git log --oneline --no-decorate -n 200 "$RANGE"
             echo '```'
             echo
             echo "### 文件变更统计"
@@ -238,6 +238,7 @@ jobs:
             --title "S-Read-TXT $RELEASE_TAG" \
             --notes-file release-notes.md $PRERELEASE_FLAG \
             release-assets-all/*.exe \
+            release-assets-all/*.zip \
             release-assets-all/*.bat \
             release-assets-all/SHA256SUMS.txt \
             release-meta/test-summary.md
