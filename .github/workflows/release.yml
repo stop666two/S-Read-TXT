@@ -257,7 +257,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          NEW_ID=$(gh release view "$RELEASE_TAG" --json id --jq .id)
+          # 注意：必须用 REST 数字 id（与列表接口同源）；gh release view 的 id 是 GraphQL node id，不可用于比较
+          NEW_ID=$(gh api "repos/${{ github.repository }}/releases/tags/$RELEASE_TAG" --jq .id)
           echo "保留 Release id=$NEW_ID（$RELEASE_TAG）"
           gh api "repos/${{ github.repository }}/releases?per_page=100" --paginate --jq '.[].id' | while read -r id; do
             if [ "$id" != "$NEW_ID" ]; then
