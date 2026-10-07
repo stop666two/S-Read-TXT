@@ -147,6 +147,15 @@ function findInstalledDir() {
   return INSTALL_CANDIDATES.find((dir) => existsSync(join(dir, 's-read-txt.exe'))) ?? null;
 }
 
+/** 卸载器路径：优先「卸载 S-Read-TXT.exe」（直观名），兼容旧名 uninstall.exe。 */
+function findUninstaller(dir) {
+  const renamed = join(dir, '卸载 S-Read-TXT.exe');
+  if (existsSync(renamed)) return renamed;
+  const legacy = join(dir, 'uninstall.exe');
+  if (existsSync(legacy)) return legacy;
+  return null;
+}
+
 /** 是否存在正在运行的 S-Read-TXT 实例（存在时卸载器会弹「请先关闭应用」并等待）。 */
 function runningInstanceExists() {
   const result = spawnSync(
@@ -179,8 +188,8 @@ async function main() {
   // ---- U0：预清理（若已安装，先卸载到干净状态，保证流程确定性） ----
   const preexisting = findInstalledDir();
   if (preexisting) {
-    const uninstaller = join(preexisting, 'uninstall.exe');
-    if (existsSync(uninstaller)) {
+    const uninstaller = findUninstaller(preexisting);
+    if (uninstaller && existsSync(uninstaller)) {
       await runExe(uninstaller, ['/S'], 120000);
       await waitFor(() => !existsSync(preexisting), 120000);
     }
@@ -239,7 +248,12 @@ async function main() {
     console.log('跳过：检测到正在运行的 S-Read-TXT 实例（请先退出应用后再运行本套件）');
     return;
   }
-  const uninstaller = join(installDir, 'uninstall.exe');
+  const uninstaller = findUninstaller(installDir);
+  check('U3d 卸载器文件名直观可辨', Boolean(uninstaller && uninstaller.endsWith('卸载 S-Read-TXT.exe')), uninstaller ?? '缺失');
+  if (!uninstaller) {
+    console.log('未找到卸载器，终止');
+    return;
+  }
   const unResult = await runExe(uninstaller, ['/S'], 120000);
   check('U4 静默卸载已启动', unResult.code === 0, `code=${unResult.code}${unResult.timedOut ? '（超时）' : ''}`);
   const gone = await waitFor(() => !existsSync(installDir), 120000);

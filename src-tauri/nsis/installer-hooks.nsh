@@ -46,7 +46,7 @@ ${Using:StrFunc} UnStrStr
   Quit
 
   srt_pre_abort:
-  MessageBox MB_OK|MB_ICONSTOP "安装已取消：目标目录需要管理员权限。可改用默认目录（无需管理员）后重试。"
+  MessageBox MB_OK|MB_ICONSTOP "安装已取消：目标目录需要管理员权限。可改用默认目录（无需管理员）后重试。" /SD IDOK
   Abort
 
   srt_pre_done:
@@ -54,6 +54,16 @@ ${Using:StrFunc} UnStrStr
 
 ; ---- 卸载前：删除权限检测（目录不可删 / 存在全局注册项）+ 按需提权重入 ----
 !macro NSIS_HOOK_PREUNINSTALL
+  ; 提权重入时恢复安装目录：卸载器克隆体运行于 %TEMP%\~nsuN.tmp，其 $INSTDIR 默认指向
+  ; 临时目录；原始实例在重入前把真实安装目录写入 HKCU 中转值（规避命令行引号/空格/中文问题）。
+  ClearErrors
+  ReadRegStr $0 HKCU "Software\S-Read-TXT" "UninstallDir"
+  IfErrors srt_un_dir_ready
+  StrCmp $0 "" srt_un_dir_ready
+  StrCpy $INSTDIR $0
+  DeleteRegValue HKCU "Software\S-Read-TXT" "UninstallDir"
+  srt_un_dir_ready:
+
   ClearErrors
   FileOpen $9 "$INSTDIR\.srt-del-probe" w
   IfErrors srt_un_no_write
@@ -80,18 +90,29 @@ ${Using:StrFunc} UnStrStr
   srt_un_request_elev:
   IfSilent srt_un_silent_elev
   MessageBox MB_YESNO|MB_ICONQUESTION "卸载需要管理员权限（安装目录受保护，或存在待清理的全局注册项）。$\r$\n是否以管理员身份继续卸载？" IDNO srt_un_abort
+  WriteRegStr HKCU "Software\S-Read-TXT" "UninstallDir" "$INSTDIR"
   ExecShell "runas" "$EXEPATH" "/SRT_ELEVATED"
   Quit
 
   srt_un_silent_elev:
+  WriteRegStr HKCU "Software\S-Read-TXT" "UninstallDir" "$INSTDIR"
   ExecShell "runas" "$EXEPATH" "/SRT_ELEVATED /S"
   Quit
 
   srt_un_abort:
-  MessageBox MB_OK|MB_ICONSTOP "卸载已取消：需要管理员权限。"
+  MessageBox MB_OK|MB_ICONSTOP "卸载已取消：需要管理员权限。" /SD IDOK
   Abort
 
   srt_un_done:
+!macroend
+
+; ---- 安装后：卸载器更名（直观可辨）并同步登记表指向 ----
+!macro NSIS_HOOK_POSTINSTALL
+  Delete "$INSTDIR\卸载 S-Read-TXT.exe"
+  IfFileExists "$INSTDIR\uninstall.exe" 0 srt_post_rename_done
+  Rename "$INSTDIR\uninstall.exe" "$INSTDIR\卸载 S-Read-TXT.exe"
+  WriteRegStr SHCTX "${UNINSTKEY}" "UninstallString" "$\"$INSTDIR\卸载 S-Read-TXT.exe$\""
+  srt_post_rename_done:
 !macroend
 
 ; ---- 卸载后：数据询问 + 注册表严格清理 + 目录收尾 ----
@@ -125,6 +146,10 @@ ${Using:StrFunc} UnStrStr
   DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
   DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
   DeleteRegKey /ifempty HKCU "${MANUKEY}"
+  ; 提权中转值与权限探针键（本应用自有）
+  DeleteRegValue HKCU "Software\S-Read-TXT" "UninstallDir"
+  DeleteRegKey /ifempty HKCU "Software\S-Read-TXT"
+  DeleteRegKey HKLM "Software\S-Read-TXT"
 
   ; 4) 系统集成清理 —— 4a) 本应用所有权键（对称于应用内注册布局）
   DeleteRegKey HKCU "Software\Classes\SReadTXT.txt"
@@ -246,6 +271,8 @@ ${Using:StrFunc} UnStrStr
   DeleteRegKey HKLM "Software\Classes\Log File"
   srt_lg_progid_log_done_hklm:
 
-  ; 5) 尝试彻底移除安装目录
+  ; 5) 安装目录收尾：删除卸载器自身（更名后与旧名并存场景）与目录
+  Delete "$INSTDIR\卸载 S-Read-TXT.exe"
+  Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
 !macroend
