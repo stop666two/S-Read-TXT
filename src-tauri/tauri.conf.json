@@ -32,18 +32,6 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "fileAssociations": [
-      {
-        "ext": ["txt"],
-        "name": "Text Document",
-        "description": "S-Read-TXT 文本文档"
-      },
-      {
-        "ext": ["log"],
-        "name": "Log File",
-        "description": "S-Read-TXT 日志文件"
-      }
-    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -57,7 +45,7 @@
       "nsis": {
         "languages": ["SimpChinese"],
         "displayLanguageSelector": false,
-        "installMode": "both",
+        "installMode": "currentUser",
         "installerHooks": "nsis/installer-hooks.nsh"
       }
     }
