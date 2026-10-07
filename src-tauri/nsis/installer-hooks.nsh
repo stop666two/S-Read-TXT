@@ -88,15 +88,25 @@ ${Using:StrFunc} UnStrStr
   Goto srt_un_done
 
   srt_un_request_elev:
+  ; 提权重入目标：优先启动安装目录中的原版卸载器（UAC 显示 S-Read-TXT），
+  ; 而非当前运行中的临时克隆体（Un.exe，名称不可辨）。
+  StrCpy $R9 "$EXEPATH"
+  IfFileExists "$INSTDIR\卸载 S-Read-TXT.exe" 0 srt_un_elev_legacy
+  StrCpy $R9 "$INSTDIR\卸载 S-Read-TXT.exe"
+  Goto srt_un_elev_ready
+  srt_un_elev_legacy:
+  IfFileExists "$INSTDIR\uninstall.exe" 0 srt_un_elev_ready
+  StrCpy $R9 "$INSTDIR\uninstall.exe"
+  srt_un_elev_ready:
   IfSilent srt_un_silent_elev
   MessageBox MB_YESNO|MB_ICONQUESTION "卸载需要管理员权限（安装目录受保护，或存在待清理的全局注册项）。$\r$\n是否以管理员身份继续卸载？" IDNO srt_un_abort
   WriteRegStr HKCU "Software\S-Read-TXT" "UninstallDir" "$INSTDIR"
-  ExecShell "runas" "$EXEPATH" "/SRT_ELEVATED"
+  ExecShell "runas" "$R9" "/SRT_ELEVATED"
   Quit
 
   srt_un_silent_elev:
   WriteRegStr HKCU "Software\S-Read-TXT" "UninstallDir" "$INSTDIR"
-  ExecShell "runas" "$EXEPATH" "/SRT_ELEVATED /S"
+  ExecShell "runas" "$R9" "/SRT_ELEVATED /S"
   Quit
 
   srt_un_abort:
