@@ -1,9 +1,10 @@
 // S-Read-TXT 卸载清理 E2E。
-// 目的：验证卸载器会清除便携数据目录（data/）与注册表残留，且不再留下安装目录。
-// 流程：预清理（若已安装先卸载）→ 静默安装（/S /currentuser）
-//   → 人工造 data/ 数据（等价于运行过应用）
-//   → 静默卸载（/S；钩子 /SD IDYES 默认删除数据）
-//   → 断言：安装目录（含 data）消失、卸载注册表项（HKCU/HKLM）均已删除。
+// 目的：验证「安装器零 UAC / 安装期零注册表集成写入」与卸载后的注册表归零（含历史残留）。
+// 流程：构建配置断言（installer.nsi）→ 预清理（若已安装先卸载）→ 静默安装（/S /currentuser）
+//   → 应用侧集成注册（--integration-write user 1 1 1）+ 历史残留夹具（旧 ProgID/备份值）
+//   → 人工造 data/ 数据（等价于运行过应用）→ 静默卸载（/S；钩子 /SD IDYES 默认删除数据）
+//   → 断言：安装目录（含 data）消失、卸载注册表项清除、集成痕迹严格清理、
+//     历史默认值按备份还原、HKLM 无遗留。
 // 前置：存在 NSIS 安装包（先 `npm run tauri build`）；不存在时跳过（退出码 0）。
 //
 // 注意：NSIS 多用户模式的安装器/卸载器带 `highestAvailable` 执行级别清单，
@@ -13,7 +14,7 @@
 // 用法：node scripts/smoke-uninstall.mjs
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.cwd();
@@ -99,6 +100,32 @@ function registryKeyExists(key) {
   return result.status === 0;
 }
 
+/** 写入 REG_SZ（`name === null` 写默认值）。 */
+function registrySet(key, name, value) {
+  const args =
+    name === null
+      ? ['add', key, '/ve', '/t', 'REG_SZ', '/d', value, '/f']
+      : ['add', key, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'];
+  return spawnSync('reg', args, { encoding: 'utf8', timeout: 15000 }).status === 0;
+}
+
+/** 读取 REG_SZ（`name === null` 读默认值；不存在/未设置返回 null）。 */
+function registryGet(key, name = null) {
+  const args = name === null ? ['query', key, '/ve'] : ['query', key, '/v', name];
+  const result = spawnSync('reg', args, { encoding: 'utf8', timeout: 15000 });
+  if (result.status !== 0) return null;
+  const line = (result.stdout ?? '').split(/\r?\n/).find((item) => item.includes('REG_SZ'));
+  if (!line) return null;
+  const value = line.split('REG_SZ')[1]?.trim() ?? '';
+  return value.startsWith('(') ? '' : value;
+}
+
+/** 删除 REG_SZ 值（`name === null` 删默认值）。 */
+function registryDeleteValue(key, name = null) {
+  const args = name === null ? ['delete', key, '/ve', '/f'] : ['delete', key, '/v', name, '/f'];
+  spawnSync('reg', args, { encoding: 'utf8', timeout: 15000 });
+}
+
 /** 从注册表读取安装位置（优先；CurrentUser 模式由 MultiUser 写入），失败返回 null */
 function queryInstallLocation() {
   for (const key of UNINSTALL_KEYS) {
@@ -137,6 +164,17 @@ async function main() {
     return;
   }
   console.log(`安装包：${setup}`);
+
+  // ---- U0a：构建配置断言（安装器零 UAC；安装期零注册表集成写入） ----
+  const nsiPath = join(root, 'src-tauri', 'target', 'release', 'nsis', 'x64', 'installer.nsi');
+  if (existsSync(nsiPath)) {
+    const nsi = readFileSync(nsiPath, 'utf8');
+    check('U0a 安装器为用户级（RequestExecutionLevel user）', nsi.includes('RequestExecutionLevel user'));
+    check('U0b 安装器不自动注册关联（无 APP_ASSOCIATE）', !nsi.includes('APP_ASSOCIATE'));
+    check('U0c 安装模式为 currentUser', /!define INSTALLMODE "currentUser"/.test(nsi));
+  } else {
+    console.log('提示：未找到生成的 installer.nsi（跳过构建配置断言）');
+  }
 
   // ---- U0：预清理（若已安装，先卸载到干净状态，保证流程确定性） ----
   const preexisting = findInstalledDir();
@@ -178,6 +216,24 @@ async function main() {
   writeFileSync(join(installDir, 'data', 'logs', 'app.log'), 'probe\n', 'utf8');
   check('U3 数据标记写入', existsSync(join(installDir, 'data', 'history.jsonl')));
 
+  // ---- U3b：应用侧集成注册（模拟用户开启开关）+ 历史残留夹具 ----
+  const installedExe = join(installDir, 's-read-txt.exe');
+  await runExe(installedExe, ['--integration-write', 'user', '1', '1', '1'], 60000);
+  check(
+    'U3b 集成注册成功',
+    registryKeyExists('HKCU\\Software\\Classes\\SReadTXT.txt\\shell\\open\\command') &&
+      registryKeyExists('HKCU\\Software\\Classes\\Applications\\s-read-txt.exe') &&
+      registryKeyExists('HKCU\\Software\\Classes\\SystemFileAssociations\\.log\\shell\\S-Read-TXT\\command'),
+  );
+  const legacyCommand = `"${installedExe}" "%1"`;
+  registrySet('HKCU\\Software\\Classes\\.txt', null, 'Text Document');
+  registrySet('HKCU\\Software\\Classes\\.txt', 'Text Document_backup', 'OldDefault.txt');
+  registrySet('HKCU\\Software\\Classes\\.log', null, 'Log File');
+  registrySet('HKCU\\Software\\Classes\\.log', 'Log File_backup', 'OldDefault.log');
+  registrySet('HKCU\\Software\\Classes\\Text Document\\shell\\open\\command', null, legacyCommand);
+  registrySet('HKCU\\Software\\Classes\\Log File\\shell\\open\\command', null, legacyCommand);
+  check('U3c 历史残留夹具就绪', registryGet('HKCU\\Software\\Classes\\.txt') === 'Text Document');
+
   // ---- U4：静默卸载（钩子默认删除数据；应用必须已退出，否则卸载器会等待） ----
   if (runningInstanceExists()) {
     console.log('跳过：检测到正在运行的 S-Read-TXT 实例（请先退出应用后再运行本套件）');
@@ -192,6 +248,39 @@ async function main() {
   // ---- U6：注册表残留清理 ----
   const remainingKeys = UNINSTALL_KEYS.filter((key) => registryKeyExists(key));
   check('U6 卸载注册表项已清除', remainingKeys.length === 0, remainingKeys.join('；') || '无残留');
+
+  // ---- U7-U10：集成痕迹严格清理 ----
+  check(
+    'U7 本应用所有权键全部清理',
+    !registryKeyExists('HKCU\\Software\\Classes\\SReadTXT.txt') &&
+      !registryKeyExists('HKCU\\Software\\Classes\\SReadTXT.log') &&
+      !registryKeyExists('HKCU\\Software\\Classes\\Applications\\s-read-txt.exe') &&
+      !registryKeyExists('HKCU\\Software\\Classes\\SystemFileAssociations\\.txt\\shell\\S-Read-TXT') &&
+      !registryKeyExists('HKCU\\Software\\Classes\\SystemFileAssociations\\.log\\shell\\S-Read-TXT'),
+  );
+  const openWith = spawnSync('reg', ['query', 'HKCU\\Software\\Classes\\.txt\\OpenWithProgids'], {
+    encoding: 'utf8',
+    timeout: 15000,
+  });
+  check('U8 OpenWithProgids 值已清理', !/SReadTXT\./.test(openWith.stdout ?? ''));
+  check(
+    'U9 历史默认值已还原',
+    registryGet('HKCU\\Software\\Classes\\.txt') === 'OldDefault.txt' &&
+      registryGet('HKCU\\Software\\Classes\\.log') === 'OldDefault.log',
+    `txt=${registryGet('HKCU\\Software\\Classes\\.txt')} log=${registryGet('HKCU\\Software\\Classes\\.log')}`,
+  );
+  check(
+    'U10 历史备份值与 ProgID 键已清理',
+    registryGet('HKCU\\Software\\Classes\\.txt', 'Text Document_backup') === null &&
+      registryGet('HKCU\\Software\\Classes\\.log', 'Log File_backup') === null &&
+      !registryKeyExists('HKCU\\Software\\Classes\\Text Document') &&
+      !registryKeyExists('HKCU\\Software\\Classes\\Log File'),
+  );
+  check('U11 未遗留全局（HKLM）集成键', !registryKeyExists('HKLM\\Software\\Classes\\SReadTXT.txt'));
+
+  // ---- 夹具残渣清理（把 .txt/.log 默认值清回空） ----
+  registryDeleteValue('HKCU\\Software\\Classes\\.txt');
+  registryDeleteValue('HKCU\\Software\\Classes\\.log');
 
   const total = passed + failed;
   console.log(`\n卸载清理冒烟：${passed}/${total} 通过`);

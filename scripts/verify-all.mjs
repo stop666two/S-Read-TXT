@@ -119,6 +119,7 @@ const steps = [
   { name: 'E2E 限额可调（smoke-caps）', cmd: 'node scripts/smoke-caps.mjs', cwd: root, env: process.env, timeout: 900_000 },
   { name: 'E2E 可访问性（smoke-a11y）', cmd: 'node scripts/smoke-a11y.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 隐私清除（smoke-privacy）', cmd: 'node scripts/smoke-privacy.mjs', cwd: root, env: process.env, timeout: 600_000 },
+  { name: 'E2E 系统集成（smoke-integration）', cmd: 'node scripts/smoke-integration.mjs', cwd: root, env: process.env, timeout: 600_000 },
   { name: 'E2E 更新检查（smoke-update）', cmd: 'node scripts/smoke-update.mjs', cwd: root, env: process.env, timeout: 600_000 },
   {
     name: '离线核查（offline-check）',

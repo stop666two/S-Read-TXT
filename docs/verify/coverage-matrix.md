@@ -2,7 +2,7 @@
 
 - 维护规则：**任何新增命令 / 设置项 / 错误码 / 功能域必须在本表登记测试引用**；`node scripts/verify-all.mjs` 全绿为放行前提。
 - 测试层级：Rust 单测（`cargo test`）｜前端单测（`vitest`）｜E2E（`scripts/smoke-*.mjs`，真实应用 + CDP）｜专项脚本（`stress` / `measure-startup` / `offline-check`）｜CI 门禁（`.github/workflows/ci.yml`）。
-- 计数口径：Rust **537**（509 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 154；E2E 48 套 ≈742 项；verify-all 57 步（默认全量、无排除）。
+- 计数口径：Rust **542**（514 lib + 15 对抗 + 2 助手 + 6 统计流 + 5 集成）；vitest 154；E2E **49** 套 ≈**756** 项；verify-all **58** 步（默认全量、无排除；安装器改用户级后 smoke-uninstall 无需 UAC）。
 
 ## 1. E2E 套件清单（verify-all 串行执行）
 
@@ -10,7 +10,7 @@
 |---|---|---|
 | smoke-edit | 12 | 编辑基础：输入/撤销/保存/脏标记/编码弹窗 |
 | smoke-find | 27 | 查找替换：大小写/正则/预览剔除/撤销/高亮/菜单 + 全词/计数/历史/行范围/设置新控件 |
-| smoke-batch | 22 | 批量序号（P1-1 + P4）：菜单入口/默认预览（跳空行）/零填充与前后缀/行范围/模板/应用+单撤销/超限错误就地展示/BATCH_INVALID/大范围进度事件与 8000 行全量编号/运行中取消（回滚、无撤销步骤、弹窗保留） |
+| smoke-batch | 22 | 批量序号（P1-1 + P4）：菜单入口/默认预览（跳空行）/零填充与前后缀/行范围/模板/应用+单撤销/超限错误就地展示/BATCH_INVALID/大范围进度事件与 15 万行全量编号/运行中取消（回滚、无撤销步骤、弹窗保留） |
 | smoke-lineops | 16 | 行操作（P1-2）：菜单入口/默认操作预览/排序预览与应用/单撤销/去重保留末次/缩进参数/末尾换行（文件级）/参数错误就地展示/LINE_OP_INVALID/Esc/截图 |
 | smoke-multi | 18 | 多光标（P1-3）：修饰键单击加/移除光标、多光标连续键入（单撤销步）、单步撤销还原、矩形拖选替换与列键入、Esc 收起、多光标退格（单撤销步）、设置开关门控（禁用/恢复）、截图 |
 | smoke-filter | 13 | 过滤视图（P1-4）：入口可见/字面量过滤与计数/隐藏空行/大小写开关与无匹配/非法正则就地报错/清除恢复/切标签清空/编辑态隐藏入口/截图 |
@@ -37,10 +37,11 @@
 | smoke-session | 11 | 会话：窗口几何/标签/编码/滚动恢复/缺失跳过 |
 | smoke-restore | 13 | 会话恢复内容：restoreItems 四项开关/折叠保存与恢复及失效丢弃/光标保存与恢复/越界裁剪提示/滚动关闭回顶/布局关闭合并单栏/总开关关闭仍恢复窗口几何 |
 | smoke-datadir | 15 | 数据目录：弹窗/重定向/日志落位/只读 ACL 修复助手 |
-| smoke-uninstall | 6 | 卸载：静默安装/卸载/注册表/数据清理 |
+| smoke-uninstall | 16 | 安装器与卸载：构建配置断言（RequestExecutionLevel user / currentUser / 无 APP_ASSOCIATE）；静默安装（普通权限、用户目录）与卸载；集成痕迹严格清理（ProgID/打开方式/右键/OpenWithProgids 值）；历史默认值按备份还原与旧 ProgID/备份值清理；HKLM 无遗留 |
 | smoke-abuse | 41 | 对抗：空文件/换行族/BOM/连打/撤销狂按/冲突/长行 |
 | smoke-scroll | 4 | 滚动完整性：跳转/滚轮/震荡/滑块联动 |
 | smoke-palette | 7 | 命令面板：Ctrl+Shift+P 打开/命令数（46）/过滤定位设置命令并回车执行/无文件时 undo 禁用/Esc 关闭/点击新建文件生效 |
+| smoke-integration | 14 | 系统集成（设置面板）：区块渲染、应用勾选（ProgID + 打开方式条目 + 右键菜单 + 默认登记）、注销归零与默认值复位、全局路径管理员确认框（取消不触发 UAC） |
 | smoke-caps | 21 | 限额可调（受限拒绝↔放宽放行成对）：分屏 1↔2（含中英提示）、导出 1↔10MB、打印 1MB 拒绝、比较 16↔64MB、拆分份数 2↔10 与预览截断、工作区逐文件截断、大纲 120→100、折叠 150+→100、剪贴板 200→100、注释 150→100 与书签 20→10、导入 1↔8MB、启动窗口 1↔16（两次重启） |
 | smoke-a11y | 10 | 可访问性：系统页与分组、reduce-motion / hc-overlay / focus-strong 实时联动、字体缩放 125%（主窗+设置窗 zoom）、屏幕阅读器 aria-live 切换、性能模式（含减少动画）、截图 |
 | smoke-privacy | 10 | 隐私：用量统计与预置一致、隐私区块渲染、计数回显、清除二次确认、历史/快照/批注/剪贴板清除且未勾选会话保留、清除后用量刷新 |
@@ -71,6 +72,7 @@
 | list_tabs / close_tab / set_active_tab / reorder_tab | smoke-tabs T1–T8；smoke-shortcuts K 系列；Rust app_state 19 项 |
 | open_settings / take_settings_tab | smoke-buttons D12；smoke-settings S9/S13；smoke-limits L6 |
 | privacy_usage / privacy_clear | smoke-privacy P1–P10；Rust privacy（用量/清除/回退）单测 |
+| integration_status / integration_apply | smoke-integration I0–I13；Rust shell_integration 5 项（默认值决策/清理决策/助手参数解析）；smoke-uninstall U3b–U11（安装版注册与卸载清理） |
 | check_update / download_update / reveal_update_file / open_update_page | smoke-update U1–U8（本地桩服务器：正常/摘要不符/缺源/不可达）；Rust update 8 项（版本比较/URL 归一/摘要解析/资产选择/文件名清洗） |
 | list_fonts / import_font / remove_font / read_font_data | smoke-settings S15a–S15g（含 FontFace 实际加载断言）；Rust fonts 7 项 |
 | toggle_edit / apply_edits / undo_edit / redo_edit | smoke-edit；smoke-abuse（撤销/重做狂按）；smoke-find；Rust editing 84 项 |
@@ -188,3 +190,4 @@
 - 2026-10-06 P4 任务 7（技术债与性能）：批量编辑单次扫描解析（100MB/1k 处 apply 340s→1.6s，附 `benchmark_scattered_save`）；编辑态行进游标缓存（深行窗口取行 5039ms→126ms，修大文件编辑「滚动/进入即卡死」）；批量序号异步化（`srt://batch-progress` 进度 + 取消完整回滚；smoke-batch **22/22**）；批量范围解析单次化；内存红线复测（只读修剪 3-12MB 级 / 编辑态私有 ~87MB / 双窗 ~117MB）；启动实测（debug 可见 median 1067ms；release 既有 631ms/763ms 验收内）；设置窗左右白边修复（无边框窗口画刷底色随主题）；Rust **532**；覆盖率待 llvm-tools 就绪。
 - 2026-10-07 P4 任务 7 追加：**批量应用单遍重建片段表**（非重叠批次 O(文件+操作)；10 万处散布编辑 apply **1.76s**，二次项消除；重叠回退旧路径；新增等价/CRLF 多片段/重叠回退单测）；保存缓冲写（10 万片段 2.6s→0.5s）；**启动关键路径去阻塞 + 测量口径升级**（页面时钟 + 预热轮；release 热启动可见中位 **614ms**、就绪中位 **827ms** PASS）；覆盖率结论更新：windows-gnu 缺 `profiler_builtins`，`-C instrument-coverage` 不可用（需 MSVC 工具链，受环境限制）；Rust **535**（lib 507）。
 - 2026-10-07 P4 任务 7 追加（上限可调）：**单次操作上限可调** `tools.singleOpMaxRows`（默认 200000，区间 1000–1000000；批量编号/行操作/全部替换共用，运行时经 `op_limits` 注入，保存/导入/重置设置即时同步；错误提示含实际上限值）；probe-limits 增 L15 成对断言（1000 拒 2000 行 ↔ 3000 放行）；smoke-batch B14/B15 改 15 万行；Rust **537**（lib 509）。
+- 2026-10-07 安装器/卸载器与系统集成：安装器改**用户级**（`installMode=currentUser`，`RequestExecutionLevel user`，双击/安装零 UAC；默认 `%LOCALAPPDATA%\S-Read-TXT`）；安装期**零注册表集成写入**（移除自动关联）；PREINSTALL/PREUNINSTALL 在目录不可写/不可删或存在全局注册项时**按需提权**（`runas` 重入，权限只作用于目标；静默模式自动尝试一次）；新增 **shell_integration**（HKCU 每用户登记 `.txt`/`.log` 打开方式候选 + `Applications` 条目 + 右键菜单；不抢占默认、仅在空缺时登记；注销幂等并可按备份还原历史默认值；全局经 `--integration-write` 提权助手）与设置面板「系统集成」（三开关 + 应用/注销/全局按钮 + 状态徽标 + 管理员确认框）；卸载器**严格清理**（所有权键/OpenWithProgids 值/`_backup`/旧 ProgID「Text Document」「Log File」/语言与卸载键；HKCU+HKLM 幂等）；smoke-integration **14/14**、smoke-uninstall **16/16**（含构建配置断言与历史残留夹具还原）并入 verify-all（现 **58 步**）；Rust **542**（lib 514）；命令新增 integration_status/integration_apply。
